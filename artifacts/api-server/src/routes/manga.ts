@@ -111,6 +111,25 @@ router.get("/chapter/:id/pages", async (req, res) => {
   }
 });
 
+function isPrivateHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (h === "localhost" || h === "0.0.0.0" || h === "::1" || h === "::") return true;
+  // IPv4 literal
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const [a, b] = [parseInt(m[1]!, 10), parseInt(m[2]!, 10)];
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 0) return true;
+  }
+  // IPv6 unique-local / link-local
+  if (h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80:")) return true;
+  return false;
+}
+
 router.get("/image", async (req, res) => {
   try {
     const url = String(req.query["url"] ?? "");
@@ -118,21 +137,14 @@ router.get("/image", async (req, res) => {
       res.status(400).send("invalid url");
       return;
     }
-    const host = new URL(url).host.replace(/^www\./, "");
-    if (
-      !host.endsWith("comix.to") &&
-      !host.endsWith("comix.cdn") &&
-      !host.endsWith("cdn.comix.to") &&
-      !host.endsWith("cloudfront.net") &&
-      !host.endsWith("amazonaws.com") &&
-      !host.endsWith("imgur.com") &&
-      !host.endsWith("wp.com") &&
-      !host.endsWith("comix-cdn.com") &&
-      !host.endsWith("akamaized.net") &&
-      !host.endsWith("comix-images.com")
-    ) {
-      // allow only known image hosts; comix.to images may come from a CDN
-      // err on the side of allowing common CDNs above; reject the rest.
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      res.status(400).send("invalid url");
+      return;
+    }
+    if (isPrivateHost(parsed.hostname)) {
       res.status(400).send("host not allowed");
       return;
     }

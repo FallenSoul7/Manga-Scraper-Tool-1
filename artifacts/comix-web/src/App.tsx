@@ -10,6 +10,10 @@ import SearchPage from "@/pages/search";
 import MangaDetail from "@/pages/manga-detail";
 import Reader from "@/pages/reader";
 import SettingsPage from "@/pages/settings";
+import LibraryPage from "@/pages/library";
+import UpdatesPage from "@/pages/updates";
+import HistoryPage from "@/pages/history";
+import StatsPage from "@/pages/stats";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,6 +40,10 @@ function AppContent() {
               <Route path="/search" component={SearchPage} />
               <Route path="/manga/:id" component={MangaDetail} />
               <Route path="/settings" component={SettingsPage} />
+              <Route path="/library" component={LibraryPage} />
+              <Route path="/updates" component={UpdatesPage} />
+              <Route path="/history" component={HistoryPage} />
+              <Route path="/stats" component={StatsPage} />
               <Route component={NotFound} />
             </Switch>
           </div>
