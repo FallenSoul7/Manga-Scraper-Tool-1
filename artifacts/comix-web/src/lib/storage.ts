@@ -59,6 +59,25 @@ export type ReaderSettings = z.infer<typeof ReaderSettingsSchema>;
 const ThemeSchema = z.enum(['light', 'dark', 'system']);
 export type Theme = z.infer<typeof ThemeSchema>;
 
+const InstalledSourceSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  lang: z.string(),
+  isNsfw: z.boolean(),
+  iconUrl: z.string().nullable(),
+  installedAt: z.number(),
+});
+export type InstalledSource = z.infer<typeof InstalledSourceSchema>;
+
+export const DEFAULT_SOURCE: InstalledSource = {
+  id: 'en.comix',
+  name: 'Comix',
+  lang: 'en',
+  isNsfw: false,
+  iconUrl: null,
+  installedAt: 0,
+};
+
 const StoreStateSchema = z.object({
   library: z.record(z.string(), SavedMangaSchema),
   categories: z.array(CategorySchema),
@@ -69,6 +88,8 @@ const StoreStateSchema = z.object({
   searchHistory: z.array(z.string()),
   scanlatorPrefs: z.record(z.string(), z.string().nullable()).default({}),
   chapterSortAsc: z.record(z.string(), z.boolean()).default({}),
+  installedSources: z.record(z.string(), InstalledSourceSchema).default({ [DEFAULT_SOURCE.id]: DEFAULT_SOURCE }),
+  activeSourceId: z.string().default(DEFAULT_SOURCE.id),
 });
 export type StoreState = z.infer<typeof StoreStateSchema>;
 
@@ -94,6 +115,8 @@ const DEFAULT_STATE: StoreState = {
   searchHistory: [],
   scanlatorPrefs: {},
   chapterSortAsc: {},
+  installedSources: { [DEFAULT_SOURCE.id]: DEFAULT_SOURCE },
+  activeSourceId: DEFAULT_SOURCE.id,
 };
 
 // --- Store Implementation ---
@@ -113,6 +136,21 @@ function loadState(): StoreState {
     if (validated.success) {
       if (!validated.data.categories.find(c => c.id === 'default')) {
         validated.data.categories = [...DEFAULT_CATEGORIES, ...validated.data.categories];
+      }
+      // Always make sure the default Comix source is installed and up-to-date
+      const existingDefault = validated.data.installedSources[DEFAULT_SOURCE.id];
+      if (!existingDefault) {
+        validated.data.installedSources[DEFAULT_SOURCE.id] = DEFAULT_SOURCE;
+      } else if (existingDefault.isNsfw !== DEFAULT_SOURCE.isNsfw) {
+        // Reconcile metadata fixes (e.g. NSFW flag corrections)
+        validated.data.installedSources[DEFAULT_SOURCE.id] = {
+          ...existingDefault,
+          isNsfw: DEFAULT_SOURCE.isNsfw,
+        };
+      }
+      // Make sure activeSourceId points at an installed source
+      if (!validated.data.installedSources[validated.data.activeSourceId]) {
+        validated.data.activeSourceId = DEFAULT_SOURCE.id;
       }
       return validated.data;
     }
@@ -432,5 +470,32 @@ export const storeActions = {
   
   resetAll() {
     saveState(DEFAULT_STATE);
-  }
+  },
+
+  installSource(source: Omit<InstalledSource, 'installedAt'>) {
+    if (memoryState.installedSources[source.id]) return;
+    saveState({
+      ...memoryState,
+      installedSources: {
+        ...memoryState.installedSources,
+        [source.id]: { ...source, installedAt: Date.now() },
+      },
+    });
+  },
+
+  uninstallSource(id: string) {
+    if (id === DEFAULT_SOURCE.id) return; // never remove default
+    if (!memoryState.installedSources[id]) return;
+    const next = { ...memoryState.installedSources };
+    delete next[id];
+    const newActive =
+      memoryState.activeSourceId === id ? DEFAULT_SOURCE.id : memoryState.activeSourceId;
+    saveState({ ...memoryState, installedSources: next, activeSourceId: newActive });
+  },
+
+  setActiveSource(id: string) {
+    if (!memoryState.installedSources[id]) return;
+    if (memoryState.activeSourceId === id) return;
+    saveState({ ...memoryState, activeSourceId: id });
+  },
 };

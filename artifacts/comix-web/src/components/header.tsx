@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Search, Library, Settings, BookOpen, Clock, RefreshCw, Sun, Moon, Laptop, X } from "lucide-react";
+import { Search, Library, Settings, BookOpen, Clock, RefreshCw, Sun, Moon, Laptop, X, Boxes } from "lucide-react";
 import { Input } from "./ui/input";
 import { useState } from "react";
 import { useUpdatesCount } from "@/hooks/use-updates-count";
@@ -28,6 +28,7 @@ export function Header() {
     { href: "/library", label: "Library", icon: Library },
     { href: "/updates", label: "Updates", icon: RefreshCw, badge: totalNew },
     { href: "/history", label: "History", icon: Clock },
+    { href: "/sources", label: "Sources", icon: Boxes },
   ];
 
   return (
@@ -137,7 +138,7 @@ export function Header() {
 
       {/* Mobile bottom nav (fixed) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 border-t">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-5">
           {navLinks.map((link) => {
             const isActive = location === link.href;
             return (

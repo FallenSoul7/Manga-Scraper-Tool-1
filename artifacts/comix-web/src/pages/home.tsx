@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useGetPopular, useGetLatest, getGetPopularQueryKey, getGetLatestQueryKey } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
+import { useActiveSourceId, useActiveSource } from "@/lib/source";
 import { MangaCard } from "@/components/manga-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,8 @@ import { Loader2 } from "lucide-react";
 
 export default function Home() {
   const { settings } = useSettings();
+  const sourceId = useActiveSourceId();
+  const activeSource = useActiveSource();
   const [popularPage, setPopularPage] = useState(1);
   const [latestPage, setLatestPage] = useState(1);
 
@@ -15,13 +18,13 @@ export default function Home() {
   const [popularItems, setPopularItems] = useState<any[]>([]);
   const [latestItems, setLatestItems] = useState<any[]>([]);
 
-  // Reset when filters change (NSFW, poster) since results would be different
+  // Reset when filters or active source change (results would be different)
   useEffect(() => {
     setPopularPage(1);
     setPopularItems([]);
     setLatestPage(1);
     setLatestItems([]);
-  }, [settings.hideNsfw, settings.posterQuality]);
+  }, [settings.hideNsfw, settings.posterQuality, sourceId]);
 
   const popularParams = {
     page: popularPage,
@@ -69,6 +72,16 @@ export default function Home() {
       <div className="mb-6 sm:mb-8">
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-foreground mb-2 sm:mb-4">Discover</h1>
         <p className="text-muted-foreground text-base sm:text-lg">Find your next favorite story in our digital library.</p>
+        {activeSource && (
+          <a
+            href={`${import.meta.env.BASE_URL}sources`}
+            className="mt-3 inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-full border bg-card hover:bg-muted transition-colors"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            <span>Source: <strong>{activeSource.name}</strong></span>
+            <span className="text-muted-foreground">— change</span>
+          </a>
+        )}
       </div>
 
       <Tabs defaultValue="popular" className="w-full">
