@@ -35,6 +35,12 @@ export default function Reader() {
   const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(currentProgress?.lastPageRead || 0);
 
+  // Map of page index -> natural { w, h } of the image. We probe these BEFORE rendering so
+  // each page slot can reserve its exact aspect ratio. This eliminates the "shake" where
+  // an unloaded slot suddenly grows when its image arrives, and removes the dark filler
+  // gap that came from the old min-height placeholder.
+  const [pageDims, setPageDims] = useState<Record<number, { w: number; h: number }>>({});
+
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -93,23 +99,62 @@ export default function Reader() {
     }
   }, [readerSettings.keepScreenOn]);
 
-  // Initial scroll
+  // Probe every page's natural dimensions in parallel so we can reserve exact aspect-ratio
+  // boxes BEFORE the <img> elements render. The browser caches the loaded image, so the
+  // real <img> tag below renders instantly from cache without any layout shift.
   useEffect(() => {
     if (!pagesData?.pages.length) return;
-    if (currentProgress?.lastPageRead && currentProgress.lastPageRead > 0) {
-      // Small delay to allow images to layout
-      setTimeout(() => {
-        const pageEl = document.getElementById(`page-${currentProgress.lastPageRead}`);
-        if (pageEl) {
-          pageEl.scrollIntoView({ behavior: 'auto' });
-        } else if (containerRef.current && (readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl')) {
-           containerRef.current.scrollTo({
-             left: (readerSettings.direction === 'ltr' ? currentProgress.lastPageRead : -currentProgress.lastPageRead) * containerRef.current.clientWidth
-           })
-        }
-      }, 100);
+    setPageDims({}); // reset whenever the chapter changes
+    let cancelled = false;
+    pagesData.pages.forEach((page, idx) => {
+      const probe = new Image();
+      probe.decoding = 'async';
+      probe.onload = () => {
+        if (cancelled) return;
+        setPageDims(prev => prev[idx]
+          ? prev
+          : { ...prev, [idx]: { w: probe.naturalWidth || 800, h: probe.naturalHeight || 1200 } });
+      };
+      probe.onerror = () => {
+        if (cancelled) return;
+        // Fall back to a tall webtoon-friendly aspect so we still reserve sensible space
+        setPageDims(prev => prev[idx] ? prev : { ...prev, [idx]: { w: 800, h: 1200 } });
+      };
+      probe.src = proxyImage(page.url);
+    });
+    return () => { cancelled = true; };
+  }, [pagesData]);
+
+  // Initial scroll — wait until we've measured the page we want to land on so the
+  // scrollIntoView lands at the right pixel and doesn't get nudged later.
+  useEffect(() => {
+    if (!pagesData?.pages.length) return;
+    const target = currentProgress?.lastPageRead;
+    if (!target || target === 0) return;
+
+    // For paginated modes we can scroll immediately (every page is one viewport wide).
+    if (readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl') {
+      if (containerRef.current) {
+        containerRef.current.scrollTo({
+          left: (readerSettings.direction === 'ltr' ? target : -target) * containerRef.current.clientWidth,
+        });
+      }
+      return;
     }
-  }, [pagesData, currentProgress?.lastPageRead, readerSettings.direction]);
+
+    // For vertical / webtoon: wait until ALL preceding pages have known dimensions so
+    // their reserved heights are accurate. Otherwise we'd land in the wrong place.
+    let allKnown = true;
+    for (let i = 0; i <= target; i++) {
+      if (!pageDims[i]) { allKnown = false; break; }
+    }
+    if (!allKnown) return;
+
+    const pageEl = document.getElementById(`page-${target}`);
+    if (pageEl) {
+      pageEl.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+  }, [pagesData, currentProgress?.lastPageRead, readerSettings.direction, pageDims]);
 
   // Scroll tracking
   useEffect(() => {
@@ -389,11 +434,11 @@ export default function Reader() {
       </div>
 
       {/* Pages Container */}
-      <div 
+      <div
         ref={containerRef}
         className={`w-full ${
-          readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl' 
-          ? 'h-[100dvh] flex overflow-x-auto snap-x snap-mandatory hide-scrollbar flex-row' 
+          readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl'
+          ? 'h-[100dvh] flex overflow-x-auto snap-x snap-mandatory hide-scrollbar flex-row'
           : 'flex flex-col items-center max-w-3xl mx-auto'
         } ${readerSettings.direction === 'rtl' ? 'flex-row-reverse' : ''}`}
         style={
@@ -404,20 +449,27 @@ export default function Reader() {
       >
         {pagesData.pages.map((page, idx) => {
           const isVerticalLike = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
-          // Reserve vertical space so lazy-loading images don't shift content above the viewport.
-          const reserveStyle = isVerticalLike
-            ? { minHeight: '60vh', containIntrinsicSize: '720px 1080px' as any, contentVisibility: 'auto' as any }
+          const dim = pageDims[idx];
+
+          // Wrapper style: for vertical/webtoon modes reserve the EXACT aspect ratio of
+          // the image so the slot's height is locked the moment the dimensions are known.
+          // No more dark filler space below short pages, no more shake when later pages
+          // load. While we're still probing, fall back to a typical webtoon ratio so the
+          // initial slot is still close to the final size.
+          const wrapperStyle: React.CSSProperties | undefined = isVerticalLike
+            ? { aspectRatio: dim ? `${dim.w} / ${dim.h}` : '2 / 3', width: '100%' }
             : undefined;
+
           return (
-            <div 
-              key={page.index} 
+            <div
+              key={page.index}
               id={`page-${idx}`}
               className={`reader-page flex-shrink-0 flex items-center justify-center ${
                 readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl'
                 ? 'w-[100vw] h-[100dvh] snap-center snap-always'
                 : 'w-full'
               } ${readerSettings.direction === 'vertical' ? 'mb-8 relative' : ''}`}
-              style={reserveStyle}
+              style={wrapperStyle}
             >
               {readerSettings.direction === 'vertical' && (
                 <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
@@ -425,9 +477,19 @@ export default function Reader() {
               <img
                 src={proxyImage(page.url)}
                 alt={`Page ${page.index}`}
+                width={dim?.w}
+                height={dim?.h}
                 className={`block max-w-full object-contain ${fitClass} ${readerSettings.direction === 'webtoon' ? 'm-0 p-0 leading-none block' : ''}`}
-                loading={isVerticalLike ? "eager" : (idx < 3 ? "eager" : "lazy")}
-                style={readerSettings.direction === 'webtoon' ? { display: 'block', marginBottom: '-1px' } : undefined}
+                /* Eager-load everything in vertical/webtoon so the browser also gets all
+                   pages in the queue immediately — combined with the dimension probe
+                   above, every slot is already locked to its final size. */
+                loading={isVerticalLike ? 'eager' : (idx < 3 ? 'eager' : 'lazy')}
+                decoding="async"
+                style={
+                  readerSettings.direction === 'webtoon'
+                    ? { display: 'block', marginBottom: '-1px', width: '100%', height: 'auto' }
+                    : undefined
+                }
               />
             </div>
           );

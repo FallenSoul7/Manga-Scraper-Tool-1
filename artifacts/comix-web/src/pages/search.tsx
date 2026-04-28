@@ -7,15 +7,6 @@ import { useMemo } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 
-function tokenize(q: string): string[] {
-  return q.toLowerCase().split(/\s+/).map(t => t.trim()).filter(t => t.length >= 2);
-}
-
-function matchesAllTokens(haystack: string, tokens: string[]): boolean {
-  const h = haystack.toLowerCase();
-  return tokens.every(t => h.includes(t));
-}
-
 export default function SearchPage() {
   const searchString = useSearch();
   const query = useMemo(() => new URLSearchParams(searchString).get("query") || "", [searchString]);
@@ -38,23 +29,10 @@ export default function SearchPage() {
     },
   });
 
-  // Word-token filtering: server search is too loose (matches single letters).
-  // Require every token (>=2 chars) of the query to appear somewhere in the title /
-  // alternative titles / author so results are meaningful.
-  const filteredResults = useMemo(() => {
-    if (!results?.items) return [];
-    const tokens = tokenize(trimmed);
-    if (tokens.length === 0) return results.items;
-    return results.items.filter((m: any) => {
-      const haystack = [
-        m.title || "",
-        ...(m.altTitles || []),
-        m.author || "",
-        m.artist || "",
-      ].join(" \u0001 ");
-      return matchesAllTokens(haystack, tokens);
-    });
-  }, [results, trimmed]);
+  // Use whatever the server returns — its tag/genre/title matching is broader than a
+  // strict client-side word filter (e.g. "hentai" should also pull titles tagged with it
+  // even if the literal word isn't in their name).
+  const filteredResults = results?.items ?? [];
 
   return (
     <main className="container mx-auto px-4 py-6 sm:py-8 max-w-7xl animate-in fade-in duration-500">

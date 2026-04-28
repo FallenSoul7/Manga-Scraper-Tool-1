@@ -192,8 +192,12 @@ export default function MangaDetail() {
       </Link>
 
       <div className="flex flex-col md:flex-row gap-6 md:gap-12">
-        <div className="shrink-0 mx-auto md:mx-0 w-44 sm:w-56 md:w-72">
-          <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-muted shadow-lg mb-4 sm:mb-6">
+        {/* Cover + actions block. On mobile the cover is wider and the action buttons sit
+            in a compact 2-column grid directly underneath, exactly as requested:
+              row 1 = [Library] [Continue]
+              row 2 = [Read Ch. N] [status badges + stars] */}
+        <div className="shrink-0 mx-auto md:mx-0 w-full max-w-[20rem] sm:max-w-[22rem] md:w-72 md:max-w-none">
+          <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-muted shadow-lg mb-3 sm:mb-4">
             <img
               src={proxyImage(manga.thumbnail)}
               alt={manga.title}
@@ -206,111 +210,125 @@ export default function MangaDetail() {
             )}
           </div>
 
-          <div className="flex flex-col gap-2 sm:gap-3">
-            <Button 
-              variant={inLibrary ? "secondary" : "default"} 
-              className="w-full font-semibold"
-              onClick={handleToggleLibrary}
-            >
-              {inLibrary ? (
-                <><Check className="mr-2 h-4 w-4" /> In Library</>
-              ) : (
-                <><BookmarkPlus className="mr-2 h-4 w-4" /> Add to Library</>
-              )}
-            </Button>
-            
-            {inLibrary && (
-              <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full">
-                    Categories
-                    {(savedManga?.categoryIds.length ?? 0) > 0 && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        ({savedManga?.categoryIds.length})
-                      </span>
-                    )}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-sm">
-                  <DialogHeader>
-                    <DialogTitle>Edit Categories</DialogTitle>
-                  </DialogHeader>
-                  <div className="py-2 space-y-3">
-                    <div className="space-y-1.5">
-                      {categories.map(cat => {
-                        const isChecked = !!savedManga?.categoryIds.includes(cat.id);
-                        const isOnlyDefault = cat.id === 'default' && savedManga?.categoryIds.length === 1 && savedManga?.categoryIds.includes('default');
-                        return (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            disabled={isOnlyDefault}
-                            onClick={() => handleToggleCategory(cat.id)}
-                            className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${
-                              isChecked
-                                ? "bg-primary/10 border-primary/30 text-foreground"
-                                : "bg-card border-border hover:bg-muted"
-                            } ${isOnlyDefault ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
-                          >
-                            <span className="font-medium text-sm">{cat.name}</span>
-                            {isChecked && <Check className="h-4 w-4 text-primary shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="flex items-center gap-2 pt-3 border-t">
-                      <Input 
-                        placeholder="New category name..." 
-                        value={newCatName}
-                        onChange={e => setNewCatName(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCategory(); } }}
-                      />
-                      <Button variant="secondary" onClick={handleAddCategory} disabled={!newCatName.trim()}>
-                        Add
-                      </Button>
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button onClick={() => setIsCategoryDialogOpen(false)} className="w-full sm:w-auto">Done</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
-
-            {latestProgress && (
-              <Button 
-                variant="outline" 
-                className="w-full bg-primary/5 border-primary/20 hover:bg-primary/10 text-primary"
-                onClick={() => setLocation(`/reader/${latestProgress.chapterId}?mangaId=${manga.id}`)}
-              >
-                <BookOpen className="mr-2 h-4 w-4" /> Continue Ch. {latestProgress.chapterNumber}
-              </Button>
-            )}
-
-            {firstChapter && (
+          {/* 2-column action grid */}
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
+            {/* Library button: doubles as the category picker.
+                - Not in library → tapping adds it to "Default" and immediately opens the
+                  picker so the user can switch to another category.
+                - Already in library → tapping removes it. */}
+            <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
               <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => setLocation(`/reader/${firstChapter.id}?mangaId=${manga.id}`)}
+                variant={inLibrary ? "secondary" : "default"}
+                className="w-full font-semibold"
+                onClick={() => {
+                  if (inLibrary) {
+                    storeActions.removeFromLibrary(manga.id);
+                  } else {
+                    handleToggleLibrary();
+                    setIsCategoryDialogOpen(true);
+                  }
+                }}
               >
-                <Play className="mr-2 h-4 w-4" /> Read Chapter {firstChapter.number}
+                {inLibrary ? (
+                  <><Check className="mr-1.5 h-4 w-4" /> In Library</>
+                ) : (
+                  <><BookmarkPlus className="mr-1.5 h-4 w-4" /> Library</>
+                )}
               </Button>
-            )}
+
+              {/* Continue button — column 2 */}
+              {latestProgress ? (
+                <Button
+                  variant="outline"
+                  className="w-full bg-primary/5 border-primary/20 hover:bg-primary/10 text-primary"
+                  onClick={() => setLocation(`/reader/${latestProgress.chapterId}?mangaId=${manga.id}`)}
+                >
+                  <BookOpen className="mr-1.5 h-4 w-4" /> <span className="truncate">Continue Ch. {latestProgress.chapterNumber}</span>
+                </Button>
+              ) : (
+                <div /> /* keep grid alignment when no progress yet */
+              )}
+
+              {/* Read first chapter — column 1 */}
+              {firstChapter ? (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setLocation(`/reader/${firstChapter.id}?mangaId=${manga.id}`)}
+                >
+                  <Play className="mr-1.5 h-4 w-4" /> <span className="truncate">Read Ch. {firstChapter.number}</span>
+                </Button>
+              ) : (
+                <div />
+              )}
+
+              {/* Status / type / rating block — column 2.
+                  Lives next to "Read Ch. N" so the metadata stays close to the actions
+                  without taking another full row of vertical space. */}
+              <div className="flex items-center justify-center gap-2 px-2 py-2 rounded-md border bg-muted/40 text-sm flex-wrap">
+                <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 text-[11px] px-2 py-0">
+                  {manga.status}
+                </Badge>
+                {manga.type && (
+                  <Badge variant="outline" className="text-[11px] px-2 py-0">{manga.type}</Badge>
+                )}
+                {manga.rating && (
+                  <div className="flex items-center gap-1 font-medium text-amber-500">
+                    <Star className="h-3.5 w-3.5 fill-current" />
+                    {manga.rating}
+                  </div>
+                )}
+              </div>
+
+              <DialogContent className="max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Edit Categories</DialogTitle>
+                </DialogHeader>
+                <div className="py-2 space-y-3">
+                  <div className="space-y-1.5">
+                    {categories.map(cat => {
+                      const isChecked = !!savedManga?.categoryIds.includes(cat.id);
+                      const isOnlyDefault = cat.id === 'default' && savedManga?.categoryIds.length === 1 && savedManga?.categoryIds.includes('default');
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          disabled={isOnlyDefault}
+                          onClick={() => handleToggleCategory(cat.id)}
+                          className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${
+                            isChecked
+                              ? "bg-primary/10 border-primary/30 text-foreground"
+                              : "bg-card border-border hover:bg-muted"
+                          } ${isOnlyDefault ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+                        >
+                          <span className="font-medium text-sm">{cat.name}</span>
+                          {isChecked && <Check className="h-4 w-4 text-primary shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center gap-2 pt-3 border-t">
+                    <Input
+                      placeholder="New category name..."
+                      value={newCatName}
+                      onChange={e => setNewCatName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCategory(); } }}
+                    />
+                    <Button variant="secondary" onClick={handleAddCategory} disabled={!newCatName.trim()}>
+                      Add
+                    </Button>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={() => setIsCategoryDialogOpen(false)} className="w-full sm:w-auto">Done</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
         <div className="flex-1 space-y-5 sm:space-y-6 min-w-0">
           <div>
-            <div className="flex flex-wrap gap-2 mb-3 items-center">
-              <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20">{manga.status}</Badge>
-              {manga.type && <Badge variant="outline">{manga.type}</Badge>}
-              {manga.rating && (
-                <div className="flex items-center gap-1 text-sm font-medium text-amber-500">
-                  <Star className="h-4 w-4 fill-current" />
-                  {manga.rating}
-                </div>
-              )}
-            </div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-serif font-bold text-foreground mb-1.5 sm:mb-2 leading-tight break-words">
               {manga.title}
             </h1>
@@ -551,37 +569,36 @@ export default function MangaDetail() {
                     }
                   }}
                 >
-                  <div className="font-semibold text-sm sm:text-base text-foreground group-hover:text-primary transition-colors flex items-start justify-between gap-2">
-                    <span className="line-clamp-1 flex items-center gap-2 min-w-0">
-                      {isRead && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Read</Badge>}
-                      {inProgress && <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Pg {p.lastPageRead + 1}</Badge>}
-                      <span className="truncate">Ch. {chapter.number}{chapter.title ? `: ${chapter.title}` : ""}</span>
-                    </span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {chapter.isOfficial && <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 bg-amber-500/20 text-amber-600">Official</Badge>}
-                      
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-6 w-6 kebab-menu hover:bg-muted" onClick={e => e.stopPropagation()}>
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="kebab-menu">
-                          <DropdownMenuItem onClick={(e) => {
-                            e.stopPropagation();
-                            storeActions.markChapterRead(manga.id, chapter, manga);
-                          }}>
-                            Mark as read
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => {
-                            e.stopPropagation();
-                            storeActions.markChapterUnread(manga.id, chapter.id);
-                          }}>
-                            Mark as unread
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                  {/* Title + kebab. Use a tight gap so the 3-dots stays close to the
+                      chapter info on mobile — no more huge empty middle stretch that
+                      forced you to reach across the screen. */}
+                  <div className="font-semibold text-sm sm:text-base text-foreground group-hover:text-primary transition-colors flex items-center gap-2 min-w-0">
+                    {isRead && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Read</Badge>}
+                    {inProgress && <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Pg {p.lastPageRead + 1}</Badge>}
+                    <span className="truncate flex-1 min-w-0">Ch. {chapter.number}{chapter.title ? `: ${chapter.title}` : ""}</span>
+                    {chapter.isOfficial && <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 bg-amber-500/20 text-amber-600 shrink-0">Official</Badge>}
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 kebab-menu hover:bg-muted shrink-0 -mr-1" onClick={e => e.stopPropagation()}>
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="kebab-menu">
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          storeActions.markChapterRead(manga.id, chapter, manga);
+                        }}>
+                          Mark as read
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          storeActions.markChapterUnread(manga.id, chapter.id);
+                        }}>
+                          Mark as unread
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                   <div className="text-xs text-muted-foreground flex justify-between gap-2">
                     <span className="truncate min-w-0">{chapter.scanlator || "Unknown"}</span>
