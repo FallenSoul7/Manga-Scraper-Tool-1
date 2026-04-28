@@ -34,7 +34,7 @@ function AppContent() {
         {/* Everything else gets header */}
         <Route path="/.*">
           <Header />
-          <div className="flex-1">
+          <div className="flex-1 pb-16 md:pb-0">
             <Switch>
               <Route path="/" component={Home} />
               <Route path="/search" component={SearchPage} />

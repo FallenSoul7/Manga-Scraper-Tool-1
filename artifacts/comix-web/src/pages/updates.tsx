@@ -6,14 +6,17 @@ import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { getGetChaptersQueryOptions } from "@workspace/api-client-react";
 import { proxyImage } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, CheckCircle2, Clock } from "lucide-react";
+import { RefreshCw, CheckCircle2, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+
+const COLLAPSED_LIMIT = 6;
 
 export default function UpdatesPage() {
   const library = useStore(s => s.library);
   const { settings } = useSettings();
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const libraryItems = useMemo(() => Object.values(library), [library]);
 
@@ -30,7 +33,7 @@ export default function UpdatesPage() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all(queries.map((_, i) => 
+    await Promise.all(queries.map((_, i) =>
       queryClient.invalidateQueries({ queryKey: getGetChaptersQueryOptions(libraryItems[i].id).queryKey })
     ));
     setIsRefreshing(false);
@@ -60,8 +63,6 @@ export default function UpdatesPage() {
       const seen = manga.lastChapterCountSeen || 0;
       
       if (chaptersNow > seen) {
-        // Chapters are typically sorted descending (newest first).
-        // The first (chaptersNow - seen) elements are the new ones.
         const newChapters = q.data.items.slice(0, chaptersNow - seen);
         if (newChapters.length > 0) {
           updatesByManga.push({
@@ -77,11 +78,11 @@ export default function UpdatesPage() {
   updatesByManga.sort((a, b) => b.latestDate - a.latestDate);
 
   return (
-    <main className="container mx-auto px-4 py-8 max-w-4xl animate-in fade-in duration-500">
-      <div className="flex items-center justify-between mb-8">
+    <main className="container mx-auto px-4 py-6 sm:py-8 max-w-4xl animate-in fade-in duration-500">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 sm:mb-8">
         <div>
-          <h1 className="text-4xl font-serif font-bold text-foreground mb-2">Updates</h1>
-          <p className="text-muted-foreground text-lg">New chapters from your library.</p>
+          <h1 className="text-3xl sm:text-4xl font-serif font-bold text-foreground mb-1 sm:mb-2">Updates</h1>
+          <p className="text-sm sm:text-lg text-muted-foreground">New chapters from your library.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
@@ -116,41 +117,62 @@ export default function UpdatesPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-6">
-          {updatesByManga.map(({ manga, chapters, latestDate }) => (
-            <div key={manga.id} className="flex gap-4 p-4 border rounded-xl bg-card hover:shadow-md transition-shadow">
-              <Link href={`/manga/${manga.id}`} className="shrink-0 cursor-pointer">
-                <div className="w-16 sm:w-20 aspect-[2/3] rounded-md overflow-hidden bg-muted shadow-sm hover:opacity-80 transition-opacity">
-                  <img 
-                    src={proxyImage(manga.thumbnail)} 
-                    alt={manga.title} 
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              </Link>
-              
-              <div className="flex-1 min-w-0">
-                <Link href={`/manga/${manga.id}`}>
-                  <h3 className="font-serif font-semibold text-base sm:text-lg mb-1 truncate hover:text-primary transition-colors cursor-pointer">
-                    {manga.title}
-                  </h3>
+        <div className="space-y-4 sm:space-y-6">
+          {updatesByManga.map(({ manga, chapters, latestDate }) => {
+            const isExpanded = expanded[manga.id];
+            const hidden = Math.max(0, chapters.length - COLLAPSED_LIMIT);
+            const visibleChapters = isExpanded ? chapters : chapters.slice(0, COLLAPSED_LIMIT);
+
+            return (
+              <div key={manga.id} className="flex gap-3 sm:gap-4 p-3 sm:p-4 border rounded-xl bg-card hover:shadow-md transition-shadow">
+                <Link href={`/manga/${manga.id}`} className="shrink-0 cursor-pointer">
+                  <div className="w-14 sm:w-20 aspect-[2/3] rounded-md overflow-hidden bg-muted shadow-sm hover:opacity-80 transition-opacity">
+                    <img 
+                      src={proxyImage(manga.thumbnail)} 
+                      alt={manga.title} 
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
                 </Link>
-                <div className="text-xs text-muted-foreground mb-3">
-                  Updated {formatDistanceToNow(latestDate * 1000, { addSuffix: true })}
-                </div>
                 
-                <div className="flex flex-wrap gap-2">
-                  {chapters.map(ch => (
-                    <Link key={ch.id} href={`/reader/${ch.id}?mangaId=${manga.id}`}>
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-primary/10 text-primary text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer">
-                        Ch. {ch.number}
-                      </span>
-                    </Link>
-                  ))}
+                <div className="flex-1 min-w-0">
+                  <Link href={`/manga/${manga.id}`}>
+                    <h3 className="font-serif font-semibold text-base sm:text-lg mb-1 line-clamp-2 sm:truncate hover:text-primary transition-colors cursor-pointer">
+                      {manga.title}
+                    </h3>
+                  </Link>
+                  <div className="text-xs text-muted-foreground mb-2 sm:mb-3">
+                    {chapters.length} new {chapters.length === 1 ? "chapter" : "chapters"} · Updated {formatDistanceToNow(latestDate * 1000, { addSuffix: true })}
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                    {visibleChapters.map(ch => (
+                      <Link key={ch.id} href={`/reader/${ch.id}?mangaId=${manga.id}`}>
+                        <span className="inline-flex items-center px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-primary/10 text-primary text-xs sm:text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer">
+                          Ch. {ch.number}
+                        </span>
+                      </Link>
+                    ))}
+
+                    {hidden > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 sm:h-8 px-2 text-xs sm:text-sm text-muted-foreground hover:text-foreground"
+                        onClick={() => setExpanded(s => ({ ...s, [manga.id]: !isExpanded }))}
+                      >
+                        {isExpanded ? (
+                          <>Show less <ChevronUp className="h-3 w-3 ml-1" /></>
+                        ) : (
+                          <>+{hidden} more <ChevronDown className="h-3 w-3 ml-1" /></>
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </main>

@@ -27,8 +27,10 @@ export default function Reader() {
 
   const readerSettings = useStore(s => s.reader);
   const progressMap = useStore(s => s.progress);
+  const scanlatorPrefs = useStore(s => s.scanlatorPrefs);
   const progressKey = `${mangaId}:${chapterId}`;
   const currentProgress = progressMap[progressKey];
+  const selectedScanlator = mangaId ? (scanlatorPrefs[mangaId] ?? null) : null;
 
   const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(currentProgress?.lastPageRead || 0);
@@ -44,10 +46,13 @@ export default function Reader() {
     },
   });
 
-  const { data: chaptersData } = useGetChapters(mangaId || "", undefined, {
+  // Match the manga-detail page: fetch ALL chapters (dedupe=false) so we can apply
+  // the same scanlator filter for prev/next navigation, and share the React Query cache.
+  const chapterFetchParams = { dedupe: false };
+  const { data: chaptersData } = useGetChapters(mangaId || "", chapterFetchParams, {
     query: {
       enabled: !!mangaId,
-      queryKey: getGetChaptersQueryKey(mangaId || ""),
+      queryKey: getGetChaptersQueryKey(mangaId || "", chapterFetchParams),
     },
   });
 
@@ -187,14 +192,36 @@ export default function Reader() {
   }, [readerSettings.direction, pagesData, mangaId, chaptersData, mangaData, currentPage, currentProgress?.isRead]);
 
 
-  // Navigation
-  const chapterIndex = useMemo(() => {
-    if (!chaptersData) return -1;
-    return chaptersData.items.findIndex(c => c.id === chapterId);
-  }, [chaptersData, chapterId]);
+  // Navigation — apply the same scanlator filter the user picked on the manga page.
+  // If the user is reading a chapter from a source that's filtered out, fall back to
+  // showing all chapters so we can still find prev/next.
+  const navChapters = useMemo<any[]>(() => {
+    if (!chaptersData?.items) return [];
+    if (!selectedScanlator) {
+      // No source selected — dedupe so prev/next don't jump between sources of the same chapter.
+      const map = new Map<number, any>();
+      const score = (ch: any) => (ch.isOfficial ? 100000 : 0) + (ch.votes || 0);
+      for (const ch of chaptersData.items) {
+        const existing = map.get(ch.number);
+        if (!existing || score(ch) > score(existing)) map.set(ch.number, ch);
+      }
+      // Keep newest-first like the API
+      return Array.from(map.values()).sort((a, b) => b.number - a.number);
+    }
+    const filtered = chaptersData.items.filter(c => (c.scanlator || "Unknown") === selectedScanlator);
+    if (!filtered.find(c => c.id === chapterId)) {
+      // Reading something outside the chosen source; use all chapters so navigation works
+      return chaptersData.items;
+    }
+    return filtered.sort((a, b) => b.number - a.number);
+  }, [chaptersData, selectedScanlator, chapterId]);
 
-  const prevChapter = chapterIndex < chaptersData?.items.length! - 1 ? chaptersData?.items[chapterIndex + 1] : null;
-  const nextChapter = chapterIndex > 0 ? chaptersData?.items[chapterIndex - 1] : null;
+  const chapterIndex = useMemo(() => {
+    return navChapters.findIndex(c => c.id === chapterId);
+  }, [navChapters, chapterId]);
+
+  const prevChapter = chapterIndex >= 0 && chapterIndex < navChapters.length - 1 ? navChapters[chapterIndex + 1] : null;
+  const nextChapter = chapterIndex > 0 ? navChapters[chapterIndex - 1] : null;
 
   const navigateToChapter = (id: number) => {
     setLocation(`/reader/${id}?mangaId=${mangaId}`);
@@ -369,29 +396,42 @@ export default function Reader() {
           ? 'h-[100dvh] flex overflow-x-auto snap-x snap-mandatory hide-scrollbar flex-row' 
           : 'flex flex-col items-center max-w-3xl mx-auto'
         } ${readerSettings.direction === 'rtl' ? 'flex-row-reverse' : ''}`}
+        style={
+          readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical'
+            ? { overflowAnchor: 'auto' }
+            : undefined
+        }
       >
-        {pagesData.pages.map((page, idx) => (
-          <div 
-            key={page.index} 
-            id={`page-${idx}`}
-            className={`reader-page flex-shrink-0 flex items-center justify-center ${
-              readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl'
-              ? 'w-[100vw] h-[100dvh] snap-center snap-always'
-              : 'w-full'
-            } ${readerSettings.direction === 'vertical' ? 'mb-8 relative' : ''}`}
-          >
-            {readerSettings.direction === 'vertical' && (
-              <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
-            )}
-            <img
-              src={proxyImage(page.url)}
-              alt={`Page ${page.index}`}
-              className={`block max-w-full object-contain ${fitClass} ${readerSettings.direction === 'webtoon' ? 'm-0 p-0 leading-none block' : ''}`}
-              loading={idx < 3 ? "eager" : "lazy"}
-              style={readerSettings.direction === 'webtoon' ? { display: 'block', marginBottom: '-1px' } : undefined} // Fix for webtoon tiny gaps sometimes caused by inline rendering
-            />
-          </div>
-        ))}
+        {pagesData.pages.map((page, idx) => {
+          const isVerticalLike = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
+          // Reserve vertical space so lazy-loading images don't shift content above the viewport.
+          const reserveStyle = isVerticalLike
+            ? { minHeight: '60vh', containIntrinsicSize: '720px 1080px' as any, contentVisibility: 'auto' as any }
+            : undefined;
+          return (
+            <div 
+              key={page.index} 
+              id={`page-${idx}`}
+              className={`reader-page flex-shrink-0 flex items-center justify-center ${
+                readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl'
+                ? 'w-[100vw] h-[100dvh] snap-center snap-always'
+                : 'w-full'
+              } ${readerSettings.direction === 'vertical' ? 'mb-8 relative' : ''}`}
+              style={reserveStyle}
+            >
+              {readerSettings.direction === 'vertical' && (
+                <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
+              )}
+              <img
+                src={proxyImage(page.url)}
+                alt={`Page ${page.index}`}
+                className={`block max-w-full object-contain ${fitClass} ${readerSettings.direction === 'webtoon' ? 'm-0 p-0 leading-none block' : ''}`}
+                loading={isVerticalLike ? "eager" : (idx < 3 ? "eager" : "lazy")}
+                style={readerSettings.direction === 'webtoon' ? { display: 'block', marginBottom: '-1px' } : undefined}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {/* Next Chapter Button at bottom (Webtoon/Vertical) */}
@@ -403,9 +443,9 @@ export default function Reader() {
         </div>
       )}
 
-      {/* Page Indicator */}
-      {readerSettings.showPageNumber && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 backdrop-blur text-white text-xs font-medium z-40 transition-opacity duration-300 pointer-events-none ${showControls ? 'opacity-100' : 'opacity-30'}`}>
+      {/* Page Indicator — hidden along with the rest of the UI when controls are toggled off */}
+      {readerSettings.showPageNumber && showControls && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 backdrop-blur text-white text-xs font-medium z-40 pointer-events-none animate-in fade-in duration-200">
           {currentPage + 1} / {pagesData.pages.length}
         </div>
       )}

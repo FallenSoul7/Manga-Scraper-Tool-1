@@ -67,6 +67,8 @@ const StoreStateSchema = z.object({
   reader: ReaderSettingsSchema,
   theme: ThemeSchema,
   searchHistory: z.array(z.string()),
+  scanlatorPrefs: z.record(z.string(), z.string().nullable()).default({}),
+  chapterSortAsc: z.record(z.string(), z.boolean()).default({}),
 });
 export type StoreState = z.infer<typeof StoreStateSchema>;
 
@@ -90,6 +92,8 @@ const DEFAULT_STATE: StoreState = {
   },
   theme: 'system',
   searchHistory: [],
+  scanlatorPrefs: {},
+  chapterSortAsc: {},
 };
 
 // --- Store Implementation ---
@@ -103,9 +107,10 @@ function loadState(): StoreState {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return DEFAULT_STATE;
     const parsed = JSON.parse(raw);
-    const validated = StoreStateSchema.safeParse(parsed);
+    // Backfill any missing top-level fields so older snapshots don't fail validation
+    const merged = { ...DEFAULT_STATE, ...parsed };
+    const validated = StoreStateSchema.safeParse(merged);
     if (validated.success) {
-      // Ensure 'default' category exists
       if (!validated.data.categories.find(c => c.id === 'default')) {
         validated.data.categories = [...DEFAULT_CATEGORIES, ...validated.data.categories];
       }
@@ -378,6 +383,20 @@ export const storeActions = {
   
   setTheme(theme: Theme) {
     saveState({ ...memoryState, theme });
+  },
+
+  setScanlatorPref(mangaId: string, scanlator: string | null) {
+    saveState({
+      ...memoryState,
+      scanlatorPrefs: { ...memoryState.scanlatorPrefs, [mangaId]: scanlator }
+    });
+  },
+  
+  setChapterSortAsc(mangaId: string, asc: boolean) {
+    saveState({
+      ...memoryState,
+      chapterSortAsc: { ...memoryState.chapterSortAsc, [mangaId]: asc }
+    });
   },
 
   pushSearch(q: string) {

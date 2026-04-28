@@ -7,17 +7,44 @@ import {
 } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
 import { proxyImage } from "@/lib/utils";
-import { Loader2, ArrowLeft, Star, ChevronDown, ChevronUp, Heart, BookmarkPlus, BookOpen, Check, MoreVertical } from "lucide-react";
+import { Loader2, ArrowLeft, Star, ChevronDown, ChevronUp, BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown, ArrowUp, Filter, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { useStore, storeActions } from "@/lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+
+const ALT_TITLES_COLLAPSED_LIMIT = 6;
+
+// Server-style dedupe done client-side: prefer official → group 10702 → most votes → most recent.
+// Used when no specific scanlator is selected so the chapter list still looks "clean" by default.
+function dedupeChapters(items: any[]): any[] {
+  const map = new Map<number, any>();
+  const score = (ch: any) => {
+    let s = 0;
+    if (ch.isOfficial) s += 100000;
+    if (String(ch.scanlatorId || "") === "10702") s += 10000;
+    s += (ch.votes || 0);
+    return s;
+  };
+  for (const ch of items) {
+    const existing = map.get(ch.number);
+    if (!existing) {
+      map.set(ch.number, ch);
+      continue;
+    }
+    const s1 = score(ch);
+    const s2 = score(existing);
+    if (s1 > s2) map.set(ch.number, ch);
+    else if (s1 === s2 && (ch.date || 0) > (existing.date || 0)) map.set(ch.number, ch);
+  }
+  return Array.from(map.values());
+}
 
 export default function MangaDetail() {
   const [, params] = useRoute("/manga/:id");
@@ -25,22 +52,29 @@ export default function MangaDetail() {
   const [, setLocation] = useLocation();
   const { settings } = useSettings();
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
+  const [showAllAltTitles, setShowAllAltTitles] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [newCatName, setNewCatName] = useState("");
 
   const library = useStore(s => s.library);
   const categories = useStore(s => s.categories);
   const progressMap = useStore(s => s.progress);
+  const scanlatorPrefs = useStore(s => s.scanlatorPrefs);
+  const chapterSortAsc = useStore(s => s.chapterSortAsc);
   
   const inLibrary = id ? !!library[id] : false;
   const savedManga = id ? library[id] : null;
+  const selectedScanlator = id ? (scanlatorPrefs[id] ?? null) : null; // null = "All sources"
+  const sortAsc = id ? !!chapterSortAsc[id] : false;
 
   const mangaParams = {
     poster: settings.posterQuality,
     alt: settings.showAltNames,
     score: settings.scorePosition,
   };
-  const chaptersParams = { dedupe: settings.dedupeChapters };
+  // Always fetch ALL chapters (dedupe=false) so the scanlator filter can show every available source.
+  // We do the dedupe client-side when no specific scanlator is selected.
+  const chaptersParams = { dedupe: false };
   const { data: manga, isLoading: mangaLoading } = useGetMangaDetails(id || "", mangaParams, {
     query: {
       enabled: !!id,
@@ -48,14 +82,53 @@ export default function MangaDetail() {
     },
   });
 
-  const { data: chapters, isLoading: chaptersLoading } = useGetChapters(id || "", chaptersParams, {
+  const { data: chaptersResponse, isLoading: chaptersLoading } = useGetChapters(id || "", chaptersParams, {
     query: {
       enabled: !!id,
       queryKey: getGetChaptersQueryKey(id || "", chaptersParams),
     },
   });
 
-  // Find continue reading chapter
+  // All chapters as fetched (no dedupe). Keyed in the order returned (typically newest first).
+  const allChapters = chaptersResponse?.items || [];
+
+  // Group by scanlator for the filter UI, with counts
+  const scanlatorGroups = useMemo(() => {
+    const map = new Map<string, { name: string; count: number; hasOfficial: boolean }>();
+    for (const ch of allChapters) {
+      const name = (ch.scanlator || "Unknown").trim() || "Unknown";
+      const existing = map.get(name);
+      if (existing) {
+        existing.count += 1;
+        if (ch.isOfficial) existing.hasOfficial = true;
+      } else {
+        map.set(name, { name, count: 1, hasOfficial: !!ch.isOfficial });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.hasOfficial !== b.hasOfficial) return a.hasOfficial ? -1 : 1;
+      return b.count - a.count;
+    });
+  }, [allChapters]);
+
+  // Filtered (and possibly deduped) chapter list to show
+  const visibleChapters = useMemo(() => {
+    let list: any[];
+    if (selectedScanlator) {
+      list = allChapters.filter(ch => (ch.scanlator || "Unknown") === selectedScanlator);
+    } else {
+      list = dedupeChapters(allChapters);
+    }
+    list = [...list].sort((a, b) => sortAsc ? a.number - b.number : b.number - a.number);
+    return list;
+  }, [allChapters, selectedScanlator, sortAsc]);
+
+  const firstChapter = useMemo(() => {
+    if (visibleChapters.length === 0) return null;
+    return [...visibleChapters].sort((a, b) => a.number - b.number)[0];
+  }, [visibleChapters]);
+
+  // Find continue reading chapter (most recent progress for this manga)
   const latestProgress = useMemo(() => {
     if (!id) return null;
     const items = Object.values(progressMap).filter(p => p.mangaId === id);
@@ -79,7 +152,7 @@ export default function MangaDetail() {
         status: manga.status,
         addedAt: Date.now(),
         categoryIds: ['default'],
-        lastChapterCountSeen: chapters?.items.length || 0,
+        lastChapterCountSeen: visibleChapters.length || 0,
       });
     }
   };
@@ -109,15 +182,18 @@ export default function MangaDetail() {
     return <div className="py-32 text-center text-muted-foreground">Manga not found.</div>;
   }
 
+  const altTitles = manga.altTitles || [];
+  const altTitlesToShow = showAllAltTitles ? altTitles : altTitles.slice(0, ALT_TITLES_COLLAPSED_LIMIT);
+
   return (
-    <main className="container mx-auto px-4 py-8 max-w-5xl animate-in fade-in duration-500">
-      <Link href="/" className="inline-flex items-center text-muted-foreground hover:text-primary mb-8 transition-colors">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Library
+    <main className="container mx-auto px-4 py-6 sm:py-8 max-w-5xl animate-in fade-in duration-500">
+      <Link href="/" className="inline-flex items-center text-muted-foreground hover:text-primary mb-6 sm:mb-8 transition-colors text-sm sm:text-base">
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back
       </Link>
 
-      <div className="flex flex-col md:flex-row gap-8 md:gap-12">
-        <div className="shrink-0 mx-auto md:mx-0 w-64 md:w-80">
-          <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-muted shadow-lg mb-6">
+      <div className="flex flex-col md:flex-row gap-6 md:gap-12">
+        <div className="shrink-0 mx-auto md:mx-0 w-44 sm:w-56 md:w-72">
+          <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-muted shadow-lg mb-4 sm:mb-6">
             <img
               src={proxyImage(manga.thumbnail)}
               alt={manga.title}
@@ -130,7 +206,7 @@ export default function MangaDetail() {
             )}
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 sm:gap-3">
             <Button 
               variant={inLibrary ? "secondary" : "default"} 
               className="w-full font-semibold"
@@ -146,38 +222,57 @@ export default function MangaDetail() {
             {inLibrary && (
               <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full">Categories</Button>
+                  <Button variant="outline" className="w-full">
+                    Categories
+                    {(savedManga?.categoryIds.length ?? 0) > 0 && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({savedManga?.categoryIds.length})
+                      </span>
+                    )}
+                  </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-w-sm">
                   <DialogHeader>
                     <DialogTitle>Edit Categories</DialogTitle>
                   </DialogHeader>
-                  <div className="py-4 space-y-4">
-                    <div className="space-y-2">
-                      {categories.map(cat => (
-                        <div key={cat.id} className="flex items-center space-x-2">
-                          <Checkbox 
-                            id={`cat-${cat.id}`} 
-                            checked={savedManga?.categoryIds.includes(cat.id)}
-                            onCheckedChange={() => handleToggleCategory(cat.id)}
-                            disabled={cat.id === 'default' && savedManga?.categoryIds.length === 1 && savedManga?.categoryIds.includes('default')}
-                          />
-                          <label htmlFor={`cat-${cat.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                            {cat.name}
-                          </label>
-                        </div>
-                      ))}
+                  <div className="py-2 space-y-3">
+                    <div className="space-y-1.5">
+                      {categories.map(cat => {
+                        const isChecked = !!savedManga?.categoryIds.includes(cat.id);
+                        const isOnlyDefault = cat.id === 'default' && savedManga?.categoryIds.length === 1 && savedManga?.categoryIds.includes('default');
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            disabled={isOnlyDefault}
+                            onClick={() => handleToggleCategory(cat.id)}
+                            className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${
+                              isChecked
+                                ? "bg-primary/10 border-primary/30 text-foreground"
+                                : "bg-card border-border hover:bg-muted"
+                            } ${isOnlyDefault ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+                          >
+                            <span className="font-medium text-sm">{cat.name}</span>
+                            {isChecked && <Check className="h-4 w-4 text-primary shrink-0" />}
+                          </button>
+                        );
+                      })}
                     </div>
-                    <div className="flex items-center gap-2 pt-4 border-t">
+                    <div className="flex items-center gap-2 pt-3 border-t">
                       <Input 
-                        placeholder="New category..." 
+                        placeholder="New category name..." 
                         value={newCatName}
                         onChange={e => setNewCatName(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleAddCategory()}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCategory(); } }}
                       />
-                      <Button variant="secondary" onClick={handleAddCategory}>Add</Button>
+                      <Button variant="secondary" onClick={handleAddCategory} disabled={!newCatName.trim()}>
+                        Add
+                      </Button>
                     </div>
                   </div>
+                  <DialogFooter>
+                    <Button onClick={() => setIsCategoryDialogOpen(false)} className="w-full sm:w-auto">Done</Button>
+                  </DialogFooter>
                 </DialogContent>
               </Dialog>
             )}
@@ -188,15 +283,25 @@ export default function MangaDetail() {
                 className="w-full bg-primary/5 border-primary/20 hover:bg-primary/10 text-primary"
                 onClick={() => setLocation(`/reader/${latestProgress.chapterId}?mangaId=${manga.id}`)}
               >
-                <BookOpen className="mr-2 h-4 w-4" /> Continue Reading (Ch. {latestProgress.chapterNumber})
+                <BookOpen className="mr-2 h-4 w-4" /> Continue Ch. {latestProgress.chapterNumber}
+              </Button>
+            )}
+
+            {firstChapter && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setLocation(`/reader/${firstChapter.id}?mangaId=${manga.id}`)}
+              >
+                <Play className="mr-2 h-4 w-4" /> Read Chapter {firstChapter.number}
               </Button>
             )}
           </div>
         </div>
 
-        <div className="flex-1 space-y-6">
+        <div className="flex-1 space-y-5 sm:space-y-6 min-w-0">
           <div>
-            <div className="flex flex-wrap gap-2 mb-3">
+            <div className="flex flex-wrap gap-2 mb-3 items-center">
               <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20">{manga.status}</Badge>
               {manga.type && <Badge variant="outline">{manga.type}</Badge>}
               {manga.rating && (
@@ -206,26 +311,30 @@ export default function MangaDetail() {
                 </div>
               )}
             </div>
-            <h1 className="text-3xl md:text-4xl lg:text-5xl font-serif font-bold text-foreground mb-2 leading-tight">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-serif font-bold text-foreground mb-1.5 sm:mb-2 leading-tight break-words">
               {manga.title}
             </h1>
-            <div className="text-lg text-muted-foreground font-medium">
+            <div className="text-sm sm:text-lg text-muted-foreground font-medium">
               {[manga.author, manga.artist].filter(Boolean).join(" • ")}
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {manga.genres?.map(genre => (
-              <Badge key={genre} variant="secondary" className="font-normal">{genre}</Badge>
-            ))}
-          </div>
+          {manga.genres && manga.genres.length > 0 && (
+            <div className="-mx-4 sm:mx-0">
+              <div className="flex gap-2 overflow-x-auto hide-scrollbar px-4 sm:px-0 pb-1 snap-x">
+                {manga.genres.map(genre => (
+                  <Badge key={genre} variant="secondary" className="font-normal whitespace-nowrap shrink-0 snap-start">{genre}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
 
           {manga.synopsis && (
             <div className="prose prose-stone dark:prose-invert max-w-none">
               <div className={showFullSynopsis ? "" : "line-clamp-4 relative"}>
-                <p className="text-muted-foreground leading-relaxed">{manga.synopsis}</p>
+                <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">{manga.synopsis}</p>
                 {!showFullSynopsis && (
-                  <div className="absolute bottom-0 left-0 w-full h-12 bg-gradient-to-t from-background to-transparent" />
+                  <div className="absolute bottom-0 left-0 w-full h-12 bg-gradient-to-t from-background to-transparent pointer-events-none" />
                 )}
               </div>
               <button 
@@ -241,68 +350,177 @@ export default function MangaDetail() {
             </div>
           )}
 
-          {settings.showAltNames && manga.altTitles && manga.altTitles.length > 0 && (
+          {settings.showAltNames && altTitles.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-foreground mb-1">Alternative Titles</h3>
-              <p className="text-sm text-muted-foreground">{manga.altTitles.join(", ")}</p>
+              <h3 className="text-sm font-semibold text-foreground mb-1.5">Alternative Titles</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed break-words">
+                {altTitlesToShow.join(", ")}
+                {!showAllAltTitles && altTitles.length > ALT_TITLES_COLLAPSED_LIMIT && "…"}
+              </p>
+              {altTitles.length > ALT_TITLES_COLLAPSED_LIMIT && (
+                <button
+                  onClick={() => setShowAllAltTitles(!showAllAltTitles)}
+                  className="mt-1.5 text-sm font-medium text-primary hover:underline flex items-center gap-1"
+                >
+                  {showAllAltTitles ? (
+                    <>Show Less <ChevronUp className="h-4 w-4" /></>
+                  ) : (
+                    <>Show All ({altTitles.length}) <ChevronDown className="h-4 w-4" /></>
+                  )}
+                </button>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      <div className="mt-16">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-serif font-bold text-foreground flex items-center gap-3">
+      <div className="mt-12 sm:mt-16">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 sm:mb-6">
+          <h2 className="text-xl sm:text-2xl font-serif font-bold text-foreground flex items-center gap-3">
             Chapters 
-            <span className="text-base font-normal text-muted-foreground bg-muted px-3 py-1 rounded-full">
-              {chapters?.items.length || 0}
+            <span className="text-sm sm:text-base font-normal text-muted-foreground bg-muted px-3 py-0.5 sm:py-1 rounded-full">
+              {visibleChapters.length}
             </span>
           </h2>
 
-          <div className="flex items-center gap-2">
-            {chapters?.items.length ? (
-              <>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="outline" size="sm">Mark all read</Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Mark all read?</AlertDialogTitle>
-                      <AlertDialogDescription>This will mark all {chapters.items.length} chapters as read.</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => storeActions.markAllChaptersRead(manga.id, chapters.items, manga)}>Confirm</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => id && storeActions.setChapterSortAsc(id, !sortAsc)}
+              title={sortAsc ? "Showing oldest first" : "Showing newest first"}
+              className="gap-1.5"
+            >
+              {sortAsc ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+              <span className="hidden sm:inline">{sortAsc ? "Oldest first" : "Newest first"}</span>
+              <span className="sm:hidden">{sortAsc ? "Asc" : "Desc"}</span>
+            </Button>
 
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="outline" size="sm">Mark all unread</Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Mark all unread?</AlertDialogTitle>
-                      <AlertDialogDescription>This will remove all reading progress for this manga.</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => storeActions.markAllChaptersUnread(manga.id)}>Confirm</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </>
-            ) : null}
+            {scanlatorGroups.length > 0 && (
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <Filter className="h-4 w-4" />
+                    <span className="hidden sm:inline">Source</span>
+                    <span className="max-w-[120px] truncate text-primary">
+                      {selectedScanlator || "All"}
+                    </span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-[320px] sm:w-[380px]">
+                  <SheetHeader>
+                    <SheetTitle>Translation Source</SheetTitle>
+                  </SheetHeader>
+                  <p className="text-xs text-muted-foreground mt-2 mb-4">
+                    Choose which group's chapters to show. Selecting a single source mirrors how you'd
+                    pick a translation team in Tachiyomi.
+                  </p>
+                  <div className="space-y-1.5 overflow-y-auto max-h-[calc(100dvh-180px)] pr-1">
+                    <button
+                      type="button"
+                      onClick={() => id && storeActions.setScanlatorPref(id, null)}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${
+                        selectedScanlator === null
+                          ? "bg-primary/10 border-primary/30 text-foreground"
+                          : "bg-card border-border hover:bg-muted"
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-sm">All sources (recommended)</div>
+                        <div className="text-xs text-muted-foreground">One chapter per number, official preferred</div>
+                      </div>
+                      {selectedScanlator === null && <Check className="h-4 w-4 text-primary shrink-0" />}
+                    </button>
+
+                    {scanlatorGroups.map(g => {
+                      const isActive = selectedScanlator === g.name;
+                      return (
+                        <button
+                          key={g.name}
+                          type="button"
+                          onClick={() => id && storeActions.setScanlatorPref(id, g.name)}
+                          className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${
+                            isActive
+                              ? "bg-primary/10 border-primary/30 text-foreground"
+                              : "bg-card border-border hover:bg-muted"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium text-sm truncate flex items-center gap-2">
+                              {g.name}
+                              {g.hasOfficial && (
+                                <span className="text-[10px] font-bold uppercase text-amber-600 bg-amber-500/15 px-1.5 py-0.5 rounded">Official</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                              {g.count}
+                            </span>
+                            {isActive && <Check className="h-4 w-4 text-primary" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </SheetContent>
+              </Sheet>
+            )}
+
+            {visibleChapters.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="px-2">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}>Mark all read</DropdownMenuItem>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Mark all read?</AlertDialogTitle>
+                        <AlertDialogDescription>This will mark all {visibleChapters.length} visible chapters as read.</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => storeActions.markAllChaptersRead(manga.id, visibleChapters, manga)}>Confirm</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}>Mark all unread</DropdownMenuItem>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Mark all unread?</AlertDialogTitle>
+                        <AlertDialogDescription>This will remove all reading progress for this series.</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => storeActions.markAllChaptersUnread(manga.id)}>Confirm</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
         
         {chaptersLoading ? (
           <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+        ) : visibleChapters.length === 0 ? (
+          <div className="text-center text-muted-foreground py-16 border rounded-2xl bg-card/40">
+            No chapters available{selectedScanlator ? ` from ${selectedScanlator}` : ""}.
+          </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {chapters?.items.map((chapter) => {
+          <div className="grid gap-2 sm:gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {visibleChapters.map((chapter) => {
               const pKey = `${manga.id}:${chapter.id}`;
               const p = progressMap[pKey];
               const isRead = p?.isRead;
@@ -311,11 +529,10 @@ export default function MangaDetail() {
               return (
                 <div 
                   key={chapter.id} 
-                  className={`group p-4 rounded-xl border border-border transition-all cursor-pointer flex flex-col gap-1 ${
+                  className={`group p-3 sm:p-4 rounded-xl border border-border transition-all cursor-pointer flex flex-col gap-1 ${
                     isRead ? "bg-muted/30 opacity-70 hover:opacity-100" : "bg-card hover:border-primary/30 hover:bg-primary/5"
                   }`}
                   onClick={(e) => {
-                    // Navigate to reader
                     if (!(e.target as HTMLElement).closest('.kebab-menu')) {
                       if (!p) {
                         storeActions.recordProgress({
@@ -334,11 +551,11 @@ export default function MangaDetail() {
                     }
                   }}
                 >
-                  <div className="font-semibold text-foreground group-hover:text-primary transition-colors flex items-start justify-between gap-2">
-                    <span className="line-clamp-1 flex items-center gap-2">
-                      {isRead && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">Read</Badge>}
-                      {inProgress && <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4">Pg {p.lastPageRead + 1}</Badge>}
-                      Chapter {chapter.number}: {chapter.title}
+                  <div className="font-semibold text-sm sm:text-base text-foreground group-hover:text-primary transition-colors flex items-start justify-between gap-2">
+                    <span className="line-clamp-1 flex items-center gap-2 min-w-0">
+                      {isRead && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Read</Badge>}
+                      {inProgress && <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Pg {p.lastPageRead + 1}</Badge>}
+                      <span className="truncate">Ch. {chapter.number}{chapter.title ? `: ${chapter.title}` : ""}</span>
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
                       {chapter.isOfficial && <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 bg-amber-500/20 text-amber-600">Official</Badge>}
@@ -366,9 +583,9 @@ export default function MangaDetail() {
                       </DropdownMenu>
                     </div>
                   </div>
-                  <div className="text-xs text-muted-foreground flex justify-between">
-                    <span className="truncate max-w-[60%]">{chapter.scanlator || "Unknown"}</span>
-                    <span>{format(new Date(chapter.date * 1000), 'MMM d, yyyy')}</span>
+                  <div className="text-xs text-muted-foreground flex justify-between gap-2">
+                    <span className="truncate min-w-0">{chapter.scanlator || "Unknown"}</span>
+                    <span className="shrink-0">{format(new Date(chapter.date * 1000), 'MMM d, yyyy')}</span>
                   </div>
                 </div>
               )
