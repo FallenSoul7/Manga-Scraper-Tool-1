@@ -1,6 +1,10 @@
 import type { MangaSource } from "./types";
 import { ComixSource } from "./comix";
 import { MangaDexSource } from "./mangadex";
+import { MangafreakSource } from "./mangafreak";
+import { DanbooruSource } from "./danbooru";
+import { createMadaraSource } from "./madara";
+import { createMangaThemesiaSource } from "./mangathemesia";
 import catalogJson from "./catalog.generated.json" with { type: "json" };
 
 interface CatalogExtension {
@@ -28,6 +32,45 @@ function register(source: MangaSource) {
 }
 register(ComixSource);
 register(MangaDexSource);
+register(MangafreakSource);
+register(DanbooruSource);
+
+// Madara-themed sources
+register(createMadaraSource({
+  id: "en.resetscans",
+  name: "Reset Scans",
+  baseUrl: "https://reset-scans.org",
+  lang: "en",
+}));
+register(createMadaraSource({
+  id: "en.manhuaplus",
+  name: "Manhua Plus",
+  baseUrl: "https://manhuaplus.com",
+  lang: "en",
+}));
+// Utoon (Cloudflare-protected; may rate-limit but registered for completeness)
+register(createMadaraSource({
+  id: "en.utoon",
+  name: "Utoon",
+  baseUrl: "https://utoon.net",
+  lang: "en",
+}));
+
+// Mangathemesia-themed sources
+register(createMangaThemesiaSource({
+  id: "en.elftoon",
+  name: "Elf Toon",
+  baseUrl: "https://elftoon.com",
+  lang: "en",
+}));
+// Thunder Scans uses /comics (not /manga) and the MangaThemesiaAlt variant
+register(createMangaThemesiaSource({
+  id: "all.thunderscans",
+  name: "Thunder Scans",
+  baseUrl: "https://en-thunderscans.com",
+  lang: "all",
+  mangaUrlDirectory: "/comics",
+}));
 
 export function getSource(id: string | undefined | null): MangaSource {
   const key = id && id.trim() ? id : ComixSource.id;
