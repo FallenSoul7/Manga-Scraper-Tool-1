@@ -56,8 +56,40 @@ const ReaderSettingsSchema = z.object({
 });
 export type ReaderSettings = z.infer<typeof ReaderSettingsSchema>;
 
-const ThemeSchema = z.enum(['light', 'dark', 'system']);
+const ThemeSchema = z.enum([
+  'light',
+  'dark',
+  'system',
+  'neon-green',
+  'orange',
+  'blue',
+  'emerald',
+]);
 export type Theme = z.infer<typeof ThemeSchema>;
+
+/** Themes that are visually dark — used to also toggle the `.dark` class so
+ *  shadcn primitives keyed off it pick the right palette. */
+const DARK_THEMES: ReadonlySet<Theme> = new Set(['dark', 'neon-green', 'orange', 'blue', 'emerald']);
+
+export interface ThemeOption {
+  id: Theme;
+  label: string;
+  /** A vivid swatch used in the picker. */
+  swatch: string;
+  /** Smaller secondary swatch shown alongside it (background hint). */
+  bg: string;
+  isDark: boolean;
+}
+
+export const THEME_OPTIONS: ThemeOption[] = [
+  { id: 'light',      label: 'Light',      swatch: '#9b5b3f', bg: '#f5efe6', isDark: false },
+  { id: 'dark',       label: 'Dark',       swatch: '#c98a6c', bg: '#211c19', isDark: true  },
+  { id: 'system',     label: 'System',     swatch: '#888888', bg: '#dddddd', isDark: false },
+  { id: 'neon-green', label: 'Neon Green', swatch: '#39ff14', bg: '#06140a', isDark: true  },
+  { id: 'orange',     label: 'Orange',     swatch: '#ff8a1a', bg: '#1a120a', isDark: true  },
+  { id: 'blue',       label: 'Blue',       swatch: '#3b82f6', bg: '#0a1326', isDark: true  },
+  { id: 'emerald',    label: 'Emerald',    swatch: '#10b981', bg: '#06170f', isDark: true  },
+];
 
 const InstalledSourceSchema = z.object({
   id: z.string(),
@@ -90,6 +122,9 @@ const StoreStateSchema = z.object({
   chapterSortAsc: z.record(z.string(), z.boolean()).default({}),
   installedSources: z.record(z.string(), InstalledSourceSchema).default({ [DEFAULT_SOURCE.id]: DEFAULT_SOURCE }),
   activeSourceId: z.string().default(DEFAULT_SOURCE.id),
+  // Real, tracked time spent on the reader page (in milliseconds). The reader
+  // adds to this every few seconds while the page is visible.
+  readingTimeMs: z.number().default(0),
 });
 export type StoreState = z.infer<typeof StoreStateSchema>;
 
@@ -117,6 +152,7 @@ const DEFAULT_STATE: StoreState = {
   chapterSortAsc: {},
   installedSources: { [DEFAULT_SOURCE.id]: DEFAULT_SOURCE },
   activeSourceId: DEFAULT_SOURCE.id,
+  readingTimeMs: 0,
 };
 
 // --- Store Implementation ---
@@ -188,14 +224,18 @@ window.addEventListener('storage', (e) => {
 
 // Theme application
 function applyTheme(theme: Theme) {
-  const isDark = 
-    theme === 'dark' || 
+  const root = document.documentElement;
+  const isDark =
+    DARK_THEMES.has(theme) ||
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  
-  if (isDark) {
-    document.documentElement.classList.add('dark');
+
+  root.classList.toggle('dark', isDark);
+  // Drive the named color-themes from a single attribute so each one can
+  // declare its full palette in CSS without exploding the class list.
+  if (theme === 'light' || theme === 'dark' || theme === 'system') {
+    root.removeAttribute('data-theme');
   } else {
-    document.documentElement.classList.remove('dark');
+    root.setAttribute('data-theme', theme);
   }
 }
 
@@ -447,6 +487,12 @@ export const storeActions = {
   
   clearSearchHistory() {
     saveState({ ...memoryState, searchHistory: [] });
+  },
+
+  /** Add tracked reading time. Called periodically by the reader. */
+  addReadingTime(ms: number) {
+    if (!Number.isFinite(ms) || ms <= 0) return;
+    saveState({ ...memoryState, readingTimeMs: (memoryState.readingTimeMs ?? 0) + ms });
   },
 
   exportBackup(): string {

@@ -197,6 +197,164 @@
   --chart-5: 15 25% 25%;
 }
 
+/* ==========================================================================
+ * Color themes — each one rides on top of `.dark` so cards/popovers/etc.
+ * keep their dark-mode shadcn palette but the accent + background take on
+ * the named tint. Toggled via `data-theme` on <html>.
+ * ========================================================================== */
+
+html[data-theme="neon-green"] {
+  --background: 130 30% 5%;
+  --foreground: 120 35% 92%;
+  --border: 130 25% 16%;
+
+  --card: 130 30% 8%;
+  --card-foreground: 120 35% 92%;
+  --card-border: 130 25% 18%;
+
+  --popover: 130 30% 8%;
+  --popover-foreground: 120 35% 92%;
+  --popover-border: 130 25% 18%;
+
+  --sidebar: 130 30% 5%;
+  --sidebar-foreground: 120 35% 92%;
+  --sidebar-border: 130 25% 16%;
+  --sidebar-primary: 120 100% 50%;
+  --sidebar-primary-foreground: 130 30% 5%;
+  --sidebar-accent: 130 30% 14%;
+  --sidebar-accent-foreground: 120 100% 65%;
+  --sidebar-ring: 120 100% 50%;
+
+  --primary: 120 100% 50%;
+  --primary-foreground: 130 30% 5%;
+
+  --secondary: 130 30% 14%;
+  --secondary-foreground: 120 35% 92%;
+
+  --muted: 130 25% 12%;
+  --muted-foreground: 120 15% 65%;
+
+  --accent: 120 80% 22%;
+  --accent-foreground: 120 100% 75%;
+
+  --input: 130 25% 16%;
+  --ring: 120 100% 50%;
+}
+
+html[data-theme="orange"] {
+  --background: 25 30% 6%;
+  --foreground: 30 30% 92%;
+  --border: 25 20% 18%;
+
+  --card: 25 28% 10%;
+  --card-foreground: 30 30% 92%;
+  --card-border: 25 20% 20%;
+
+  --popover: 25 28% 10%;
+  --popover-foreground: 30 30% 92%;
+  --popover-border: 25 20% 20%;
+
+  --sidebar: 25 30% 6%;
+  --sidebar-foreground: 30 30% 92%;
+  --sidebar-border: 25 20% 18%;
+  --sidebar-primary: 25 100% 55%;
+  --sidebar-primary-foreground: 25 30% 6%;
+  --sidebar-accent: 25 25% 16%;
+  --sidebar-accent-foreground: 25 100% 70%;
+  --sidebar-ring: 25 100% 55%;
+
+  --primary: 25 100% 55%;
+  --primary-foreground: 25 30% 6%;
+
+  --secondary: 25 25% 16%;
+  --secondary-foreground: 30 30% 92%;
+
+  --muted: 25 22% 14%;
+  --muted-foreground: 30 18% 65%;
+
+  --accent: 25 70% 28%;
+  --accent-foreground: 25 100% 75%;
+
+  --input: 25 20% 18%;
+  --ring: 25 100% 55%;
+}
+
+html[data-theme="blue"] {
+  --background: 222 40% 7%;
+  --foreground: 215 30% 92%;
+  --border: 222 25% 20%;
+
+  --card: 222 35% 11%;
+  --card-foreground: 215 30% 92%;
+  --card-border: 222 25% 22%;
+
+  --popover: 222 35% 11%;
+  --popover-foreground: 215 30% 92%;
+  --popover-border: 222 25% 22%;
+
+  --sidebar: 222 40% 7%;
+  --sidebar-foreground: 215 30% 92%;
+  --sidebar-border: 222 25% 20%;
+  --sidebar-primary: 217 91% 60%;
+  --sidebar-primary-foreground: 222 40% 7%;
+  --sidebar-accent: 222 30% 18%;
+  --sidebar-accent-foreground: 217 91% 70%;
+  --sidebar-ring: 217 91% 60%;
+
+  --primary: 217 91% 60%;
+  --primary-foreground: 222 40% 7%;
+
+  --secondary: 222 30% 18%;
+  --secondary-foreground: 215 30% 92%;
+
+  --muted: 222 25% 16%;
+  --muted-foreground: 215 18% 65%;
+
+  --accent: 217 60% 28%;
+  --accent-foreground: 217 100% 80%;
+
+  --input: 222 25% 20%;
+  --ring: 217 91% 60%;
+}
+
+html[data-theme="emerald"] {
+  --background: 160 35% 6%;
+  --foreground: 150 25% 92%;
+  --border: 160 25% 18%;
+
+  --card: 160 32% 10%;
+  --card-foreground: 150 25% 92%;
+  --card-border: 160 25% 20%;
+
+  --popover: 160 32% 10%;
+  --popover-foreground: 150 25% 92%;
+  --popover-border: 160 25% 20%;
+
+  --sidebar: 160 35% 6%;
+  --sidebar-foreground: 150 25% 92%;
+  --sidebar-border: 160 25% 18%;
+  --sidebar-primary: 152 76% 45%;
+  --sidebar-primary-foreground: 160 35% 6%;
+  --sidebar-accent: 160 30% 16%;
+  --sidebar-accent-foreground: 152 76% 65%;
+  --sidebar-ring: 152 76% 45%;
+
+  --primary: 152 76% 45%;
+  --primary-foreground: 160 35% 6%;
+
+  --secondary: 160 30% 16%;
+  --secondary-foreground: 150 25% 92%;
+
+  --muted: 160 25% 14%;
+  --muted-foreground: 150 18% 65%;
+
+  --accent: 152 60% 22%;
+  --accent-foreground: 152 76% 75%;
+
+  --input: 160 25% 18%;
+  --ring: 152 76% 45%;
+}
+
 @layer base {
   * {
     @apply border-border;

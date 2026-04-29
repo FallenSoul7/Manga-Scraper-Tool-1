@@ -79,7 +79,7 @@ export default function LibraryPage() {
     <main className="container mx-auto px-4 pt-3 sm:pt-4 pb-8 max-w-7xl animate-in fade-in duration-300">
       {/* Compact blocky category strip — half the previous height, ~1/4 the width. */}
       <div className="mb-4 sm:mb-6">
-        <div className="grid grid-flow-col auto-cols-[minmax(72px,84px)] sm:auto-cols-[minmax(80px,96px)] gap-1.5 sm:gap-2 overflow-x-auto pb-1 hide-scrollbar">
+        <div className="grid grid-flow-col auto-cols-[minmax(96px,112px)] sm:auto-cols-[minmax(108px,128px)] gap-1.5 sm:gap-2 overflow-x-auto pb-1 hide-scrollbar">
           {sortedCategories.map((cat) => {
             const count = libraryItems.filter(m => m.categoryIds.includes(cat.id)).length;
             const isActive = activeTab === cat.id;
@@ -96,9 +96,9 @@ export default function LibraryPage() {
                 <button
                   type="button"
                   onClick={() => setActiveTab(cat.id)}
-                  className="w-full text-left px-2 py-1.5 sm:py-2 flex flex-col gap-0.5 cursor-pointer leading-tight"
+                  className="w-full text-center px-2 py-1.5 sm:py-2 flex flex-col items-center justify-center gap-0.5 cursor-pointer leading-tight"
                 >
-                  <span className="font-semibold text-xs sm:text-sm truncate pr-3">
+                  <span className="font-semibold text-xs sm:text-sm truncate w-full">
                     {cat.name}
                   </span>
                   <span className={`text-[10px] sm:text-[11px] ${isActive ? "text-primary-foreground/80" : "text-muted-foreground"}`}>

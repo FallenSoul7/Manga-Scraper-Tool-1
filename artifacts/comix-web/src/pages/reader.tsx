@@ -78,6 +78,41 @@ export default function Reader() {
     },
   });
 
+  // Track real reading time. Adds the elapsed wall-clock time to global stats
+  // every few seconds, but pauses while the tab is hidden so it doesn't count
+  // time when the user has switched away.
+  useEffect(() => {
+    const TICK_MS = 5000;
+    let lastTick = document.visibilityState === 'visible' ? Date.now() : null;
+
+    const flush = () => {
+      if (lastTick === null) return;
+      const now = Date.now();
+      const delta = now - lastTick;
+      lastTick = now;
+      // Cap any single tick at 60s — avoids dumping a giant chunk if the
+      // browser throttled the timer or the tab was idle for a long time.
+      if (delta > 0) storeActions.addReadingTime(Math.min(delta, 60_000));
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        lastTick = Date.now();
+      } else {
+        flush();
+        lastTick = null;
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    const interval = window.setInterval(flush, TICK_MS);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearInterval(interval);
+      flush();
+    };
+  }, []);
+
   // Keep screen on
   useEffect(() => {
     if (!(readerSettings.keepScreenOn && 'wakeLock' in navigator)) {

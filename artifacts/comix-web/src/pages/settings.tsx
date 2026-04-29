@@ -4,11 +4,11 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
-import { useStore, storeActions } from "@/lib/storage";
+import { useStore, storeActions, THEME_OPTIONS, type Theme } from "@/lib/storage";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Download, Upload, Trash2, BarChart3, AlertTriangle } from "lucide-react";
+import { Download, Upload, BarChart3, AlertTriangle, ArrowLeft, Check } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useRef } from "react";
@@ -66,7 +66,10 @@ export default function SettingsPage() {
 
   return (
     <main className="container mx-auto px-4 py-12 max-w-2xl animate-in fade-in duration-500">
-      <div className="mb-10 flex items-center justify-between">
+      <Link href="/system" className="inline-flex items-center text-sm text-muted-foreground hover:text-primary mb-3 transition-colors">
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back to System
+      </Link>
+      <div className="mb-10 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-serif font-bold text-foreground mb-2">Reading Lounge Settings</h1>
           <p className="text-muted-foreground">Customize your browsing and reading experience.</p>
@@ -85,26 +88,51 @@ export default function SettingsPage() {
         <section className="space-y-6">
           <h2 className="text-xl font-semibold text-foreground">Appearance</h2>
           
-          <div className="space-y-4">
+          <div className="space-y-3">
             <Label className="text-base font-medium">Theme</Label>
-            <RadioGroup
-              value={theme}
-              onValueChange={(val: any) => storeActions.setTheme(val)}
-              className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-6"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="light" id="t-light" />
-                <Label htmlFor="t-light" className="font-normal cursor-pointer">Light</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="dark" id="t-dark" />
-                <Label htmlFor="t-dark" className="font-normal cursor-pointer">Dark</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="system" id="t-system" />
-                <Label htmlFor="t-system" className="font-normal cursor-pointer">System</Label>
-              </div>
-            </RadioGroup>
+            <p className="text-sm text-muted-foreground -mt-1">
+              Pick a palette. Color themes apply a vivid accent over a tinted dark background.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 pt-2">
+              {THEME_OPTIONS.map((opt) => {
+                const active = theme === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => storeActions.setTheme(opt.id as Theme)}
+                    aria-pressed={active}
+                    className={`group relative rounded-xl border p-3 text-left transition-all cursor-pointer flex items-center gap-3 ${
+                      active
+                        ? "border-primary ring-2 ring-primary/40 shadow-sm"
+                        : "border-border hover:border-primary/50 hover:bg-muted/40"
+                    }`}
+                  >
+                    <span
+                      className="relative h-9 w-9 rounded-lg border shrink-0 overflow-hidden"
+                      style={{ backgroundColor: opt.bg, borderColor: "rgba(0,0,0,0.15)" }}
+                    >
+                      {/* The vivid accent dot — gives an at-a-glance preview. */}
+                      <span
+                        className="absolute inset-1 rounded-md"
+                        style={{ backgroundColor: opt.swatch, boxShadow: opt.id === 'neon-green' ? `0 0 8px ${opt.swatch}` : undefined }}
+                      />
+                    </span>
+                    <span className="flex flex-col min-w-0">
+                      <span className="text-sm font-semibold truncate">{opt.label}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {opt.id === 'system' ? 'Follows OS' : opt.isDark ? 'Dark base' : 'Light base'}
+                      </span>
+                    </span>
+                    {active && (
+                      <span className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+                        <Check className="h-3 w-3" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </section>
 

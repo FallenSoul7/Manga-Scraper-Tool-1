@@ -2,27 +2,44 @@ import { useStore } from "@/lib/storage";
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Clock, Library, Flame, Trophy } from "lucide-react";
+import { BookOpen, Clock, Library, Flame, Trophy, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
+
+function formatDuration(ms: number): { value: string; sub: string } {
+  if (ms <= 0) return { value: "0m", sub: "Get reading!" };
+  const totalMin = Math.floor(ms / 60_000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h >= 1) return { value: `${h}h ${m}m`, sub: "Real time tracked" };
+  if (m >= 1) return { value: `${m}m`, sub: "Real time tracked" };
+  const s = Math.floor(ms / 1000);
+  return { value: `${s}s`, sub: "Real time tracked" };
+}
 
 export default function StatsPage() {
   const library = useStore(s => s.library);
   const categories = useStore(s => s.categories);
   const progressMap = useStore(s => s.progress);
   const historyKeys = useStore(s => s.history);
+  const trackedReadingMs = useStore(s => s.readingTimeMs ?? 0);
 
   const stats = useMemo(() => {
     const libraryItems = Object.values(library);
     const progressItems = Object.values(progressMap);
-    
+
     const totalManga = libraryItems.length;
     const chaptersRead = progressItems.filter(p => p.isRead).length;
-    
-    // Estimated reading time: 4 minutes per chapter
-    const totalMinutes = chaptersRead * 4;
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    const estimatedTime = `${hours}h ${minutes}m`;
+
+    // Prefer the real, tracked reading time. Fall back to a chapter-based
+    // estimate (~4 min/chapter) until the reader has had a chance to record
+    // anything — that way new users don't see "0m" forever.
+    const estimatedFallbackMs = chaptersRead * 4 * 60_000;
+    const useTracked = trackedReadingMs > 0;
+    const effectiveMs = useTracked ? trackedReadingMs : estimatedFallbackMs;
+    const formattedTime = formatDuration(effectiveMs);
+    const timeSubtitle = useTracked
+      ? formattedTime.sub
+      : `Est. 4m / chapter${chaptersRead > 0 ? "" : ""}`;
 
     // Category counts
     const categoryCounts: Record<string, number> = {};
