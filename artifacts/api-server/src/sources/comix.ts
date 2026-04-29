@@ -9,6 +9,7 @@ import type {
   ChapterListResponse,
   PageListResponse,
   PosterQuality,
+  SourceTag,
 } from "./types";
 
 const BASE_URL = "https://comix.to";
@@ -154,9 +155,15 @@ function listParams(opts: ListOptions): Record<string, string | string[]> {
     limit: "50",
     page: String(opts.page),
   };
+  // Combine NSFW exclusions with positive tag filters into a single genres[] list.
+  const genres: string[] = [];
   if (!opts.nsfw) {
-    params["genres[]"] = NSFW_GENRE_IDS.map((g) => `-${g}`);
+    for (const g of NSFW_GENRE_IDS) genres.push(`-${g}`);
   }
+  if (opts.tagIds && opts.tagIds.length > 0) {
+    for (const t of opts.tagIds) genres.push(String(t));
+  }
+  if (genres.length > 0) params["genres[]"] = genres;
   return params;
 }
 
@@ -217,12 +224,61 @@ function dedupeAdd(map: Map<number, ChapterRaw>, ch: ChapterRaw) {
   if (better) map.set(ch.number, ch);
 }
 
+// In-memory cache for the tag (genre/theme/demographic) catalog. The upstream
+// list is essentially static, so we hold it for an hour to avoid hammering
+// /api/v2/terms on every browse view.
+let TAG_CACHE: { at: number; tags: SourceTag[] } | null = null;
+const TAG_TTL_MS = 60 * 60 * 1000;
+
+interface TermRaw {
+  term_id: number;
+  type: string;
+  title: string;
+  slug: string;
+  count: number;
+}
+interface TermResponse {
+  result?: { items?: TermRaw[] };
+}
+
+async function fetchTermType(type: string, group: string): Promise<SourceTag[]> {
+  const res = await client.get<TermResponse>("/terms", { params: { type } });
+  if (res.status >= 400 || !res.data?.result?.items) return [];
+  return res.data.result.items.map((t) => ({
+    id: String(t.term_id),
+    name: t.title,
+    group,
+    count: t.count,
+  }));
+}
+
 export const ComixSource: MangaSource = {
   id: "en.comix",
   name: "Comix",
   lang: "en",
   isNsfw: true,
   imageReferer: `${BASE_URL}/`,
+
+  async tags(): Promise<SourceTag[]> {
+    if (TAG_CACHE && Date.now() - TAG_CACHE.at < TAG_TTL_MS) {
+      return TAG_CACHE.tags;
+    }
+    const [genres, themes, demos] = await Promise.all([
+      fetchTermType("genre", "Genre").catch(() => []),
+      fetchTermType("theme", "Theme").catch(() => []),
+      fetchTermType("demographic", "Demographic").catch(() => []),
+    ]);
+    // Drop NSFW-only genres from the picker so it's safe to expose by default.
+    const nsfwSet = new Set(NSFW_GENRE_IDS);
+    const tags = [...genres, ...themes, ...demos]
+      .filter((t) => !nsfwSet.has(t.id))
+      .sort((a, b) => {
+        if (a.group !== b.group) return (a.group ?? "").localeCompare(b.group ?? "");
+        return a.name.localeCompare(b.name);
+      });
+    TAG_CACHE = { at: Date.now(), tags };
+    return tags;
+  },
 
   async popular(opts) {
     return getList("order[views_30d]", opts);

@@ -39,11 +39,23 @@ function readSourceId(req: Request): string {
   return (headerVal || queryVal || DEFAULT_SOURCE_ID).trim();
 }
 
+function parseTagIds(req: Request): string[] | undefined {
+  // Accept either repeated `tagIds[]` or a single comma-separated `tagIds`.
+  const raw = req.query["tagIds[]"] ?? req.query["tagIds"];
+  if (raw === undefined) return undefined;
+  const arr: string[] = Array.isArray(raw)
+    ? (raw as unknown[]).map((v) => String(v))
+    : String(raw).split(",");
+  const out = arr.map((s) => s.trim()).filter(Boolean);
+  return out.length ? out : undefined;
+}
+
 function listOpts(req: Request) {
   return {
     page: parsePage(req.query["page"]),
     nsfw: parseBool(req.query["nsfw"], false),
     poster: parsePoster(req.query["poster"]),
+    tagIds: parseTagIds(req),
   };
 }
 
@@ -74,12 +86,34 @@ router.get("/latest", async (req, res) => {
 router.get("/search", async (req, res) => {
   try {
     const query = String(req.query["query"] ?? "").trim();
-    if (!query) {
-      res.status(400).json({ error: "query is required" });
+    const opts = listOpts(req);
+    const hasTags = !!(opts.tagIds && opts.tagIds.length > 0);
+    if (!query && !hasTags) {
+      res.status(400).json({ error: "query or tagIds is required" });
       return;
     }
     const source = getSource(readSourceId(req));
-    res.json(await source.search(query, listOpts(req)));
+    // When the user is filtering by tag only (no text), fall back to the
+    // popular listing — the filter is applied via tagIds and we don't have
+    // a meaningful keyword to feed to the search endpoint.
+    if (!query) {
+      res.json(await source.popular(opts));
+      return;
+    }
+    res.json(await source.search(query, opts));
+  } catch (err) {
+    handleErr(res, err);
+  }
+});
+
+router.get("/tags", async (req, res) => {
+  try {
+    const source = getSource(readSourceId(req));
+    if (!source.tags) {
+      res.json([]);
+      return;
+    }
+    res.json(await source.tags());
   } catch (err) {
     handleErr(res, err);
   }

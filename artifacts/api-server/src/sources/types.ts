@@ -4,6 +4,19 @@ export interface ListOptions {
   page: number;
   nsfw: boolean;
   poster: PosterQuality;
+  /** Tag IDs (source-specific, e.g. comix `term_id`s) to filter the listing by. */
+  tagIds?: string[];
+}
+
+export interface SourceTag {
+  /** Stable identifier the source understands (e.g. comix `term_id`). */
+  id: string;
+  /** Human-readable label, shown in the picker. */
+  name: string;
+  /** Group label so the picker can section things ("Genre", "Theme", "Demographic"). */
+  group?: string;
+  /** Optional usage hint for sorting. */
+  count?: number;
 }
 
 export interface MangaSummary {
@@ -79,6 +92,9 @@ export interface MangaSource {
   details(id: string, opts: DetailOptions): Promise<MangaDetail>;
   chapters(mangaId: string, dedupe: boolean): Promise<ChapterListResponse>;
   pages(chapterId: string): Promise<PageListResponse>;
+
+  /** Returns the tags the user can filter by on this source. Optional. */
+  tags?(): Promise<SourceTag[]>;
 
   imageReferer?: string;
 }
