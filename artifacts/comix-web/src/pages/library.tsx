@@ -1,54 +1,46 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
 import { useStore, storeActions } from "@/lib/storage";
 import { MangaCard } from "@/components/manga-card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Library, Search, MoreVertical, Plus, CheckSquare, Trash2, LibraryBig } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Plus, LibraryBig, MoreHorizontal } from "lucide-react";
+
+const FALLBACK_TAB = "default";
 
 export default function LibraryPage() {
   const library = useStore(s => s.library);
   const categories = useStore(s => s.categories);
-  const progress = useStore(s => s.progress);
-  
-  const [activeTab, setActiveTab] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sort, setSort] = useState("added-desc");
-  const [editMode, setEditMode] = useState(false);
-  const [selectedManga, setSelectedManga] = useState<Set<string>>(new Set());
+
+  const sortedCategories = useMemo(
+    () => [...categories].sort((a, b) => a.order - b.order),
+    [categories],
+  );
+
+  const [activeTab, setActiveTab] = useState<string>(() => sortedCategories[0]?.id ?? FALLBACK_TAB);
+
+  // If the active category gets deleted out from under us, fall back to the
+  // first available one so the grid never goes blank.
+  useEffect(() => {
+    if (!sortedCategories.find(c => c.id === activeTab)) {
+      setActiveTab(sortedCategories[0]?.id ?? FALLBACK_TAB);
+    }
+  }, [sortedCategories, activeTab]);
 
   const [newCatName, setNewCatName] = useState("");
   const [isNewCatOpen, setIsNewCatOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState<{ id: string; name: string } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const libraryItems = useMemo(() => Object.values(library), [library]);
 
   const filteredItems = useMemo(() => {
-    let items = libraryItems;
-    if (activeTab !== "all") {
-      items = items.filter(m => m.categoryIds.includes(activeTab));
-    }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      items = items.filter(m => m.title.toLowerCase().includes(q));
-    }
-    
-    // Sort
-    items.sort((a, b) => {
-      if (sort === "title-asc") return a.title.localeCompare(b.title);
-      if (sort === "title-desc") return b.title.localeCompare(a.title);
-      if (sort === "added-desc") return b.addedAt - a.addedAt;
-      if (sort === "added-asc") return a.addedAt - b.addedAt;
-      return 0;
-    });
-    
-    return items;
-  }, [libraryItems, activeTab, searchQuery, sort]);
+    return libraryItems
+      .filter(m => m.categoryIds.includes(activeTab))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [libraryItems, activeTab]);
 
   const handleAddCategory = () => {
     if (newCatName.trim()) {
@@ -59,166 +51,122 @@ export default function LibraryPage() {
     }
   };
 
-  const toggleSelect = (id: string) => {
-    const next = new Set(selectedManga);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedManga(next);
-  };
-
-  const getUnreadCount = (mangaId: string, totalSeen: number) => {
-    // This is a naive calculation. A real calculation needs total chapters fetched or we just check progress.
-    // For now we check if there are read chapters vs seen.
-    return 0;
+  const handleRename = () => {
+    if (renameOpen && renameValue.trim()) {
+      storeActions.renameCategory?.(renameOpen.id, renameValue.trim());
+      setRenameOpen(null);
+      setRenameValue("");
+    }
   };
 
   return (
-    <main className="container mx-auto px-4 py-8 max-w-7xl animate-in fade-in duration-500">
-      <div className="mb-8">
-        <h1 className="text-4xl md:text-5xl font-serif font-bold text-foreground mb-2">Your Library</h1>
-        <p className="text-muted-foreground text-lg">{libraryItems.length} titles saved</p>
-      </div>
-
-      <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-4 hide-scrollbar">
-        <Button 
-          variant={activeTab === "all" ? "default" : "outline"}
-          onClick={() => setActiveTab("all")}
-          className="rounded-full rounded-r-none whitespace-nowrap"
-        >
-          All
-          <span className="ml-2 bg-background/20 text-current px-2 py-0.5 rounded-full text-xs">
-            {libraryItems.length}
-          </span>
-        </Button>
-        {categories.map((cat) => {
-          const count = libraryItems.filter(m => m.categoryIds.includes(cat.id)).length;
-          return (
-            <Popover key={cat.id}>
-              <PopoverTrigger asChild>
-                <Button 
-                  variant={activeTab === cat.id ? "default" : "outline"}
+    <main className="container mx-auto px-4 pt-4 sm:pt-6 pb-8 max-w-7xl animate-in fade-in duration-300">
+      {/* Blocky category strip — sits at the very top, organized as solid tiles. */}
+      <div className="mb-6 sm:mb-8">
+        <div className="grid grid-flow-col auto-cols-[minmax(120px,1fr)] sm:auto-cols-[minmax(140px,180px)] gap-2 sm:gap-3 overflow-x-auto pb-1 hide-scrollbar">
+          {sortedCategories.map((cat) => {
+            const count = libraryItems.filter(m => m.categoryIds.includes(cat.id)).length;
+            const isActive = activeTab === cat.id;
+            const canManage = cat.id !== "default";
+            return (
+              <div
+                key={cat.id}
+                className={`group relative rounded-2xl border overflow-hidden transition-all ${
+                  isActive
+                    ? "bg-primary text-primary-foreground border-primary shadow-md scale-[1.02]"
+                    : "bg-card hover:bg-muted border-border"
+                }`}
+              >
+                <button
+                  type="button"
                   onClick={() => setActiveTab(cat.id)}
-                  className="rounded-none whitespace-nowrap"
+                  className="w-full text-left px-3 sm:px-4 py-3 sm:py-4 flex flex-col gap-1.5 cursor-pointer"
                 >
-                  {cat.name}
-                  <span className="ml-2 bg-background/20 text-current px-2 py-0.5 rounded-full text-xs">
-                    {count}
+                  <span className="font-serif font-bold text-base sm:text-lg leading-tight truncate pr-6">
+                    {cat.name}
                   </span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-40 p-2">
-                <div className="flex flex-col gap-1">
-                  {cat.id !== "default" && (
-                    <>
-                      <Button variant="ghost" size="sm" className="justify-start">Rename</Button>
-                      <Button variant="ghost" size="sm" className="justify-start text-destructive" onClick={() => {
-                        storeActions.removeCategory(cat.id);
-                        if (activeTab === cat.id) setActiveTab("all");
-                      }}>Delete</Button>
-                    </>
-                  )}
-                </div>
-              </PopoverContent>
-            </Popover>
-          );
-        })}
-        <Button variant="outline" className="rounded-full rounded-l-none" onClick={() => setIsNewCatOpen(true)}>
-          <Plus className="h-4 w-4" />
-        </Button>
-      </div>
+                  <span className={`text-xs ${isActive ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                    {count} {count === 1 ? "title" : "titles"}
+                  </span>
+                </button>
 
-      <div className="flex flex-col sm:flex-row gap-4 mb-8">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Filter library..." 
-            className="pl-9"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="title-asc">Title (A-Z)</SelectItem>
-              <SelectItem value="title-desc">Title (Z-A)</SelectItem>
-              <SelectItem value="added-desc">Recently Added</SelectItem>
-              <SelectItem value="added-asc">Oldest Added</SelectItem>
-            </SelectContent>
-          </Select>
+                {canManage && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`Manage ${cat.name}`}
+                        className={`absolute top-1.5 right-1.5 p-1 rounded-md transition-opacity ${
+                          isActive ? "hover:bg-primary-foreground/20" : "hover:bg-background/80"
+                        } opacity-60 group-hover:opacity-100`}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-40 p-1.5" align="end">
+                      <div className="flex flex-col">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="justify-start h-9"
+                          onClick={() => {
+                            setRenameOpen({ id: cat.id, name: cat.name });
+                            setRenameValue(cat.name);
+                          }}
+                        >
+                          Rename
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="justify-start h-9 text-destructive hover:text-destructive"
+                          onClick={() => {
+                            storeActions.removeCategory(cat.id);
+                            if (activeTab === cat.id) setActiveTab(FALLBACK_TAB);
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </div>
+            );
+          })}
 
-          <Button 
-            variant={editMode ? "secondary" : "outline"} 
-            onClick={() => {
-              setEditMode(!editMode);
-              if (editMode) setSelectedManga(new Set());
-            }}
+          {/* Add-category tile */}
+          <button
+            type="button"
+            onClick={() => setIsNewCatOpen(true)}
+            className="rounded-2xl border-2 border-dashed border-border bg-card/40 hover:bg-muted hover:border-primary/40 transition-colors flex flex-col items-center justify-center gap-1 px-3 py-3 sm:py-4 text-muted-foreground hover:text-foreground cursor-pointer"
           >
-            {editMode ? "Cancel" : "Edit"}
-          </Button>
+            <Plus className="h-5 w-5" />
+            <span className="text-xs font-medium">New category</span>
+          </button>
         </div>
       </div>
-
-      {editMode && selectedManga.size > 0 && (
-        <div className="sticky top-20 z-10 bg-card border rounded-xl p-4 mb-6 shadow-md flex items-center justify-between animate-in slide-in-from-top-4">
-          <div className="font-medium">{selectedManga.size} selected</div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline">Move</Button>
-            <Button size="sm" variant="destructive" onClick={() => {
-              selectedManga.forEach(id => storeActions.removeFromLibrary(id));
-              setSelectedManga(new Set());
-              setEditMode(false);
-            }}>Remove</Button>
-          </div>
-        </div>
-      )}
 
       {filteredItems.length === 0 ? (
         <div className="py-24 flex flex-col items-center justify-center text-center px-4">
           <LibraryBig className="h-16 w-16 text-muted mb-6" />
-          <h3 className="text-xl font-serif font-bold text-foreground mb-2">Your library is empty</h3>
+          <h3 className="text-xl font-serif font-bold text-foreground mb-2">Nothing here yet</h3>
           <p className="text-muted-foreground max-w-md mx-auto mb-6">
-            Browse our collection to add your first title to your personal reading space.
+            Add titles to <strong>{sortedCategories.find(c => c.id === activeTab)?.name ?? "this category"}</strong> from any source.
           </p>
-          <Link href="/">
-            <Button>Browse Manga</Button>
+          <Link href="/sources">
+            <Button>Open Sources</Button>
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-          {filteredItems.map(manga => {
-            const unread = getUnreadCount(manga.id, manga.lastChapterCountSeen);
-            return (
-              <div key={manga.id} className="relative">
-                {editMode && (
-                  <div className="absolute top-2 left-2 z-10">
-                    <Checkbox 
-                      checked={selectedManga.has(manga.id)}
-                      onCheckedChange={() => toggleSelect(manga.id)}
-                      className="bg-background/80 backdrop-blur"
-                    />
-                  </div>
-                )}
-                {unread > 0 && !editMode && (
-                  <Badge variant="default" className="absolute top-2 left-2 z-10">{unread}</Badge>
-                )}
-                <div onClick={(e) => {
-                  if (editMode) {
-                    e.preventDefault();
-                    toggleSelect(manga.id);
-                  }
-                }}>
-                  <MangaCard manga={manga as any} />
-                </div>
-              </div>
-            );
-          })}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6">
+          {filteredItems.map(manga => (
+            <MangaCard key={manga.id} manga={manga as any} />
+          ))}
         </div>
       )}
 
+      {/* New category dialog */}
       <Dialog open={isNewCatOpen} onOpenChange={setIsNewCatOpen}>
         <DialogContent>
           <DialogHeader>
@@ -235,7 +183,28 @@ export default function LibraryPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsNewCatOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddCategory}>Add Category</Button>
+            <Button onClick={handleAddCategory}>Add</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename dialog */}
+      <Dialog open={renameOpen !== null} onOpenChange={(open) => !open && setRenameOpen(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Category</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameOpen(null)}>Cancel</Button>
+            <Button onClick={handleRename} disabled={!renameValue.trim()}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

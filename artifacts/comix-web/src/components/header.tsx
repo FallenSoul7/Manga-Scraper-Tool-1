@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Search, Library, Settings, BookOpen, Clock, RefreshCw, Sun, Moon, Laptop, X, Boxes } from "lucide-react";
+import { Search, Library, BookOpen, Clock, RefreshCw, Sun, Moon, Laptop, X, Boxes, LayoutGrid } from "lucide-react";
 import { Input } from "./ui/input";
 import { useState } from "react";
 import { useUpdatesCount } from "@/hooks/use-updates-count";
@@ -24,11 +24,11 @@ export function Header() {
   };
 
   const navLinks = [
-    { href: "/", label: "Browse", icon: BookOpen },
-    { href: "/library", label: "Library", icon: Library },
+    { href: "/", label: "Library", icon: Library },
     { href: "/updates", label: "Updates", icon: RefreshCw, badge: totalNew },
     { href: "/history", label: "History", icon: Clock },
     { href: "/sources", label: "Sources", icon: Boxes },
+    { href: "/system", label: "System", icon: LayoutGrid },
   ];
 
   return (
@@ -107,10 +107,6 @@ export function Header() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-
-            <Link href="/settings" className={`p-2 rounded-full transition-colors ${location === '/settings' ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} aria-label="Settings">
-              <Settings className="h-5 w-5" />
-            </Link>
           </div>
         </div>
 

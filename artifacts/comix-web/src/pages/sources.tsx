@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,6 +14,7 @@ import {
   Globe,
   ShieldAlert,
   ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { useStore, storeActions, type InstalledSource } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
@@ -147,6 +149,7 @@ function InstalledTab({
   activeId: string;
 }) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   return (
     <div className="space-y-3">
       {installed.map((src) => {
@@ -154,7 +157,20 @@ function InstalledTab({
         return (
           <div
             key={src.id}
-            className={`flex items-center gap-4 p-3 sm:p-4 rounded-lg border ${
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              storeActions.setActiveSource(src.id);
+              setLocation(`/sources/${src.id}`);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                storeActions.setActiveSource(src.id);
+                setLocation(`/sources/${src.id}`);
+              }
+            }}
+            className={`group flex items-center gap-4 p-3 sm:p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md hover:border-primary/40 ${
               isActive ? "border-primary bg-primary/5" : "bg-card"
             }`}
           >
@@ -165,7 +181,7 @@ function InstalledTab({
                 {isActive && (
                   <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary text-primary-foreground">
                     <CheckCircle2 className="h-3 w-3" />
-                    Selected
+                    Active
                   </span>
                 )}
                 {src.isNsfw && (
@@ -180,21 +196,7 @@ function InstalledTab({
                 {langLabel(src.lang)} · {src.id}
               </p>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {!isActive && (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    storeActions.setActiveSource(src.id);
-                    toast({
-                      title: `Selected ${src.name}`,
-                      description: "Browse, search and library now use this source.",
-                    });
-                  }}
-                >
-                  Select this extension
-                </Button>
-              )}
+            <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
               {src.id !== "en.comix" && (
                 <Button
                   size="icon"
@@ -209,12 +211,14 @@ function InstalledTab({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               )}
+              <ChevronRight className="h-5 w-5 text-muted-foreground opacity-60 group-hover:opacity-100 group-hover:text-primary transition-colors" />
             </div>
           </div>
         );
       })}
       <p className="text-xs text-muted-foreground pt-2">
-        The default <strong>Comix</strong> source can't be removed. Visit the{" "}
+        Tap any source to browse its popular & latest titles. The default{" "}
+        <strong>Comix</strong> source can't be removed. Visit the{" "}
         <strong>Browse</strong> tab to add more.
       </p>
     </div>

@@ -6,7 +6,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Header } from "@/components/header";
 import NotFound from "@/pages/not-found";
 
-import Home from "@/pages/home";
 import SearchPage from "@/pages/search";
 import MangaDetail from "@/pages/manga-detail";
 import Reader from "@/pages/reader";
@@ -16,6 +15,8 @@ import UpdatesPage from "@/pages/updates";
 import HistoryPage from "@/pages/history";
 import StatsPage from "@/pages/stats";
 import SourcesPage from "@/pages/sources";
+import SourceBrowsePage from "@/pages/source-browse";
+import SystemPage from "@/pages/system";
 
 import { useActiveSourceId, applyActiveSource, registerQueryClient } from "@/lib/source";
 
@@ -49,15 +50,16 @@ function AppContent() {
           <Header />
           <div className="flex-1 pb-16 md:pb-0">
             <Switch>
-              <Route path="/" component={Home} />
+              <Route path="/" component={LibraryPage} />
               <Route path="/search" component={SearchPage} />
               <Route path="/manga/:id" component={MangaDetail} />
               <Route path="/settings" component={SettingsPage} />
-              <Route path="/library" component={LibraryPage} />
               <Route path="/updates" component={UpdatesPage} />
               <Route path="/history" component={HistoryPage} />
               <Route path="/stats" component={StatsPage} />
               <Route path="/sources" component={SourcesPage} />
+              <Route path="/sources/:id" component={SourceBrowsePage} />
+              <Route path="/system" component={SystemPage} />
               <Route component={NotFound} />
             </Switch>
           </div>

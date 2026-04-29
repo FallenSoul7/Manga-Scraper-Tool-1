@@ -249,8 +249,17 @@ export default function MangaDetail() {
                 <div /> /* keep grid alignment when no progress yet */
               )}
 
-              {/* Read first chapter — column 1 */}
-              {firstChapter ? (
+              {/* Read first chapter — column 1.
+                  Always render the slot so the action grid doesn't reflow when
+                  the chapter list eventually arrives. While chapters are loading
+                  we show a disabled skeleton so the user sees there is a button
+                  coming, instead of an empty cell. */}
+              {chaptersLoading ? (
+                <Button variant="outline" className="w-full" disabled>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  <span className="truncate">Read first</span>
+                </Button>
+              ) : firstChapter ? (
                 <Button
                   variant="outline"
                   className="w-full"
@@ -259,7 +268,9 @@ export default function MangaDetail() {
                   <Play className="mr-1.5 h-4 w-4" /> <span className="truncate">Read Ch. {firstChapter.number}</span>
                 </Button>
               ) : (
-                <div />
+                <Button variant="outline" className="w-full" disabled>
+                  <span className="truncate text-xs">No chapters</span>
+                </Button>
               )}
 
               {/* Status / type / rating block — column 2.
