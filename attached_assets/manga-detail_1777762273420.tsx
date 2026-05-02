@@ -1,4 +1,4 @@
-import { useRoute, useLocation } from "wouter";
+import { useRoute, Link, useLocation } from "wouter";
 import {
   useGetMangaDetails,
   useGetChapters,
@@ -211,7 +211,7 @@ export default function MangaDetail() {
         </div>
       </header>
 
-      <div className="max-w-3xl mx-auto animate-in fade-in duration-500 overflow-x-hidden">
+      <div className="max-w-3xl mx-auto animate-in fade-in duration-500">
 
         {/* ── Hero banner ── */}
         <div className="relative overflow-hidden" style={{ minHeight: 180 }}>
@@ -239,12 +239,12 @@ export default function MangaDetail() {
                 className="w-full h-full object-cover"
               />
             </div>
-            <div className="flex-1 min-w-0 overflow-hidden pb-1">
-              <h1 className="font-serif font-bold text-xl sm:text-2xl text-foreground leading-tight mb-1 break-words">
+            <div className="flex-1 min-w-0 pb-1">
+              <h1 className="font-serif font-bold text-xl sm:text-2xl text-foreground leading-tight mb-1">
                 {manga.title}
               </h1>
               {(manga.author || manga.artist) && (
-                <p className="text-sm text-muted-foreground mb-1 truncate">
+                <p className="text-sm text-muted-foreground mb-1">
                   {[manga.author, manga.artist].filter(Boolean).join(", ")}
                 </p>
               )}
@@ -289,7 +289,7 @@ export default function MangaDetail() {
             {inLibrary
               ? <Check className="h-5 w-5 text-primary" />
               : <BookmarkPlus className="h-5 w-5" />}
-            <span className="text-[11px] font-medium whitespace-pre-line text-center">{inLibrary ? "In Library" : "Add to\nLibrary"}</span>
+            <span className="text-[11px] font-medium">{inLibrary ? "In Library" : "Add to\nLibrary"}</span>
           </button>
         </div>
 

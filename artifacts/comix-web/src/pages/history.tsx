@@ -1,18 +1,22 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import { Link } from "wouter";
 import { proxyImage } from "@/lib/utils";
 import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Trash2, Clock, Trash, Search, X } from "lucide-react";
+import { Trash, Clock, Search, X } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { registerHistoryHeader } from "@/lib/header-history";
 
 export default function HistoryPage() {
   const historyKeys = useStore(s => s.history);
   const progressMap = useStore(s => s.progress);
   const [filterText, setFilterText] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const historyItems = historyKeys.map(k => progressMap[k]).filter(Boolean);
 
@@ -34,59 +38,71 @@ export default function HistoryPage() {
     return acc;
   }, {} as Record<string, typeof historyItems>);
 
+  useEffect(() => {
+    registerHistoryHeader({
+      onSearchClick: () => {
+        setSearchOpen(o => {
+          if (!o) setTimeout(() => searchInputRef.current?.focus(), 50);
+          return !o;
+        });
+      },
+      onClearClick: () => setClearDialogOpen(true),
+    });
+    return () => registerHistoryHeader(null);
+  }, []);
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
   return (
     <main className="container mx-auto px-4 pt-3 pb-8 max-w-4xl animate-in fade-in duration-500">
-      {/* Top row: search + clear all */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Filter history…"
-            value={filterText}
-            onChange={e => setFilterText(e.target.value)}
-            className="pl-9 pr-9 h-9"
-          />
-          {filterText && (
-            <button
-              type="button"
-              onClick={() => setFilterText("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
+
+      {/* Inline search bar — shown when header search icon clicked */}
+      {searchOpen && (
+        <div className="mb-4 animate-in slide-in-from-top-1 duration-150">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              ref={searchInputRef}
+              placeholder="Filter history…"
+              value={filterText}
+              onChange={e => setFilterText(e.target.value)}
+              className="pl-9 pr-9 h-10"
+            />
+            {filterText && (
+              <button
+                type="button"
+                onClick={() => setFilterText("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
+      )}
 
-        <div className="flex-1" />
-
-        {historyItems.length > 0 && (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Clear all
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Clear History</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to clear your reading history? This cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => storeActions.clearHistory()}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Clear
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        )}
-      </div>
+      {/* Clear all dialog */}
+      <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear History</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to clear your reading history? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => storeActions.clearHistory()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Clear
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {historyItems.length === 0 ? (
         <div className="py-24 flex flex-col items-center justify-center text-center px-4 border rounded-2xl bg-card/50">

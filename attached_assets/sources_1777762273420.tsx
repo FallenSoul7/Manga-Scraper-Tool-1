@@ -5,6 +5,7 @@ import { customFetch } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { proxyImage } from "@/lib/utils";
 import {
   Search,
@@ -12,6 +13,7 @@ import {
   Plus,
   Trash2,
   Loader2,
+  ShieldAlert,
   ChevronDown,
   ChevronRight,
   X,
@@ -19,6 +21,7 @@ import {
   Settings2,
   Pin,
   AlertCircle,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useStore, storeActions, type InstalledSource } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
@@ -65,12 +68,12 @@ function SourceAvatar({ src, size = 44 }: { src: { name: string; iconUrl: string
 
 // ─── Global search results ────────────────────────────────────────────────────
 interface GlobalResult { id: string; title: string; thumbnail: string; isNsfw?: boolean }
-interface SourceResults { source: InstalledSource; items: GlobalResult[]; loading: boolean }
+interface SourceResults { source: InstalledSource; items: GlobalResult[] }
 
 function GlobalSearchResults({ query, results, isSearching, onClear }: {
   query: string; results: SourceResults[]; isSearching: boolean; onClear: () => void;
 }) {
-  if (isSearching && results.length === 0) {
+  if (isSearching) {
     return (
       <div className="py-16 flex flex-col items-center gap-4 text-muted-foreground">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -78,26 +81,21 @@ function GlobalSearchResults({ query, results, isSearching, onClear }: {
       </div>
     );
   }
-  const withResults = results.filter(r => !r.loading && r.items.length > 0);
-  const doneCount = results.filter(r => !r.loading).length;
+  const withResults = results.filter(r => r.items.length > 0);
   return (
     <div className="space-y-1 px-4 pt-3">
       <div className="flex items-center justify-between pb-3">
         <p className="text-sm text-muted-foreground">
-          {results.length === 0
-            ? <>Searching…</>
-            : doneCount < results.length
-              ? <>{doneCount} / {results.length} sources searched…</>
-              : withResults.length > 0
-                ? <>{withResults.length} of {results.length} source{results.length !== 1 ? "s" : ""} returned results for <strong>"{query}"</strong></>
-                : <>No results across all sources for <strong>"{query}"</strong></>}
+          {results.length === 0 ? <>Searching…</> : withResults.length > 0
+            ? <>{withResults.length} of {results.length} source{results.length !== 1 ? "s" : ""} returned results for <strong>"{query}"</strong></>
+            : <>No results across all sources for <strong>"{query}"</strong></>}
         </p>
         <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={onClear}>
           <X className="h-3.5 w-3.5" /> Clear
         </Button>
       </div>
       <div className="space-y-7">
-        {results.map(({ source, items, loading }) => (
+        {results.map(({ source, items }) => (
           <div key={source.id}>
             <div className="flex items-center gap-2 mb-3">
               {source.iconUrl
@@ -106,21 +104,14 @@ function GlobalSearchResults({ query, results, isSearching, onClear }: {
               <span className="font-semibold text-sm">{source.name}</span>
               {source.isNsfw && <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">18+</span>}
               <span className="text-xs text-muted-foreground">{langLabel(source.lang)}</span>
-              {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
               <div className="flex-1" />
-              {!loading && (
-                <Link href={`/sources/${source.id}?q=${encodeURIComponent(query)}`}>
-                  <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer">
-                    See more <ChevronRight className="h-3 w-3" />
-                  </span>
-                </Link>
-              )}
+              <Link href={`/sources/${source.id}?q=${encodeURIComponent(query)}`}>
+                <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer">
+                  See more <ChevronRight className="h-3 w-3" />
+                </span>
+              </Link>
             </div>
-            {loading ? (
-              <div className="flex items-center gap-2 py-4 px-3 rounded-xl border bg-muted/30 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> Searching…
-              </div>
-            ) : items.length === 0 ? (
+            {items.length === 0 ? (
               <div className="flex items-center gap-2 py-4 px-3 rounded-xl border bg-muted/30 text-sm text-muted-foreground">
                 <SearchX className="h-4 w-4 shrink-0" /> No results from this source
               </div>
@@ -173,29 +164,25 @@ export default function SourcesPage() {
     if (urlQ === searchedQuery && globalResults.length > 0) return;
     setIsSearching(true);
     setSearchedQuery(urlQ);
-
-    // Initialize all sources as loading
-    const initial: SourceResults[] = installed.map(src => ({ source: src, items: [], loading: true }));
-    setGlobalResults(initial);
-
-    // Fetch each source individually and update as results arrive
-    installed.forEach(async (src) => {
-      try {
-        const res = await fetch(`/api/search?query=${encodeURIComponent(urlQ)}&page=1`, { headers: { "X-Source": src.id } });
-        const data = await res.json();
-        const items = (data.items ?? []).slice(0, 12);
-        setGlobalResults(prev => prev.map(r => r.source.id === src.id ? { ...r, items, loading: false } : r));
-      } catch {
-        setGlobalResults(prev => prev.map(r => r.source.id === src.id ? { ...r, items: [], loading: false } : r));
-      }
-    });
-
-    setIsSearching(false);
+    const run = async () => {
+      const all = await Promise.allSettled(
+        installed.map(async (src): Promise<SourceResults> => {
+          try {
+            const res = await fetch(`/api/search?query=${encodeURIComponent(urlQ)}&page=1`, { headers: { "X-Source": src.id } });
+            const data = await res.json();
+            return { source: src, items: (data.items ?? []).slice(0, 12) };
+          } catch { return { source: src, items: [] }; }
+        }),
+      );
+      setGlobalResults(all.map(r => r.status === "fulfilled" ? r.value : null).filter((r): r is SourceResults => r !== null));
+      setIsSearching(false);
+    };
+    run();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlQ]);
 
   const clearSearch = () => { setLocation("/sources"); setGlobalResults([]); setSearchedQuery(""); };
-  const showGlobalSearch = !!(urlQ || isSearching || globalResults.length > 0);
+  const showGlobalSearch = !!(urlQ || isSearching);
 
   const { data: catalog } = useQuery<CatalogResponse>({
     queryKey: ["sources-catalog"],
@@ -274,6 +261,7 @@ function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; act
           <p className="font-semibold text-sm text-foreground truncate">{src.name}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{langLabel(src.lang)}</p>
         </div>
+        {/* Action icons */}
         <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
           {isActive && (
             <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Settings">
@@ -282,7 +270,7 @@ function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; act
           )}
           <button
             className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
-            title="Pin"
+            title="Pinned"
           >
             <Pin className="h-4 w-4" />
           </button>
@@ -315,6 +303,7 @@ function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; act
 
   return (
     <div>
+      {/* Last used section */}
       {lastUsed && (
         <>
           <div className="px-4 pt-5 pb-2">
@@ -323,10 +312,13 @@ function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; act
           <SourceRow src={lastUsed} />
         </>
       )}
+
+      {/* Pinned section */}
       {pinned.length > 0 && (
         <>
-          <div className="px-4 pt-5 pb-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">All sources</p>
+          <div className="px-4 pt-5 pb-2 flex items-center gap-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Pinned</p>
+            <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
           </div>
           {pinned.map(src => <SourceRow key={src.id} src={src} />)}
         </>
@@ -335,7 +327,7 @@ function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; act
   );
 }
 
-// ─── Extensions tab ───────────────────────────────────────────────────────────
+// ─── Extensions (Browse) tab ──────────────────────────────────────────────────
 const SUPPORTED_FIRST = (a: CatalogExtension, b: CatalogExtension) =>
   Number(b.supported) - Number(a.supported) || a.name.localeCompare(b.name);
 const PAGE_SIZE = 60;
@@ -377,6 +369,7 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
 
   return (
     <div>
+      {/* Search + filters */}
       <div className="px-4 pt-4 pb-3 space-y-2">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -400,6 +393,7 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
         <p className="text-xs text-muted-foreground">Showing {visible.length.toLocaleString()} of {filtered.length.toLocaleString()}</p>
       </div>
 
+      {/* Extension rows */}
       <div className="divide-y divide-border/40">
         {visible.map(ext => {
           const isInstalled = !!installedMap[ext.id];
