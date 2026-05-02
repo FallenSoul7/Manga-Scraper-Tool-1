@@ -243,8 +243,14 @@ export default function MangaDetail() {
             <img
               src={proxyImage(manga.thumbnail, sourceContext ?? undefined)}
               alt=""
-              className="w-full h-full object-cover scale-110"
-              style={{ filter: "blur(20px)" }}
+              style={{
+                filter: "blur(20px)",
+                objectFit: "cover",
+                width: "110%",
+                height: "110%",
+                marginLeft: "-5%",
+                marginTop: "-5%",
+              }}
             />
             <div className="absolute inset-0 bg-background/80 dark:bg-background/88" />
           </div>

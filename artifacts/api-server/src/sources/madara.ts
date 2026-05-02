@@ -283,7 +283,22 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
       const url = `${baseUrl}/${path}/?style=list`;
       const { $ } = await fetchHtml(http, url);
       const pages: PageInfo[] = [];
-      $(".reading-content img, .page-break img, li.blocks-gallery-item img").each((i, el) => {
+      const sel = [
+        ".reading-content img",
+        ".page-break img",
+        "li.blocks-gallery-item img",
+        ".wp-manga-chapter-img",
+        "#chapter_imgs img",
+        ".chapter-image img",
+        ".read-content img",
+        "img.chapter-img",
+        ".chapter-single img",
+        ".chapter_imgs img",
+        "#chapter-imgs img",
+        ".comic-page img",
+        ".wp-block-image img",
+      ].join(", ");
+      $(sel).each((i, el) => {
         const src = imgAttr($(el));
         if (src) pages.push({ index: i, url: absUrl(baseUrl, src) });
       });

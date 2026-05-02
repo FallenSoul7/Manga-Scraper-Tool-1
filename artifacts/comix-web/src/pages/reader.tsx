@@ -578,22 +578,25 @@ export default function Reader() {
             ? { aspectRatio: `${dim.w} / ${dim.h}`, width: '100%' }
             : undefined;
 
+          const isWebtoon = readerSettings.direction === 'webtoon';
+          const isPaged = readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl';
+
           return (
             <div
               key={page.index}
               id={`page-${idx}`}
-              className={`reader-page relative flex-shrink-0 flex items-center justify-center bg-black ${
-                readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl'
-                ? 'w-[100vw] h-[100dvh] snap-center snap-always'
-                : 'w-full'
+              className={`reader-page relative flex-shrink-0 ${
+                isPaged
+                ? 'flex items-center justify-center bg-black w-[100vw] h-[100dvh] snap-center snap-always'
+                : isWebtoon
+                  ? 'w-full'
+                  : 'flex items-center justify-center bg-black w-full'
               } ${readerSettings.direction === 'vertical' ? 'mb-8' : ''}`}
               style={wrapperStyle}
             >
-              {/* Dark loading shell with spinner — visible until the real <img>
-                  decodes. Same exact rectangle as the final image, so when the
-                  image fades in there's zero layout shift. */}
+              {/* Dark loading shell with spinner */}
               {!isLoaded && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black text-white/40 pointer-events-none">
+                <div className={`${isWebtoon ? 'absolute inset-0' : 'absolute inset-0'} flex flex-col items-center justify-center bg-black text-white/40 pointer-events-none`}>
                   <Loader2 className="h-10 w-10 animate-spin" />
                   <div className="mt-3 text-xs tabular-nums">{idx + 1} / {pagesData.pages.length}</div>
                 </div>
@@ -607,20 +610,15 @@ export default function Reader() {
                 alt={`Page ${page.index}`}
                 width={dim.w}
                 height={dim.h}
-                className={`block max-w-full object-contain transition-opacity duration-200 ${
-                  isLoaded ? 'opacity-100' : 'opacity-0'
-                } ${fitClass} ${readerSettings.direction === 'webtoon' ? 'm-0 p-0 leading-none block' : ''}`}
-                /* Eager-load everything in vertical/webtoon so the browser also gets all
-                   pages in the queue immediately — combined with the dimension probe
-                   above, every slot is already locked to its final size. */
+                className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                 loading={isVerticalLike ? 'eager' : (idx < 3 ? 'eager' : 'lazy')}
                 decoding="async"
                 onLoad={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
                 onError={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
                 style={
-                  readerSettings.direction === 'webtoon'
-                    ? { display: 'block', marginBottom: '-1px', width: '100%', height: 'auto' }
-                    : undefined
+                  isWebtoon
+                    ? { display: 'block', width: '100%', height: 'auto', margin: 0, padding: 0, verticalAlign: 'top', lineHeight: 0 }
+                    : { display: 'block', maxWidth: '100%', objectFit: 'contain' }
                 }
               />
             </div>
