@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import { Link } from "wouter";
 import { proxyImage } from "@/lib/utils";
@@ -10,10 +10,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useRegisterHistoryHeader } from "@/lib/header-history";
 
 type TimePeriod = "last-hour" | "today" | "today-yesterday" | "all";
 
@@ -36,6 +36,7 @@ export default function HistoryPage() {
   const progressMap = useStore(s => s.progress);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [clearOpen, setClearOpen] = useState(false);
   const [confirmPeriod, setConfirmPeriod] = useState<TimePeriod | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -66,36 +67,17 @@ export default function HistoryPage() {
     });
   };
 
+  const onSearchClick = useCallback(() => setSearchOpen(v => !v), []);
+  const onClearClick = useCallback(() => setClearOpen(true), []);
+
+  useRegisterHistoryHeader({ onSearchClick, onClearClick });
+
   return (
     <main className="max-w-2xl mx-auto animate-in fade-in duration-500">
 
-      {/* Top bar */}
-      <div className="flex items-center gap-1 px-4 pt-3 pb-2">
-        <div className="flex-1" />
-        <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => setSearchOpen(v => !v)}>
-          <Search className="h-5 w-5" />
-        </Button>
-        {historyItems.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-destructive">
-                <Trash2 className="h-5 w-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              {(Object.keys(PERIOD_LABELS) as TimePeriod[]).map(p => (
-                <DropdownMenuItem key={p} className="text-destructive focus:text-destructive" onClick={() => setConfirmPeriod(p)}>
-                  {PERIOD_LABELS[p]}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-
-      {/* Inline search bar */}
+      {/* Inline search bar (slides in under the header) */}
       {searchOpen && (
-        <div className="px-4 pb-2">
+        <div className="px-4 pt-3 pb-1">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -105,10 +87,18 @@ export default function HistoryPage() {
               onChange={e => setQuery(e.target.value)}
               className="pl-9 pr-9 h-9 bg-muted/40 border-border/60"
             />
-            {query && (
+            {query ? (
               <button
                 type="button"
                 onClick={() => setQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSearchOpen(false)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
               >
                 <X className="h-3.5 w-3.5" />
@@ -130,7 +120,7 @@ export default function HistoryPage() {
           <p className="text-muted-foreground">No results for "{query}".</p>
         </div>
       ) : (
-        <div className="divide-y divide-border/40">
+        <div className="divide-y divide-border/40 pt-2">
           {filtered.map((item) => (
             <div key={`${item.mangaId}:${item.chapterId}`} className="flex items-center gap-4 px-4 py-3">
               <Link href={`/manga/${item.mangaId}`} className="shrink-0">
@@ -170,6 +160,24 @@ export default function HistoryPage() {
           ))}
         </div>
       )}
+
+      {/* Clear dropdown (triggered from header trash button) */}
+      <DropdownMenu open={clearOpen} onOpenChange={setClearOpen}>
+        <DropdownMenuTrigger asChild>
+          <span className="sr-only" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          {(Object.keys(PERIOD_LABELS) as TimePeriod[]).map(p => (
+            <DropdownMenuItem
+              key={p}
+              className="text-destructive focus:text-destructive"
+              onClick={() => { setClearOpen(false); setConfirmPeriod(p); }}
+            >
+              {PERIOD_LABELS[p]}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Confirm clear dialog */}
       <AlertDialog open={!!confirmPeriod} onOpenChange={open => { if (!open) setConfirmPeriod(null); }}>

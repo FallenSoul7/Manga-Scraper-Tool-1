@@ -1,9 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { Library, Clock, RefreshCw, Sun, Moon, Boxes, LayoutGrid } from "lucide-react";
+import { Library, Clock, RefreshCw, Sun, Moon, Boxes, LayoutGrid, Search, Trash2 } from "lucide-react";
 import { useUpdatesCount } from "@/hooks/use-updates-count";
 import { useStore, storeActions } from "@/lib/storage";
 import { Button } from "./ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { useHistoryHeader } from "@/lib/header-history";
 
 const PAGE_TITLES: Record<string, string> = {
   "/updates": "Updates",
@@ -18,6 +19,7 @@ export function Header() {
   const [location] = useLocation();
   const { totalNew } = useUpdatesCount();
   const theme = useStore(s => s.theme);
+  const historyScope = useHistoryHeader();
 
   const isHome    = location === "/";
   const isUpdates = location === "/updates";
@@ -79,6 +81,29 @@ export function Header() {
           <div className="flex-1" />
 
           <div className="flex items-center gap-1 shrink-0">
+            {/* History page actions */}
+            {isHistory && historyScope && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                  onClick={historyScope.onSearchClick}
+                >
+                  <Search className="h-5 w-5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                  onClick={historyScope.onClearClick}
+                >
+                  <Trash2 className="h-5 w-5" />
+                </Button>
+              </>
+            )}
+
+            {/* Theme toggle */}
             {showTheme && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
