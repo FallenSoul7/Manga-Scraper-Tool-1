@@ -87,6 +87,10 @@ export function getSource(id: string | undefined | null): MangaSource {
   return src;
 }
 
+export function getSourceOrNull(id: string): MangaSource | null {
+  return SOURCES_BY_ID.get(id) ?? null;
+}
+
 export function isSupported(id: string): boolean {
   return SOURCES_BY_ID.has(id);
 }

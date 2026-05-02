@@ -173,6 +173,9 @@ let tagCache: SourceTag[] | null = null;
 
 // ────────── Source ──────────
 
+// Sort values: 0=Newest, 1=Popular, 2=Most Fapped, 3=Most Viewed
+const NINE_SORTS: Record<string, number> = { "0": 0, "1": 1, "2": 2, "3": 3 };
+
 export const NineHentaiSource: MangaSource = {
   id: "en.ninehentai",
   name: "9Hentai",
@@ -180,9 +183,17 @@ export const NineHentaiSource: MangaSource = {
   isNsfw: true,
   imageReferer: `${BASE_URL}/`,
 
+  popularSorts: [
+    { value: "1", label: "Popular" },
+    { value: "3", label: "Most Viewed" },
+    { value: "2", label: "Most Fapped" },
+  ],
+
   async popular(o: ListOptions) {
-    // sort=1 = "Popular right now"
-    return fetchPage(1, o.page);
+    const sortNum = o.sort !== undefined && NINE_SORTS[o.sort] !== undefined
+      ? NINE_SORTS[o.sort]
+      : 1;
+    return fetchPage(sortNum, o.page);
   },
 
   async latest(o: ListOptions) {

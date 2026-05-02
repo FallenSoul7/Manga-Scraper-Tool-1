@@ -6,6 +6,13 @@ export interface ListOptions {
   poster: PosterQuality;
   /** Tag IDs (source-specific, e.g. comix `term_id`s) to filter the listing by. */
   tagIds?: string[];
+  /** Optional sort key passed through from the client (source-defined values). */
+  sort?: string;
+}
+
+export interface PopularSortOption {
+  value: string;
+  label: string;
 }
 
 export interface SourceTag {
@@ -95,6 +102,9 @@ export interface MangaSource {
 
   /** Returns the tags the user can filter by on this source. Optional. */
   tags?(): Promise<SourceTag[]>;
+
+  /** Extra sort options for the popular listing (e.g. Most Viewed, Most Fapped). */
+  popularSorts?: PopularSortOption[];
 
   imageReferer?: string;
 }

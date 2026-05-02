@@ -245,7 +245,14 @@ export default function LibraryPage() {
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-5">
           {filteredItems.map(manga => (
-            <MangaCard key={manga.id} manga={manga as any} />
+            <MangaCard
+              key={manga.id}
+              manga={manga as any}
+              sourceId={(manga as any).sourceId}
+              href={(manga as any).sourceId
+                ? `/sources/${(manga as any).sourceId}/manga/${manga.id}`
+                : `/manga/${manga.id}`}
+            />
           ))}
         </div>
       )}

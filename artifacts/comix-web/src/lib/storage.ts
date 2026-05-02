@@ -26,6 +26,7 @@ const SavedMangaSchema = z.object({
   isNsfw: z.boolean().optional(),
   author: z.string().optional(),
   status: z.string().optional(),
+  sourceId: z.string().optional(),
   addedAt: z.number(),
   categoryIds: z.array(z.string()),
   lastChapterCountSeen: z.number(),

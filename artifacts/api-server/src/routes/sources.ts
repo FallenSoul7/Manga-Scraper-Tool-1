@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import path from "node:path";
 import express from "express";
-import { getCatalog, listSupportedIds } from "../sources/registry";
+import { getCatalog, listSupportedIds, getSourceOrNull } from "../sources/registry";
 
 const router: IRouter = Router();
 
@@ -12,11 +12,15 @@ router.get("/sources/catalog", (_req, res) => {
     generatedAt: cat.generatedAt,
     count: cat.count,
     supportedIds: Array.from(supported),
-    extensions: cat.extensions.map((e) => ({
-      ...e,
-      supported: supported.has(e.id),
-      iconUrl: e.icon ? `/api/sources/icon/${e.icon}` : null,
-    })),
+    extensions: cat.extensions.map((e) => {
+      const src = getSourceOrNull(e.id);
+      return {
+        ...e,
+        supported: supported.has(e.id),
+        iconUrl: e.icon ? `/api/sources/icon/${e.icon}` : null,
+        popularSorts: src?.popularSorts ?? [],
+      };
+    }),
   });
 });
 

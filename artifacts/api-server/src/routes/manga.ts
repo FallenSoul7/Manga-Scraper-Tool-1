@@ -51,11 +51,13 @@ function parseTagIds(req: Request): string[] | undefined {
 }
 
 function listOpts(req: Request) {
+  const sort = typeof req.query["sort"] === "string" ? req.query["sort"] : undefined;
   return {
     page: parsePage(req.query["page"]),
     nsfw: parseBool(req.query["nsfw"], false),
     poster: parsePoster(req.query["poster"]),
     tagIds: parseTagIds(req),
+    sort,
   };
 }
 

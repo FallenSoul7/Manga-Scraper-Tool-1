@@ -67,6 +67,7 @@ export default function MangaDetail() {
   const library = useStore(s => s.library);
   const categories = useStore(s => s.categories);
   const progressMap = useStore(s => s.progress);
+  const activeSourceId = useStore(s => s.activeSourceId);
   const scanlatorPrefs = useStore(s => s.scanlatorPrefs);
   const chapterSortAsc = useStore(s => s.chapterSortAsc);
   
@@ -202,6 +203,7 @@ export default function MangaDetail() {
         isNsfw: manga.isNsfw,
         author: manga.author || manga.artist,
         status: manga.status,
+        sourceId: sourceContext ?? activeSourceId,
         addedAt: Date.now(),
         categoryIds: ['default'],
         lastChapterCountSeen: visibleChapters.length || 0,

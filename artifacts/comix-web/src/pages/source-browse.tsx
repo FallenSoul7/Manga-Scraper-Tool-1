@@ -26,9 +26,11 @@ interface ListResponse { items: MangaSummary[]; page: number; hasNextPage: boole
 type TagTriState = "include" | "exclude";
 type ActiveTab = "popular" | "latest" | "filter";
 
+interface PopularSortOption { value: string; label: string; }
 interface CatalogEntry {
   id: string; name: string; lang: string; isNsfw: boolean;
   iconUrl?: string | null; supported?: boolean;
+  popularSorts?: PopularSortOption[];
 }
 
 // ---------------------------------------------------------------------------
@@ -143,8 +145,12 @@ export default function SourceBrowsePage() {
     isNsfw: catalogEntry.isNsfw,
   } : null);
 
+  // Extra sort options provided by this source (e.g. Most Viewed, Most Fapped on 9Hentai).
+  const popularSorts: PopularSortOption[] = catalogEntry?.popularSorts ?? [];
+
   // ---- Active tab & search state ----
   const [tab, setTab] = useState<ActiveTab>("popular");
+  const [popularSort, setPopularSort] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -173,12 +179,18 @@ export default function SourceBrowsePage() {
   // Reset state on source change.
   useEffect(() => {
     setTab("popular");
+    setPopularSort(null);
     setSearchOpen(false); setSearchInput(""); setSearchQuery("");
     setAppliedTagState({});
     setPopularPage(1); setPopularItems([]);
     setLatestPage(1); setLatestItems([]);
     setFilterPage(1); setFilterItems([]);
   }, [sourceId]);
+
+  // Reset popular pagination when sort changes.
+  useEffect(() => {
+    setPopularPage(1); setPopularItems([]);
+  }, [popularSort]);
 
   // Debounce search input.
   useEffect(() => {
@@ -225,8 +237,8 @@ export default function SourceBrowsePage() {
   };
 
   const popularQuery = useQuery<ListResponse>({
-    queryKey: ["source-popular", sourceId, popularPage, settings.hideNsfw, settings.posterQuality],
-    queryFn: () => customFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage) })}`),
+    queryKey: ["source-popular", sourceId, popularPage, popularSort, settings.hideNsfw, settings.posterQuality],
+    queryFn: () => customFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
     enabled: !!sourceId && !!source && tab === "popular" && !isFiltering,
     staleTime: 5 * 60 * 1000,
     retry: 1,
@@ -425,7 +437,9 @@ export default function SourceBrowsePage() {
 
         {/* Tab bar — hidden when text-searching */}
         {!inSearchMode && (
-          <div className="flex items-center gap-1 px-4 pb-3">
+          <div className="flex flex-col gap-1.5 px-4 pb-3">
+            {/* Primary Popular / Latest tabs */}
+            <div className="flex items-center gap-1">
             {(["popular", "latest"] as const).map(v => (
               <button
                 key={v}
@@ -484,6 +498,27 @@ export default function SourceBrowsePage() {
               >
                 <X className="h-3 w-3" /> Clear filter
               </button>
+            )}
+            </div>{/* end primary tab row */}
+
+            {/* Sort sub-pills — shown under Popular tab when source exposes sort options */}
+            {tab === "popular" && !isFiltering && popularSorts.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {popularSorts.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setPopularSort(opt.value === popularSort ? null : opt.value)}
+                    className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors whitespace-nowrap ${
+                      popularSort === opt.value
+                        ? "bg-primary/15 text-primary border-primary/40"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted border-transparent"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}
