@@ -93,10 +93,10 @@ export interface ThemeOption {
 export const THEME_OPTIONS: ThemeOption[] = [
   { id: 'light',      label: 'Light',      swatch: '#9b5b3f', bg: '#f5efe6', isDark: false },
   { id: 'dark',       label: 'Dark',       swatch: '#c98a6c', bg: '#0d0a09', isDark: true  },
-  { id: 'neon-green', label: 'Neon Green', swatch: '#39ff14', bg: '#06140a', isDark: true  },
+  { id: 'neon-green', label: 'Neon Green', swatch: '#00ff00', bg: '#010801', isDark: true  },
   { id: 'orange',     label: 'Orange',     swatch: '#ff8a1a', bg: '#1a120a', isDark: true  },
   { id: 'blue',       label: 'Blue',       swatch: '#3b82f6', bg: '#0a1326', isDark: true  },
-  { id: 'emerald',    label: 'Emerald',    swatch: '#10b981', bg: '#06170f', isDark: true  },
+  { id: 'emerald',    label: 'Emerald',    swatch: '#0fbcaa', bg: '#010c0b', isDark: true  },
 ];
 
 const InstalledSourceSchema = z.object({
