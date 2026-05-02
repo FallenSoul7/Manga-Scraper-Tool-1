@@ -39,10 +39,12 @@ export default function HistoryPage() {
   const handleClearRange = (range: "hour" | "day" | "all") => {
     if (range === "all") {
       storeActions.clearHistory();
+    } else if (range === "hour") {
+      storeActions.clearHistoryBefore(Date.now() - 60 * 60 * 1000);
     } else {
-      const ms = range === "hour" ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-      const cutoff = Date.now() - ms;
-      storeActions.clearHistoryBefore(cutoff);
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      storeActions.clearHistoryBefore(startOfToday.getTime());
     }
   };
 

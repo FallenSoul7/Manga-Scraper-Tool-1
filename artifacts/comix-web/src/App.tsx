@@ -59,6 +59,7 @@ function AppContent() {
               <Route path="/" component={LibraryPage} />
               <Route path="/search" component={SearchPage} />
               <Route path="/manga/:id" component={MangaDetail} />
+              <Route path="/sources/:sourceId/manga/:mangaId" component={MangaDetail} />
               <Route path="/settings" component={SettingsPage} />
               <Route path="/updates" component={UpdatesPage} />
               <Route path="/history" component={HistoryPage} />

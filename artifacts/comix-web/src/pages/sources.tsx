@@ -256,11 +256,12 @@ function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; act
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const lastUsed = installed.find(s => s.id === activeId);
-  const pinned   = installed.filter(s => s.id !== activeId);
+  const pinnedSources = installed.filter(s => s.isPinned).sort((a, b) => a.name.localeCompare(b.name));
+  const lastUsed      = installed.find(s => s.id === activeId && !s.isPinned);
+  const rest          = installed.filter(s => !s.isPinned && s.id !== activeId).sort((a, b) => a.name.localeCompare(b.name));
 
   function SourceRow({ src }: { src: InstalledSource }) {
-    const isActive = src.id === activeId;
+    const isPinned = !!src.isPinned;
     return (
       <div
         role="button"
@@ -275,16 +276,15 @@ function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; act
           <p className="text-xs text-muted-foreground mt-0.5">{langLabel(src.lang)}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-          {isActive && (
-            <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Settings">
-              <Settings2 className="h-4 w-4" />
-            </button>
-          )}
+          <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Settings">
+            <Settings2 className="h-4 w-4" />
+          </button>
           <button
-            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
-            title="Pin"
+            className={`h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors ${isPinned ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
+            title={isPinned ? "Unpin" : "Pin"}
+            onClick={() => storeActions.togglePinSource(src.id)}
           >
-            <Pin className="h-4 w-4" />
+            <Pin className={`h-4 w-4 ${isPinned ? "fill-current" : ""}`} />
           </button>
           {src.id !== "en.comix" ? (
             <button
@@ -315,6 +315,14 @@ function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; act
 
   return (
     <div>
+      {pinnedSources.length > 0 && (
+        <>
+          <div className="px-4 pt-5 pb-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Pinned</p>
+          </div>
+          {pinnedSources.map(src => <SourceRow key={src.id} src={src} />)}
+        </>
+      )}
       {lastUsed && (
         <>
           <div className="px-4 pt-5 pb-2">
@@ -323,12 +331,12 @@ function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; act
           <SourceRow src={lastUsed} />
         </>
       )}
-      {pinned.length > 0 && (
+      {rest.length > 0 && (
         <>
           <div className="px-4 pt-5 pb-2">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">All sources</p>
           </div>
-          {pinned.map(src => <SourceRow key={src.id} src={src} />)}
+          {rest.map(src => <SourceRow key={src.id} src={src} />)}
         </>
       )}
     </div>
@@ -423,7 +431,7 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
                   size="sm" variant={ext.supported ? "default" : "outline"}
                   disabled={!ext.supported} className="h-8 text-xs px-3 shrink-0"
                   onClick={() => {
-                    storeActions.installSource({ id: ext.id, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl });
+                    storeActions.installSource({ id: ext.id, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl, isPinned: false });
                     toast({ title: `Added ${ext.name}`, description: "Open the Sources tab to browse it." });
                   }}
                 >

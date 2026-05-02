@@ -179,7 +179,7 @@ export function Header() {
                       className="text-destructive focus:text-destructive"
                       onClick={() => historyScope.onClearRange("day")}
                     >
-                      Remove last 24 hours
+                      Remove today
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem

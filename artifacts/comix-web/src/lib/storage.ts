@@ -108,6 +108,7 @@ const InstalledSourceSchema = z.object({
   isNsfw: z.boolean(),
   iconUrl: z.string().nullable(),
   installedAt: z.number(),
+  isPinned: z.boolean().optional().default(false),
 });
 export type InstalledSource = z.infer<typeof InstalledSourceSchema>;
 
@@ -118,6 +119,7 @@ export const DEFAULT_SOURCE: InstalledSource = {
   isNsfw: false,
   iconUrl: null,
   installedAt: 0,
+  isPinned: false,
 };
 
 const StoreStateSchema = z.object({
@@ -514,6 +516,13 @@ export const storeActions = {
       return p ? p.updatedAt < cutoffMs : false;
     });
     saveState({ ...memoryState, history: newHistory });
+  },
+
+  togglePinSource(id: string) {
+    const existing = memoryState.installedSources[id];
+    if (!existing) return;
+    const updated = { ...existing, isPinned: !existing.isPinned };
+    saveState({ ...memoryState, installedSources: { ...memoryState.installedSources, [id]: updated } });
   },
 
   setReader(updates: Partial<ReaderSettings>) {
