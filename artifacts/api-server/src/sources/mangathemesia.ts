@@ -9,6 +9,7 @@ import type {
   MangaSummary,
   ChapterSummary,
   PageInfo,
+  SourceTag,
 } from "./types";
 import { absUrl, fetchHtml, imgAttr, makeHttp } from "./scraper-utils";
 import * as cheerio from "cheerio";
@@ -45,8 +46,10 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
   const dir = (opts.mangaUrlDirectory || "/manga").replace(/^\/?/, "/");
   const http = makeHttp(baseUrl);
 
+  // Cache scraped tags so we don't hit the site on every filter request.
+  let cachedTags: SourceTag[] | null = null;
+
   function listSelector($: cheerio.CheerioAPI) {
-    // Match the kotlin selector: ".utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx"
     return $(".utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx");
   }
 
@@ -67,8 +70,27 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
     };
   }
 
-  async function fetchList(qs: Record<string, string>, page: number): Promise<MangaListResponse> {
-    const url = `${baseUrl}${dir}/?${new URLSearchParams({ ...qs, page: String(page) }).toString()}`;
+  /** Build the URL params for a listing, including genre filters.
+   *  Only positive tag IDs are sent (IDs starting with "-" are exclusions
+   *  but MangaThemesia doesn't support genre exclusion natively, so skip them). */
+  function genreParams(tagIds?: string[]): Record<string, string | string[]> {
+    if (!tagIds || tagIds.length === 0) return {};
+    const positive = tagIds.filter(id => !id.startsWith("-"));
+    if (positive.length === 0) return {};
+    return { "genre[]": positive };
+  }
+
+  async function fetchList(
+    qs: Record<string, string | string[]>,
+    page: number,
+  ): Promise<MangaListResponse> {
+    const sp = new URLSearchParams();
+    for (const [k, v] of Object.entries(qs)) {
+      if (Array.isArray(v)) { for (const item of v) sp.append(k, item); }
+      else sp.set(k, v);
+    }
+    sp.set("page", String(page));
+    const url = `${baseUrl}${dir}/?${sp.toString()}`;
     const { $ } = await fetchHtml(http, url);
     const items: MangaSummary[] = [];
     listSelector($).each((_i, el) => {
@@ -87,13 +109,84 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
     imageReferer: `${baseUrl}/`,
 
     async popular(o: ListOptions) {
-      return fetchList({ order: "popular" }, o.page);
+      return fetchList({ order: "popular", ...genreParams(o.tagIds) }, o.page);
     },
     async latest(o: ListOptions) {
-      return fetchList({ order: "update" }, o.page);
+      return fetchList({ order: "update", ...genreParams(o.tagIds) }, o.page);
     },
     async search(query: string, o: ListOptions) {
-      return fetchList({ title: query }, o.page);
+      return fetchList({ title: query, ...genreParams(o.tagIds) }, o.page);
+    },
+
+    /** Scrape the genre filter list from the directory page. Results are
+     *  cached in memory for the lifetime of the process. */
+    async tags(): Promise<SourceTag[]> {
+      if (cachedTags) return cachedTags;
+
+      try {
+        const { $ } = await fetchHtml(http, `${baseUrl}${dir}/`);
+        const tags: SourceTag[] = [];
+        const seen = new Set<string>();
+
+        // Strategy 1: checkbox inputs inside a genre filter form.
+        $('input[name="genre[]"], input[type="checkbox"][value]').each((_i, el) => {
+          const $el = $(el);
+          const value = $el.attr("value")?.trim();
+          if (!value || seen.has(value)) return;
+          const label = $el.closest("label").text().trim()
+            || $(`label[for="${$el.attr("id")}"]`).text().trim()
+            || $el.closest(".genre-item, .checkbox_group").find("label").text().trim()
+            || value;
+          seen.add(value);
+          tags.push({ id: value, name: label || value, group: "Genre" });
+        });
+
+        // Strategy 2: genre links in a sidebar / filter section.
+        if (tags.length === 0) {
+          $("a[href]").each((_i, el) => {
+            const $el = $(el);
+            const href = $el.attr("href") || "";
+            const m = href.match(/[?&]genre(?:\[\])?=([^&]+)/);
+            if (!m) return;
+            const value = decodeURIComponent(m[1]).trim();
+            if (!value || seen.has(value)) return;
+            const name = $el.text().trim();
+            if (!name || name.length > 40) return;
+            seen.add(value);
+            tags.push({ id: value, name, group: "Genre" });
+          });
+        }
+
+        // Strategy 3: dedicated genres/tags page (/genre/, /tags/).
+        if (tags.length === 0) {
+          for (const path of ["/genre/", "/tags/", "/genres/"]) {
+            try {
+              const { $ } = await fetchHtml(http, `${baseUrl}${path}`);
+              $("a[href]").each((_i, el) => {
+                const $el = $(el);
+                const href = $el.attr("href") || "";
+                if (!href.includes(path.replace(/\//g, ""))) return;
+                const m = href.match(new RegExp(`${path}([^/]+)/?$`));
+                if (!m) return;
+                const value = m[1].trim();
+                if (!value || seen.has(value)) return;
+                const name = $el.text().trim();
+                if (!name || name.length > 40) return;
+                seen.add(value);
+                tags.push({ id: value, name, group: "Genre" });
+              });
+              if (tags.length > 0) break;
+            } catch {
+              // ignore
+            }
+          }
+        }
+
+        cachedTags = tags;
+        return tags;
+      } catch {
+        return [];
+      }
     },
 
     async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
@@ -116,10 +209,7 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
             const text = $el.text().toLowerCase();
             if (text.includes(ll)) {
               const v = $el.find("i, td:last-child, span").last().text().trim();
-              if (v) {
-                found = v;
-                return false;
-              }
+              if (v) { found = v; return false; }
             }
             return undefined;
           });
@@ -166,11 +256,7 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
         const a = $el.find("a").first();
         const href = a.attr("href");
         if (!href || href === "#") return;
-        const name = (
-          $el.find(".chapternum").text() || a.text()
-        )
-          .replace(/\s+/g, " ")
-          .trim();
+        const name = ($el.find(".chapternum").text() || a.text()).replace(/\s+/g, " ").trim();
         if (!name) return;
         const num = Number((name.match(/chapter\s*([\d.]+)/i) || name.match(/([\d.]+)/) || [])[1]) || 0;
         const dateText = $el.find(".chapterdate").text().trim();
@@ -192,10 +278,8 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
       const path = decodeURIComponent(chapterId);
       const url = `${baseUrl}/${path}/`;
       const { $, html } = await fetchHtml(http, url);
-
       const pages: PageInfo[] = [];
 
-      // Mangathemesia stores the page list inside `ts_reader.run({...})` JSON
       const m = html.match(/ts_reader\.run\((\{[\s\S]+?\})\)/);
       if (m) {
         try {
@@ -205,9 +289,7 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
           imgs.forEach((src, i) => {
             if (src) pages.push({ index: i, url: absUrl(baseUrl, src) });
           });
-        } catch {
-          /* fall through */
-        }
+        } catch { /* fall through */ }
       }
       if (pages.length === 0) {
         $("#readerarea img, div.reader-area img").each((i, el) => {

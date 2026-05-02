@@ -23,7 +23,7 @@ import type { SourceTag } from "@/lib/header-search";
 // ---------------------------------------------------------------------------
 interface MangaSummary { id: string; title: string; thumbnail: string; type: string; isNsfw: boolean }
 interface ListResponse { items: MangaSummary[]; page: number; hasNextPage: boolean }
-type TagState = "include" | "exclude";
+type TagTriState = "include" | "exclude";
 type ActiveTab = "popular" | "latest" | "filter";
 
 // ---------------------------------------------------------------------------
@@ -53,14 +53,16 @@ export default function SourceBrowsePage() {
   const theme = useStore(s => s.theme);
   const { settings } = useSettings();
 
-  // ---- UI state ----
+  // ---- Active tab & search state ----
   const [tab, setTab] = useState<ActiveTab>("popular");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [searchInput, setSearchInput] = useState("");   // raw typing
-  const [searchQuery, setSearchQuery] = useState("");   // debounced
-  const [tagState, setTagState] = useState<Record<string, TagState>>({});
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Applied filter state (only changes when "Apply" is pressed in the popover)
+  const [appliedTagState, setAppliedTagState] = useState<Record<string, TagTriState>>({});
+
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
-  const [tagSearch, setTagSearch] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // ---- Pagination ----
@@ -83,7 +85,7 @@ export default function SourceBrowsePage() {
   useEffect(() => {
     setTab("popular");
     setSearchOpen(false); setSearchInput(""); setSearchQuery("");
-    setTagState({});
+    setAppliedTagState({});
     setPopularPage(1); setPopularItems([]);
     setLatestPage(1); setLatestItems([]);
     setFilterPage(1); setFilterItems([]);
@@ -96,40 +98,32 @@ export default function SourceBrowsePage() {
   }, [searchInput]);
 
   // Reset filter page on query/tag changes.
+  const appliedTagKey = JSON.stringify(appliedTagState);
   useEffect(() => {
     setFilterPage(1);
     setFilterItems([]);
-  }, [searchQuery, JSON.stringify(tagState)]);
+  }, [searchQuery, appliedTagKey]);
 
   // Derived tag lists sent to the API.
   const includedTagIds = useMemo(
-    () => Object.entries(tagState).filter(([, s]) => s === "include").map(([id]) => id),
-    [tagState],
+    () => Object.entries(appliedTagState).filter(([, s]) => s === "include").map(([id]) => id),
+    [appliedTagState],
   );
   const excludedTagIds = useMemo(
-    () => Object.entries(tagState).filter(([, s]) => s === "exclude").map(([id]) => `-${id}`),
-    [tagState],
+    () => Object.entries(appliedTagState).filter(([, s]) => s === "exclude").map(([id]) => `-${id}`),
+    [appliedTagState],
   );
   const allTagIds = [...includedTagIds, ...excludedTagIds];
-  const hasFilter = allTagIds.length > 0;
-  const isFiltering = hasFilter || searchQuery.length > 0;
 
-  // Auto-switch to filter tab & open search when filter becomes active.
-  useEffect(() => {
-    if (hasFilter) {
-      setTab("filter");
-      setSearchOpen(true);
-    }
-  }, [hasFilter]);
-  useEffect(() => {
-    if (isFiltering && tab !== "filter") setTab("filter");
-  }, [isFiltering]);
+  // isFiltering: tag filters OR search text active
+  const hasAppliedTags = allTagIds.length > 0;
+  const isSearching = searchQuery.length > 0;           // pure text search → no tabs
+  const isTagFiltering = hasAppliedTags && !isSearching; // tags only → show filter tab
+  const isFiltering = hasAppliedTags || isSearching;
 
   // Focus search input when it opens.
   useEffect(() => {
-    if (searchOpen) {
-      setTimeout(() => searchInputRef.current?.focus(), 50);
-    }
+    if (searchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
   }, [searchOpen]);
 
   // ---- Tags ----
@@ -149,14 +143,14 @@ export default function SourceBrowsePage() {
   const popularQuery = useQuery<ListResponse>({
     queryKey: ["source-popular", sourceId, popularPage, settings.hideNsfw, settings.posterQuality],
     queryFn: () => customFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage) })}`),
-    enabled: !!sourceId && !!source && tab === "popular",
+    enabled: !!sourceId && !!source && tab === "popular" && !isFiltering,
     staleTime: 5 * 60 * 1000,
   });
 
   const latestQuery = useQuery<ListResponse>({
     queryKey: ["source-latest", sourceId, latestPage, settings.hideNsfw, settings.posterQuality],
     queryFn: () => customFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage) })}`),
-    enabled: !!sourceId && !!source && tab === "latest",
+    enabled: !!sourceId && !!source && tab === "latest" && !isFiltering,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -168,7 +162,7 @@ export default function SourceBrowsePage() {
       page: String(filterPage),
       "tagIds[]": allTagIds,
     })}`),
-    enabled: !!sourceId && !!source && tab === "filter" && isFiltering,
+    enabled: !!sourceId && !!source && isFiltering,
     staleTime: 30 * 1000,
   });
 
@@ -197,84 +191,65 @@ export default function SourceBrowsePage() {
     );
   }, [filterQuery.data, filterPage]);
 
-  // ---- Tag cycling: neutral → include → exclude → neutral ----
-  const cycleTag = useCallback((id: string) => {
-    setTagState(prev => {
-      const cur = prev[id];
-      if (!cur) return { ...prev, [id]: "include" };
-      if (cur === "include") return { ...prev, [id]: "exclude" };
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
+  // ---- Handlers ----
+
+  // Clicking Popular or Latest clears all filter state.
+  const handleBrowseTab = useCallback((newTab: "popular" | "latest") => {
+    setAppliedTagState({});
+    setSearchInput(""); setSearchQuery("");
+    setSearchOpen(false);
+    setTab(newTab);
   }, []);
 
-  const clearFilter = () => {
-    setTagState({});
-    setSearchInput(""); setSearchQuery("");
-    setTab("popular");
-    setSearchOpen(false);
-  };
-
-  // ---- Tag popover grouping ----
-  const groupedTags = useMemo(() => {
-    const q = tagSearch.trim().toLowerCase();
-    const map = new Map<string, SourceTag[]>();
-    for (const t of availableTags) {
-      if (q && !t.name.toLowerCase().includes(q)) continue;
-      const key = t.group ?? "Tags";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(t);
+  // Called when Apply is pressed in the popover.
+  const handleApplyFilter = useCallback((newState: Record<string, TagTriState>) => {
+    setAppliedTagState(newState);
+    setFilterPopoverOpen(false);
+    if (Object.keys(newState).length > 0) {
+      setTab("filter");
     }
-    return Array.from(map.entries());
-  }, [availableTags, tagSearch]);
-
-  const activeTagCount = Object.keys(tagState).length;
-
-  // ---- Render helpers ----
-  const TabBtn = ({ value, label }: { value: ActiveTab; label: string }) => (
-    <button
-      type="button"
-      onClick={() => { setTab(value); if (value !== "filter") clearFilter(); }}
-      className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap ${
-        tab === value
-          ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted"
-      }`}
-    >
-      {label}
-    </button>
-  );
+  }, []);
 
   if (!source) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
         <p className="text-muted-foreground">Source not installed.</p>
         <Link href="/sources"><Button variant="outline">Back to sources</Button></Link>
       </div>
     );
   }
 
-  // Determine which grid to show.
-  let gridItems: MangaSummary[] = [];
-  let gridLoading = false;
-  let gridFetching = false;
-  let gridHasNext = false;
-  let gridLoadMore = () => {};
+  // Determine which data to show.
+  const inSearchMode = isSearching; // text search → bypass tabs entirely
+  const inFilterMode = isTagFiltering; // tags only → show Filter tab
 
-  if (tab === "popular") {
-    gridItems = popularItems; gridLoading = popularQuery.isFetching && popularItems.length === 0;
-    gridFetching = popularQuery.isFetching; gridHasNext = !!popularQuery.data?.hasNextPage;
-    gridLoadMore = () => setPopularPage(p => p + 1);
+  let gridItems: MangaSummary[];
+  let gridLoading: boolean;
+  let gridFetching: boolean;
+  let gridHasNext: boolean;
+  let gridLoadMore: () => void;
+
+  if (inSearchMode || inFilterMode) {
+    gridItems = filterItems;
+    gridLoading = filterQuery.isFetching && filterItems.length === 0;
+    gridFetching = filterQuery.isFetching;
+    gridHasNext = !!filterQuery.data?.hasNextPage;
+    gridLoadMore = () => setFilterPage(p => p + 1);
   } else if (tab === "latest") {
-    gridItems = latestItems; gridLoading = latestQuery.isFetching && latestItems.length === 0;
-    gridFetching = latestQuery.isFetching; gridHasNext = !!latestQuery.data?.hasNextPage;
+    gridItems = latestItems;
+    gridLoading = latestQuery.isFetching && latestItems.length === 0;
+    gridFetching = latestQuery.isFetching;
+    gridHasNext = !!latestQuery.data?.hasNextPage;
     gridLoadMore = () => setLatestPage(p => p + 1);
   } else {
-    gridItems = filterItems; gridLoading = filterQuery.isFetching && filterItems.length === 0;
-    gridFetching = filterQuery.isFetching; gridHasNext = !!filterQuery.data?.hasNextPage;
-    gridLoadMore = () => setFilterPage(p => p + 1);
+    gridItems = popularItems;
+    gridLoading = popularQuery.isFetching && popularItems.length === 0;
+    gridFetching = popularQuery.isFetching;
+    gridHasNext = !!popularQuery.data?.hasNextPage;
+    gridLoadMore = () => setPopularPage(p => p + 1);
   }
+
+  const activeTabValue: ActiveTab = inSearchMode ? "filter" : inFilterMode ? "filter" : tab;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -284,7 +259,6 @@ export default function SourceBrowsePage() {
 
         {/* Title row */}
         <div className="flex items-center gap-3 px-4 h-14">
-          {/* Source title */}
           <div className="flex-1 min-w-0">
             <h1 className="font-serif font-bold text-lg sm:text-xl truncate leading-tight">{source.name}</h1>
             <p className="text-[11px] text-muted-foreground leading-none mt-0.5">
@@ -293,27 +267,23 @@ export default function SourceBrowsePage() {
             </p>
           </div>
 
-          {/* Right controls: ← back · search · theme */}
           <div className="flex items-center gap-0.5 shrink-0">
-            {/* Back — sits right before search, very close */}
             <Link href="/sources">
               <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Back to sources">
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>
 
-            {/* Search toggle */}
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className={`h-9 w-9 ${searchOpen ? "text-primary" : ""}`}
               aria-label="Search"
               onClick={() => setSearchOpen(o => !o)}
             >
               <Search className="h-5 w-5" />
             </Button>
 
-            {/* Theme */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" aria-label="Theme">
@@ -356,109 +326,98 @@ export default function SourceBrowsePage() {
           </div>
         )}
 
-        {/* Tab bar: Popular · Latest · Filter */}
-        <div className="flex items-center gap-1 px-4 pb-3">
-          <TabBtn value="popular" label="Popular" />
-          <TabBtn value="latest" label="Latest" />
-
-          {/* Filter button — opens tag picker */}
-          <Popover open={filterPopoverOpen} onOpenChange={setFilterPopoverOpen}>
-            <PopoverTrigger asChild>
+        {/* Tab bar — hidden when in text-search mode */}
+        {!inSearchMode && (
+          <div className="flex items-center gap-1 px-4 pb-3">
+            {(["popular", "latest"] as const).map(v => (
               <button
+                key={v}
                 type="button"
-                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap border ${
-                  activeTagCount > 0
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted border-transparent"
+                onClick={() => handleBrowseTab(v)}
+                className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap capitalize ${
+                  activeTabValue === v
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
               >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                Filter
-                {activeTagCount > 0 && (
-                  <span className="inline-flex items-center justify-center h-[18px] min-w-[18px] px-1 rounded-full bg-background/30 text-[11px] font-bold">
-                    {activeTagCount}
-                  </span>
-                )}
+                {v === "popular" ? "Popular" : "Latest"}
               </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-[340px] sm:w-[400px] p-0" sideOffset={8}>
-              <TagPicker
-                tags={availableTags}
-                tagState={tagState}
-                onCycle={cycleTag}
-                search={tagSearch}
-                onSearchChange={setTagSearch}
-                grouped={groupedTags}
-                onClearAll={() => { setTagState({}); setTagSearch(""); }}
-                onApply={() => {
-                  setFilterPopoverOpen(false);
-                  if (Object.keys(tagState).length > 0) {
-                    setTab("filter");
-                    setSearchOpen(true);
-                  }
-                }}
-              />
-            </PopoverContent>
-          </Popover>
+            ))}
 
-          {/* Clear all filter state */}
-          {(isFiltering) && (
+            {/* Filter button — opens tag picker */}
+            {availableTags.length > 0 && (
+              <Popover open={filterPopoverOpen} onOpenChange={setFilterPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap border ${
+                      inFilterMode
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted border-transparent"
+                    }`}
+                  >
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    Filter
+                    {hasAppliedTags && (
+                      <span className="inline-flex items-center justify-center h-[18px] min-w-[18px] px-1 rounded-full bg-background/30 text-[11px] font-bold">
+                        {allTagIds.length}
+                      </span>
+                    )}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[340px] sm:w-[400px] p-0" sideOffset={8}>
+                  <TagPicker
+                    tags={availableTags}
+                    initialTagState={appliedTagState}
+                    onApply={handleApplyFilter}
+                    onClearAndClose={() => {
+                      setAppliedTagState({});
+                      setFilterPopoverOpen(false);
+                      setTab("popular");
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
+            )}
+
+            {/* Clear filter state when in filter mode */}
+            {inFilterMode && (
+              <button
+                type="button"
+                onClick={() => { setAppliedTagState({}); setTab("popular"); }}
+                className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-3 w-3" />
+                Clear filter
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* When in search mode, show a minimal "exit search" hint */}
+        {inSearchMode && (
+          <div className="flex items-center gap-2 px-4 pb-3 text-xs text-muted-foreground">
+            <span>Search results for <strong className="text-foreground">"{searchQuery}"</strong></span>
             <button
               type="button"
-              onClick={clearFilter}
-              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => { setSearchInput(""); setSearchQuery(""); }}
+              className="ml-auto flex items-center gap-1 hover:text-foreground"
             >
-              <X className="h-3 w-3" />
-              Clear
+              <X className="h-3 w-3" /> Clear
             </button>
-          )}
-        </div>
-
-        {/* Active tag pills summary */}
-        {activeTagCount > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-4 pb-3">
-            {Object.entries(tagState).map(([id, state]) => {
-              const tag = availableTags.find(t => t.id === id);
-              if (!tag) return null;
-              return (
-                <span
-                  key={id}
-                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border cursor-pointer ${
-                    state === "include"
-                      ? "bg-primary/10 text-primary border-primary/30"
-                      : "bg-destructive/10 text-destructive border-destructive/30"
-                  }`}
-                  onClick={() => cycleTag(id)}
-                >
-                  {state === "include"
-                    ? <Check className="h-3 w-3" />
-                    : <X className="h-3 w-3" />
-                  }
-                  {tag.name}
-                </span>
-              );
-            })}
           </div>
         )}
       </header>
 
       {/* ── Content ─────────────────────────────────────────────────────── */}
       <main className="flex-1 container mx-auto px-4 py-6 max-w-7xl">
-        {tab === "filter" && !isFiltering ? (
-          <div className="text-center text-muted-foreground py-20">
-            <SlidersHorizontal className="h-12 w-12 mx-auto mb-4 text-muted" />
-            <p className="font-medium mb-1">No filter active</p>
-            <p className="text-sm">Pick tags from the Filter button or type a search above.</p>
-          </div>
-        ) : (
-          <Grid
-            items={gridItems}
-            loading={gridLoading}
-            fetching={gridFetching}
-            hasNext={gridHasNext}
-            onLoadMore={gridLoadMore}
-          />
-        )}
+        <Grid
+          items={gridItems}
+          loading={gridLoading}
+          fetching={gridFetching}
+          hasNext={gridHasNext}
+          onLoadMore={gridLoadMore}
+        />
       </main>
     </div>
   );
@@ -484,7 +443,7 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore }: GridProps) {
   }
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-5">
         {items.map(m => <MangaCard key={m.id} manga={m as any} />)}
       </div>
       {hasNext && (
@@ -499,21 +458,55 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore }: GridProps) {
 }
 
 // ---------------------------------------------------------------------------
-// TagPicker popover content
+// TagPicker — has its own internal pending state. Only calls onApply when
+// the user explicitly clicks "Apply". This prevents the filter from firing
+// immediately on every tag click.
 // ---------------------------------------------------------------------------
 interface TagPickerProps {
   tags: SourceTag[];
-  tagState: Record<string, TagState>;
-  onCycle: (id: string) => void;
-  search: string;
-  onSearchChange: (v: string) => void;
-  grouped: [string, SourceTag[]][];
-  onClearAll: () => void;
-  onApply: () => void;
+  initialTagState: Record<string, TagTriState>;
+  onApply: (state: Record<string, TagTriState>) => void;
+  onClearAndClose: () => void;
 }
 
-function TagPicker({ tagState, onCycle, search, onSearchChange, grouped, onClearAll, onApply }: TagPickerProps) {
-  const activeCount = Object.keys(tagState).length;
+function TagPicker({ tags, initialTagState, onApply, onClearAndClose }: TagPickerProps) {
+  // Pending state — local to the popover; doesn't affect the live browse until Apply.
+  const [pending, setPending] = useState<Record<string, TagTriState>>(() => ({ ...initialTagState }));
+  const [tagSearch, setTagSearch] = useState("");
+
+  // Re-sync when the popover is opened with a fresh initial state.
+  const prevInitial = useRef(initialTagState);
+  useEffect(() => {
+    if (prevInitial.current !== initialTagState) {
+      prevInitial.current = initialTagState;
+      setPending({ ...initialTagState });
+    }
+  }, [initialTagState]);
+
+  const cycleTag = (id: string) => {
+    setPending(prev => {
+      const cur = prev[id];
+      if (!cur) return { ...prev, [id]: "include" };
+      if (cur === "include") return { ...prev, [id]: "exclude" };
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const grouped = useMemo(() => {
+    const q = tagSearch.trim().toLowerCase();
+    const map = new Map<string, SourceTag[]>();
+    for (const t of tags) {
+      if (q && !t.name.toLowerCase().includes(q)) continue;
+      const key = t.group ?? "Tags";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(t);
+    }
+    return Array.from(map.entries());
+  }, [tags, tagSearch]);
+
+  const activeCount = Object.keys(pending).length;
 
   return (
     <>
@@ -521,25 +514,23 @@ function TagPicker({ tagState, onCycle, search, onSearchChange, grouped, onClear
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-semibold">Filter by tag</h4>
           {activeCount > 0 && (
-            <button type="button" onClick={onClearAll} className="text-xs text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={() => setPending({})} className="text-xs text-muted-foreground hover:text-foreground">
               Clear all
             </button>
           )}
         </div>
-        {/* Tag search */}
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Find tag…"
-            value={search}
-            onChange={e => onSearchChange(e.target.value)}
+            value={tagSearch}
+            onChange={e => setTagSearch(e.target.value)}
             className="pl-8 h-8 text-sm"
           />
         </div>
-        {/* Legend */}
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-          <span className="flex items-center gap-1"><Check className="h-3 w-3 text-primary" /> Include</span>
-          <span className="flex items-center gap-1"><X className="h-3 w-3 text-destructive" /> Exclude</span>
+          <span className="flex items-center gap-1"><Check className="h-3 w-3 text-primary" />Include</span>
+          <span className="flex items-center gap-1"><X className="h-3 w-3 text-destructive" />Exclude</span>
           <span className="ml-auto italic">click to cycle</span>
         </div>
       </div>
@@ -553,12 +544,12 @@ function TagPicker({ tagState, onCycle, search, onSearchChange, grouped, onClear
               <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 mb-1">{group}</div>
               <div className="flex flex-wrap gap-1.5 px-1">
                 {items.map(t => {
-                  const state = tagState[t.id];
+                  const state = pending[t.id];
                   return (
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => onCycle(t.id)}
+                      onClick={() => cycleTag(t.id)}
                       className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-all cursor-pointer ${
                         state === "include"
                           ? "bg-primary text-primary-foreground border-primary"
@@ -579,9 +570,19 @@ function TagPicker({ tagState, onCycle, search, onSearchChange, grouped, onClear
         )}
       </div>
 
-      <div className="p-3 border-t">
-        <Button onClick={onApply} className="w-full" size="sm" disabled={activeCount === 0}>
-          Apply{activeCount > 0 ? ` (${activeCount} tag${activeCount > 1 ? "s" : ""})` : ""}
+      <div className="p-3 border-t flex gap-2">
+        {Object.keys(initialTagState).length > 0 && (
+          <Button variant="outline" size="sm" className="flex-1" onClick={onClearAndClose}>
+            Remove filter
+          </Button>
+        )}
+        <Button
+          size="sm"
+          className="flex-1"
+          onClick={() => onApply(pending)}
+          disabled={activeCount === 0}
+        >
+          Apply{activeCount > 0 ? ` (${activeCount})` : ""}
         </Button>
       </div>
     </>
