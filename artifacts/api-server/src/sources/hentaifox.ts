@@ -169,34 +169,47 @@ export const HentaiFoxSource: MangaSource = {
 
   async pages(chapterId: string): Promise<PageListResponse> {
     const galleryId = chapterId.split("/")[0];
-    const url = `${BASE_URL}/gallery/${galleryId}/`;
-    const { $, html } = await fetchHtml(http, url);
 
-    const pages: Array<{ index: number; url: string }> = [];
+    // HentaiFox gallery page has hidden inputs with all needed data:
+    //   <input id="load_dir"   value="004"     /> — CDN bucket
+    //   <input id="load_id"    value="3917106" /> — internal image ID (≠ gallery URL ID)
+    //   <input id="load_pages" value="41"      /> — total pages
+    // Cover:  https://i3.hentaifox.com/{dir}/{load_id}/cover.jpg
+    // Pages:  https://i3.hentaifox.com/{dir}/{load_id}/1.jpg, 2.jpg, ...
+    // Thumbs: same but with 't' suffix  →  1t.jpg
+    const { $: $ } = await fetchHtml(http, `${BASE_URL}/gallery/${galleryId}/`);
 
-    // Try to find page images from the gallery listing
-    $("a[href*='/gallery/'][href*='/read/'] img, .thumb-gallery img, .preview_thumb img").each((i, el) => {
-      const src = $(el).attr("data-src") || $(el).attr("src") || "";
-      if (src && !src.includes("placeholder")) {
-        // Convert thumb URL to full image URL
-        const full = src.replace(/t(\d+\.(?:jpg|png|webp|gif))/i, "$1")
-          .replace(/\/t(\d+\/)/g, "/$1");
-        pages.push({ index: i, url: absUrl(BASE_URL, full) });
-      }
-    });
+    const loadDir   = $("input#load_dir").val()   as string | undefined;
+    const loadId    = $("input#load_id").val()    as string | undefined;
+    const loadPages = $("input#load_pages").val() as string | undefined;
 
-    // Fallback: parse from JS variable
-    if (pages.length === 0) {
-      const m = html.match(/var\s+(?:g_th|images)\s*=\s*(\[[^\]]+\])/);
-      if (m) {
-        try {
-          const imgs = JSON.parse(m[1]) as string[];
-          imgs.forEach((src, i) => {
-            if (src) pages.push({ index: i, url: absUrl(BASE_URL, src) });
-          });
-        } catch { /* fall through */ }
-      }
+    if (loadDir && loadId && loadPages) {
+      const count = parseInt(loadPages, 10);
+      // Determine CDN host from cover image (may be i.hentaifox.com, i2..., i3...)
+      const coverSrc = $(".cover img").attr("src") || $(".cover img").attr("data-src") || "";
+      const cdnHostMatch = coverSrc.match(/(https?:\/\/i\d*\.hentaifox\.com)/);
+      const cdn = cdnHostMatch ? cdnHostMatch[1] : "https://i.hentaifox.com";
+
+      return {
+        chapterId,
+        pages: Array.from({ length: count }, (_, i) => ({
+          index: i,
+          url: `${cdn}/${loadDir}/${loadId}/${i + 1}.jpg`,
+        })),
+      };
     }
+
+    // Fallback: collect page thumbnails from the gallery div (.cover a img[data-src])
+    // and strip the trailing 't' to get full-size URLs
+    const pages: Array<{ index: number; url: string }> = [];
+    $(".cover a").each((i, el) => {
+      const img = $(el).find("img");
+      const src = img.attr("data-src") || img.attr("src") || "";
+      if (!src || src.includes("svg")) return;
+      // "1t.jpg" → "1.jpg"
+      const full = src.replace(/(\d+)t(\.\w+)$/, "$1$2");
+      pages.push({ index: i, url: full });
+    });
 
     return { chapterId, pages };
   },

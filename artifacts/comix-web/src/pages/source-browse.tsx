@@ -562,7 +562,14 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
   return (
     <>
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-5">
-        {items.map(m => <MangaCard key={m.id} manga={m as any} sourceId={sourceId} />)}
+        {items.map(m => (
+          <MangaCard
+            key={m.id}
+            manga={m as any}
+            sourceId={sourceId}
+            href={sourceId ? `/sources/${sourceId}/manga/${m.id}` : undefined}
+          />
+        ))}
       </div>
       {hasNext && (
         <div className="flex justify-center mt-8">

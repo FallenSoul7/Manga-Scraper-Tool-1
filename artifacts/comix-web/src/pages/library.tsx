@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Link } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { useStore, storeActions } from "@/lib/storage";
 import { MangaCard } from "@/components/manga-card";
 import { Input } from "@/components/ui/input";
@@ -14,13 +14,28 @@ const FALLBACK_TAB = "default";
 export default function LibraryPage() {
   const library = useStore(s => s.library);
   const categories = useStore(s => s.categories);
+  const searchString = useSearch();
+  const [, setLocation] = useLocation();
 
   const sortedCategories = useMemo(
     () => [...categories].sort((a, b) => a.order - b.order),
     [categories],
   );
 
-  const [activeTab, setActiveTab] = useState<string>(() => sortedCategories[0]?.id ?? FALLBACK_TAB);
+  // Read category from URL ?cat= so that going back from manga detail restores the right tab.
+  const catFromUrl = new URLSearchParams(searchString).get("cat");
+  const [activeTab, setActiveTabState] = useState<string>(() => {
+    const fromUrl = catFromUrl;
+    if (fromUrl && (sortedCategories.find(c => c.id === fromUrl) || fromUrl === FALLBACK_TAB)) {
+      return fromUrl;
+    }
+    return sortedCategories[0]?.id ?? FALLBACK_TAB;
+  });
+
+  const setActiveTab = (id: string) => {
+    setActiveTabState(id);
+    setLocation(id === FALLBACK_TAB ? "/" : `/?cat=${id}`, { replace: true });
+  };
 
   // Refs for auto-scroll behaviour on the category strip.
   const stripRef = useRef<HTMLDivElement>(null);

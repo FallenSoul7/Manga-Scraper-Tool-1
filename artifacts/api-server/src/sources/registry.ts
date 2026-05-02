@@ -6,6 +6,7 @@ import { DanbooruSource } from "./danbooru";
 import { createMadaraSource } from "./madara";
 import { createMangaThemesiaSource } from "./mangathemesia";
 import { HentaiFoxSource } from "./hentaifox";
+import { NineHentaiSource } from "./ninehentai";
 import catalogJson from "./catalog.generated.json" with { type: "json" };
 
 interface CatalogExtension {
@@ -36,6 +37,7 @@ register(MangaDexSource);
 register(MangafreakSource);
 register(DanbooruSource);
 register(HentaiFoxSource);
+register(NineHentaiSource);
 
 // Madara-themed sources
 register(createMadaraSource({

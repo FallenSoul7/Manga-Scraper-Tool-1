@@ -2,9 +2,9 @@ import { Link } from "wouter";
 import { proxyImage } from "@/lib/utils";
 import type { MangaSummary } from "@workspace/api-client-react";
 
-export function MangaCard({ manga, sourceId }: { manga: MangaSummary; sourceId?: string }) {
+export function MangaCard({ manga, sourceId, href }: { manga: MangaSummary; sourceId?: string; href?: string }) {
   return (
-    <Link href={`/manga/${manga.id}`}>
+    <Link href={href ?? `/manga/${manga.id}`}>
       <div className="group relative flex flex-col gap-2 cursor-pointer">
         <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-muted shadow-sm transition-all duration-300 hover-elevate group-hover:shadow-md">
           <img

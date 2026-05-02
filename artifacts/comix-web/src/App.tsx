@@ -45,6 +45,9 @@ function AppContent() {
         {/* Reader: no header, no nav */}
         <Route path="/reader/:chapterId" component={Reader} />
 
+        {/* Source-context manga detail: no global nav, keeps source header */}
+        <Route path="/sources/:sourceId/manga/:mangaId" component={MangaDetail} />
+
         {/* Source browse: own immersive header, no global nav */}
         <Route path="/sources/:id" component={SourceBrowsePage} />
 

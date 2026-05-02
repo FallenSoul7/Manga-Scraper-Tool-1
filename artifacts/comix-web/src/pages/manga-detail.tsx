@@ -7,7 +7,8 @@ import {
 } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
 import { proxyImage } from "@/lib/utils";
-import { Loader2, ArrowLeft, Star, ChevronDown, ChevronUp, BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown, ArrowUp, Filter, Play, Sparkles } from "lucide-react";
+import { applyActiveSource } from "@/lib/source";
+import { Loader2, ArrowLeft, Star, ChevronDown, ChevronUp, BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown, ArrowUp, Filter, Play, Sparkles, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -46,9 +47,16 @@ function dedupeChapters(items: any[]): any[] {
   return Array.from(map.values());
 }
 
+function formatSourceId(sourceId: string) {
+  const raw = sourceId.split(".").pop() || sourceId;
+  return raw.replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export default function MangaDetail() {
-  const [, params] = useRoute("/manga/:id");
-  const id = params?.id;
+  const [, params1] = useRoute("/manga/:id");
+  const [, params2] = useRoute("/sources/:sourceId/manga/:mangaId");
+  const id = params1?.id ?? params2?.mangaId ?? null;
+  const sourceContext = params2?.sourceId ?? null;
   const [, setLocation] = useLocation();
   const { settings } = useSettings();
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
@@ -67,6 +75,17 @@ export default function MangaDetail() {
   const selectedScanlator = id ? (scanlatorPrefs[id] ?? null) : null; // null = "All sources"
   const sortAsc = id ? !!chapterSortAsc[id] : false;
 
+  // When in source context, hold queries until the source header is applied.
+  // This prevents the first render from firing requests against the wrong source.
+  const [sourceReady, setSourceReady] = useState(!sourceContext);
+
+  useEffect(() => {
+    if (sourceContext) {
+      applyActiveSource(sourceContext);
+      setSourceReady(true);
+    }
+  }, [sourceContext]);
+
   const mangaParams = {
     poster: settings.posterQuality,
     alt: settings.showAltNames,
@@ -77,14 +96,14 @@ export default function MangaDetail() {
   const chaptersParams = { dedupe: false };
   const { data: manga, isLoading: mangaLoading } = useGetMangaDetails(id || "", mangaParams, {
     query: {
-      enabled: !!id,
+      enabled: !!id && sourceReady,
       queryKey: getGetMangaDetailsQueryKey(id || "", mangaParams),
     },
   });
 
-  const { data: chaptersResponse, isLoading: chaptersLoading } = useGetChapters(id || "", chaptersParams, {
+  const { data: chaptersResponse, isLoading: chaptersLoading, isError: chaptersError } = useGetChapters(id || "", chaptersParams, {
     query: {
-      enabled: !!id,
+      enabled: !!id && sourceReady,
       queryKey: getGetChaptersQueryKey(id || "", chaptersParams),
     },
   });
@@ -219,14 +238,31 @@ export default function MangaDetail() {
   const altTitlesToShow = showAllAltTitles ? altTitles : altTitles.slice(0, ALT_TITLES_COLLAPSED_LIMIT);
 
   return (
+    <>
+      {sourceContext && (
+        <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border/50">
+          <div className="flex items-center gap-3 px-4 h-14 max-w-5xl mx-auto">
+            <button
+              type="button"
+              onClick={() => window.history.back()}
+              className="flex items-center justify-center h-9 w-9 rounded-full hover:bg-muted transition-colors shrink-0"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <span className="font-semibold text-sm truncate">{formatSourceId(sourceContext)}</span>
+          </div>
+        </header>
+      )}
     <main className="container mx-auto px-4 py-6 sm:py-8 max-w-5xl animate-in fade-in duration-500">
-      <button
-        type="button"
-        onClick={() => window.history.back()}
-        className="inline-flex items-center text-muted-foreground hover:text-primary mb-6 sm:mb-8 transition-colors text-sm sm:text-base"
-      >
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back
-      </button>
+      {!sourceContext && (
+        <button
+          type="button"
+          onClick={() => window.history.back()}
+          className="inline-flex items-center text-muted-foreground hover:text-primary mb-6 sm:mb-8 transition-colors text-sm sm:text-base"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back
+        </button>
+      )}
 
       <div className="flex flex-col md:flex-row gap-6 md:gap-12">
         {/* Cover + actions block. On mobile the cover is wider and the action buttons sit
@@ -236,7 +272,7 @@ export default function MangaDetail() {
         <div className="shrink-0 mx-auto md:mx-0 w-full max-w-[20rem] sm:max-w-[22rem] md:w-72 md:max-w-none">
           <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-muted shadow-lg mb-3 sm:mb-4">
             <img
-              src={proxyImage(manga.thumbnail)}
+              src={proxyImage(manga.thumbnail, sourceContext ?? undefined)}
               alt={manga.title}
               className="h-full w-full object-cover"
             />
@@ -388,8 +424,8 @@ export default function MangaDetail() {
           {manga.genres && manga.genres.length > 0 && (
             <div className="-mx-4 sm:mx-0">
               <div className="flex gap-2 overflow-x-auto hide-scrollbar px-4 sm:px-0 pb-1 snap-x">
-                {manga.genres.map(genre => (
-                  <Badge key={genre} variant="secondary" className="font-normal whitespace-nowrap shrink-0 snap-start">{genre}</Badge>
+                {[...new Set(manga.genres)].map((genre, i) => (
+                  <Badge key={`${genre}-${i}`} variant="secondary" className="font-normal whitespace-nowrap shrink-0 snap-start">{genre}</Badge>
                 ))}
               </div>
             </div>
@@ -587,9 +623,16 @@ export default function MangaDetail() {
           </div>
         )}
 
+        {chaptersError && (
+          <div className="flex items-center gap-2 px-4 py-3 mb-3 rounded-lg border border-destructive/40 bg-destructive/10 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>Chapters could not be loaded — the source may be temporarily unavailable.</span>
+          </div>
+        )}
+
         {chaptersLoading ? (
           <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-        ) : visibleChapters.length === 0 ? (
+        ) : chaptersError ? null : visibleChapters.length === 0 ? (
           <div className="text-center text-muted-foreground py-16 border rounded-2xl bg-card/40">
             No chapters available{selectedScanlator ? ` from ${selectedScanlator}` : ""}.
           </div>
@@ -679,5 +722,6 @@ export default function MangaDetail() {
         )}
       </div>
     </main>
+    </>
   );
 }

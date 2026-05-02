@@ -349,10 +349,17 @@ export default function Reader() {
     setLocation(`/reader/${id}?mangaId=${mangaId}`);
   };
 
+  const goBack = () => {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      setLocation(mangaId ? `/manga/${mangaId}` : "/");
+    }
+  };
+
   const handleKeydown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
-      if (mangaId) setLocation(`/manga/${mangaId}`);
-      else setLocation("/");
+      goBack();
       return;
     }
     
@@ -396,7 +403,7 @@ export default function Reader() {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white/50">
         <p className="mb-4">No pages found or chapter is empty.</p>
-        <Button variant="outline" onClick={() => mangaId ? setLocation(`/manga/${mangaId}`) : setLocation("/")}>Go Back</Button>
+        <Button variant="outline" onClick={goBack}>Go Back</Button>
       </div>
     );
   }
@@ -429,7 +436,7 @@ export default function Reader() {
       <div className={`fixed top-0 left-0 w-full z-50 transition-transform duration-300 ${showControls ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="bg-black/90 backdrop-blur border-b border-white/10 text-white flex items-center justify-between p-2 sm:px-4 h-14">
           <div className="flex items-center gap-2 overflow-hidden flex-1">
-            <Button variant="ghost" size="icon" className="text-white/70 hover:text-white shrink-0" onClick={(e) => { e.stopPropagation(); mangaId ? setLocation(`/manga/${mangaId}`) : setLocation("/"); }}>
+            <Button variant="ghost" size="icon" className="text-white/70 hover:text-white shrink-0" onClick={(e) => { e.stopPropagation(); goBack(); }}>
               <ChevronLeft className="h-5 w-5" />
             </Button>
             <div className="min-w-0 flex flex-col justify-center">
