@@ -220,9 +220,13 @@ export default function MangaDetail() {
 
   return (
     <main className="container mx-auto px-4 py-6 sm:py-8 max-w-5xl animate-in fade-in duration-500">
-      <Link href="/" className="inline-flex items-center text-muted-foreground hover:text-primary mb-6 sm:mb-8 transition-colors text-sm sm:text-base">
+      <button
+        type="button"
+        onClick={() => window.history.back()}
+        className="inline-flex items-center text-muted-foreground hover:text-primary mb-6 sm:mb-8 transition-colors text-sm sm:text-base"
+      >
         <ArrowLeft className="mr-2 h-4 w-4" /> Back
-      </Link>
+      </button>
 
       <div className="flex flex-col md:flex-row gap-6 md:gap-12">
         {/* Cover + actions block. On mobile the cover is wider and the action buttons sit

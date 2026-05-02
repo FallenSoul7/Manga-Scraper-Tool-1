@@ -7,11 +7,31 @@ import type {
   MangaDetail,
   ChapterListResponse,
   PageListResponse,
+  SourceTag,
 } from "./types";
 
 const API_URL = "https://api.mangadex.org";
 const COVER_URL = "https://uploads.mangadex.org/covers";
 const PER_PAGE = 32;
+
+/** Custom param serialiser so arrays become `key[]=a&key[]=b` and nested
+ *  objects become `key[sub]=val` — exactly what the MangaDex API expects. */
+function serializeParams(params: Record<string, unknown>): string {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null) continue;
+    if (Array.isArray(v)) {
+      for (const item of v) sp.append(`${k}[]`, String(item));
+    } else if (typeof v === "object") {
+      for (const [sk, sv] of Object.entries(v as Record<string, unknown>)) {
+        if (sv !== undefined && sv !== null) sp.append(`${k}[${sk}]`, String(sv));
+      }
+    } else {
+      sp.append(k, String(v));
+    }
+  }
+  return sp.toString();
+}
 
 const client: AxiosInstance = axios.create({
   baseURL: API_URL,
@@ -21,6 +41,7 @@ const client: AxiosInstance = axios.create({
     Accept: "application/json",
   },
   validateStatus: (s) => s >= 200 && s < 500,
+  paramsSerializer: { serialize: serializeParams },
 });
 
 interface MdRel {
@@ -80,16 +101,11 @@ function pickAuthors(m: MdManga, type: "author" | "artist"): string {
 }
 function statusToString(s: string): string {
   switch (s) {
-    case "ongoing":
-      return "Ongoing";
-    case "completed":
-      return "Completed";
-    case "hiatus":
-      return "On Hiatus";
-    case "cancelled":
-      return "Cancelled";
-    default:
-      return "Unknown";
+    case "ongoing": return "Ongoing";
+    case "completed": return "Completed";
+    case "hiatus": return "On Hiatus";
+    case "cancelled": return "Cancelled";
+    default: return "Unknown";
   }
 }
 function isNsfw(m: MdManga): boolean {
@@ -120,26 +136,40 @@ function toSummary(m: MdManga) {
   };
 }
 
-function buildListParams(opts: ListOptions, order: Record<string, string>) {
-  const params: Record<string, string | string[] | number> = {
+function buildListParams(
+  opts: ListOptions,
+  order: Record<string, string>,
+): Record<string, unknown> {
+  const params: Record<string, unknown> = {
     limit: PER_PAGE,
     offset: (opts.page - 1) * PER_PAGE,
-    "includes[]": ["cover_art", "author", "artist"],
-    "contentRating[]": opts.nsfw
+    includes: ["cover_art", "author", "artist"],
+    contentRating: opts.nsfw
       ? ["safe", "suggestive", "erotica", "pornographic"]
       : ["safe", "suggestive"],
+    order,
   };
-  for (const [k, v] of Object.entries(order)) {
-    params[`order[${k}]`] = v;
+
+  // Tag filtering: IDs prefixed with "-" are excluded, the rest included.
+  if (opts.tagIds && opts.tagIds.length > 0) {
+    const included = opts.tagIds.filter((t) => !t.startsWith("-"));
+    const excluded = opts.tagIds.filter((t) => t.startsWith("-")).map((t) => t.slice(1));
+    if (included.length > 0) params.includedTags = included;
+    if (excluded.length > 0) params.excludedTags = excluded;
   }
+
   return params;
 }
+
+// Cache tags so we don't hammer the endpoint.
+let cachedMdTags: SourceTag[] | null = null;
 
 export const MangaDexSource: MangaSource = {
   id: "all.mangadex",
   name: "MangaDex",
   lang: "all",
   isNsfw: false,
+  imageReferer: "https://mangadex.org/",
 
   async popular(opts) {
     const res = await client.get<MdList<MdManga>>("/manga", {
@@ -152,6 +182,7 @@ export const MangaDexSource: MangaSource = {
       hasNextPage: res.data.offset + res.data.limit < res.data.total,
     };
   },
+
   async latest(opts) {
     const res = await client.get<MdList<MdManga>>("/manga", {
       params: buildListParams(opts, { latestUploadedChapter: "desc" }),
@@ -163,6 +194,7 @@ export const MangaDexSource: MangaSource = {
       hasNextPage: res.data.offset + res.data.limit < res.data.total,
     };
   },
+
   async search(query, opts): Promise<MangaListResponse> {
     const res = await client.get<MdList<MdManga>>("/manga", {
       params: { ...buildListParams(opts, { relevance: "desc" }), title: query },
@@ -174,9 +206,31 @@ export const MangaDexSource: MangaSource = {
       hasNextPage: res.data.offset + res.data.limit < res.data.total,
     };
   },
+
+  async tags(): Promise<SourceTag[]> {
+    if (cachedMdTags) return cachedMdTags;
+    try {
+      const res = await client.get<{ data: Array<{ id: string; attributes: { name: Record<string, string>; group: string } }> }>("/manga/tag");
+      if (res.status >= 400) return [];
+      const tags: SourceTag[] = res.data.data
+        .filter((t) => t.attributes?.name?.en)
+        .map((t) => ({
+          id: t.id,
+          name: t.attributes.name.en!,
+          group: t.attributes.group
+            ? t.attributes.group[0]!.toUpperCase() + t.attributes.group.slice(1)
+            : "Tag",
+        }));
+      cachedMdTags = tags;
+      return tags;
+    } catch {
+      return [];
+    }
+  },
+
   async details(id, opts: DetailOptions): Promise<MangaDetail> {
     const res = await client.get<MdResp<MdManga>>(`/manga/${id}`, {
-      params: { "includes[]": ["cover_art", "author", "artist"] },
+      params: { includes: ["cover_art", "author", "artist"] },
     });
     if (res.status >= 400 || !res.data?.data)
       throw new Error(`MangaDex error ${res.status}`);
@@ -205,6 +259,7 @@ export const MangaDexSource: MangaSource = {
       scorePosition: opts.score,
     };
   },
+
   async chapters(mangaId): Promise<ChapterListResponse> {
     interface MdChapter {
       id: string;
@@ -228,16 +283,10 @@ export const MangaDexSource: MangaSource = {
           params: {
             limit,
             offset,
-            "translatedLanguage[]": ["en"],
-            "order[chapter]": "desc",
-            "order[volume]": "desc",
+            translatedLanguage: ["en"],
+            order: { chapter: "desc", volume: "desc" },
             includes: ["scanlation_group"],
-            "contentRating[]": [
-              "safe",
-              "suggestive",
-              "erotica",
-              "pornographic",
-            ],
+            contentRating: ["safe", "suggestive", "erotica", "pornographic"],
           },
         },
       );
@@ -261,13 +310,12 @@ export const MangaDexSource: MangaSource = {
           number: num,
           title,
           scanlator,
-          date: Math.floor(
-            new Date(c.attributes.publishAt).getTime() / 1000,
-          ),
+          date: Math.floor(new Date(c.attributes.publishAt).getTime() / 1000),
         };
       }),
     };
   },
+
   async pages(chapterId): Promise<PageListResponse> {
     const res = await client.get<{
       result: string;

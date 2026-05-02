@@ -158,7 +158,7 @@ export const HentaiFoxSource: MangaSource = {
     const title = $("h1, .info h1").first().text().trim() || `Gallery ${mangaId}`;
     return {
       items: [{
-        id: `${mangaId}/1`,
+        id: mangaId,
         number: 1,
         title,
         scanlator: "HentaiFox",

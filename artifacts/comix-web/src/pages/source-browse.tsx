@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { useRoute, Link } from "wouter";
+import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   ArrowLeft, Search, X, SlidersHorizontal, Loader2,
-  Sun, Moon, Laptop, Check,
+  Sun, Moon, Laptop, Check, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import type { SourceTag } from "@/lib/header-search";
 
@@ -25,6 +25,11 @@ interface MangaSummary { id: string; title: string; thumbnail: string; type: str
 interface ListResponse { items: MangaSummary[]; page: number; hasNextPage: boolean }
 type TagTriState = "include" | "exclude";
 type ActiveTab = "popular" | "latest" | "filter";
+
+interface CatalogEntry {
+  id: string; name: string; lang: string; isNsfw: boolean;
+  iconUrl?: string | null; supported?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,6 +46,71 @@ function buildQuery(params: Record<string, string | string[] | undefined>): stri
 }
 
 const DEBOUNCE_MS = 220;
+const VPN_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+
+// ---------------------------------------------------------------------------
+// VPN / Blocked-source banner (with 10-sec auto-dismiss + 30-min cooldown)
+// ---------------------------------------------------------------------------
+function VpnBanner({
+  sourceId, onRetry, coversAvailable,
+}: { sourceId: string; onRetry: () => void; coversAvailable: boolean }) {
+  const storageKey = `vpn_banner_${sourceId}`;
+  const [visible, setVisible] = useState(() => {
+    const last = parseInt(localStorage.getItem(storageKey) || "0");
+    return Date.now() - last > VPN_COOLDOWN_MS;
+  });
+  const [countdown, setCountdown] = useState(10);
+
+  useEffect(() => {
+    if (!visible) return;
+    const iv = setInterval(() => {
+      setCountdown(c => {
+        if (c <= 1) {
+          clearInterval(iv);
+          dismiss();
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [visible]);
+
+  function dismiss() {
+    setVisible(false);
+    localStorage.setItem(storageKey, String(Date.now()));
+  }
+
+  if (!visible) return null;
+
+  return (
+    <div className="mx-4 mt-3 rounded-xl border border-amber-400/40 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 flex items-start gap-3 animate-in slide-in-from-top-2 duration-200">
+      <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+          {coversAvailable
+            ? "Reading chapters may require a VPN in your region"
+            : "This source couldn't be reached — it may be blocked in your region"}
+        </p>
+        <p className="text-xs text-amber-700/70 dark:text-amber-400/70 mt-0.5">
+          {coversAvailable
+            ? "Covers are available. If chapters fail to load, try a VPN."
+            : "A VPN may help. Auto-dismissing in " + countdown + "s…"}
+        </p>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        {!coversAvailable && (
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-amber-700 hover:text-amber-900 dark:text-amber-300" onClick={onRetry}>
+            <RefreshCw className="h-3 w-3 mr-1" />Retry
+          </Button>
+        )}
+        <button type="button" onClick={dismiss} className="p-1 text-amber-600 hover:text-amber-900 dark:text-amber-400">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Main page
@@ -49,9 +119,29 @@ export default function SourceBrowsePage() {
   const [, params] = useRoute("/sources/:id");
   const sourceId = params?.id || "";
   const installedMap = useStore((s) => s.installedSources);
-  const source = installedMap[sourceId];
+  const installedSource = installedMap[sourceId];
   const theme = useStore(s => s.theme);
   const { settings } = useSettings();
+
+  // For non-installed (catalog-only) sources, fetch their info from the catalog.
+  const { data: catalogData } = useQuery<{ extensions: CatalogEntry[] }>({
+    queryKey: ["catalog"],
+    queryFn: () => customFetch<{ extensions: CatalogEntry[] }>("/api/sources/catalog"),
+    enabled: !installedSource && !!sourceId,
+    staleTime: Infinity,
+  });
+  const catalogEntry = useMemo(
+    () => catalogData?.extensions?.find(e => e.id === sourceId) ?? null,
+    [catalogData, sourceId],
+  );
+
+  // Unified source info: installed takes priority, catalog is fallback.
+  const source = installedSource ?? (catalogEntry ? {
+    id: sourceId,
+    name: catalogEntry.name,
+    lang: catalogEntry.lang,
+    isNsfw: catalogEntry.isNsfw,
+  } : null);
 
   // ---- Active tab & search state ----
   const [tab, setTab] = useState<ActiveTab>("popular");
@@ -61,7 +151,6 @@ export default function SourceBrowsePage() {
 
   // Applied filter state (only changes when "Apply" is pressed in the popover)
   const [appliedTagState, setAppliedTagState] = useState<Record<string, TagTriState>>({});
-
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,15 +162,15 @@ export default function SourceBrowsePage() {
   const [filterPage, setFilterPage] = useState(1);
   const [filterItems, setFilterItems] = useState<MangaSummary[]>([]);
 
-  // Set active source header on enter.
+  // Always set source header — even for non-installed (catalog) sources —
+  // so the manga detail page uses the correct backend source.
   useEffect(() => {
-    if (sourceId && installedMap[sourceId]) {
-      storeActions.setActiveSource(sourceId);
-      applyActiveSource(sourceId);
-    }
-  }, [sourceId, installedMap]);
+    if (!sourceId) return;
+    applyActiveSource(sourceId);
+    if (installedSource) storeActions.setActiveSource(sourceId);
+  }, [sourceId, installedSource]);
 
-  // Reset everything when source changes.
+  // Reset state on source change.
   useEffect(() => {
     setTab("popular");
     setSearchOpen(false); setSearchInput(""); setSearchQuery("");
@@ -91,7 +180,7 @@ export default function SourceBrowsePage() {
     setFilterPage(1); setFilterItems([]);
   }, [sourceId]);
 
-  // Debounce search input → searchQuery.
+  // Debounce search input.
   useEffect(() => {
     const id = window.setTimeout(() => setSearchQuery(searchInput.trim()), DEBOUNCE_MS);
     return () => window.clearTimeout(id);
@@ -99,12 +188,9 @@ export default function SourceBrowsePage() {
 
   // Reset filter page on query/tag changes.
   const appliedTagKey = JSON.stringify(appliedTagState);
-  useEffect(() => {
-    setFilterPage(1);
-    setFilterItems([]);
-  }, [searchQuery, appliedTagKey]);
+  useEffect(() => { setFilterPage(1); setFilterItems([]); }, [searchQuery, appliedTagKey]);
 
-  // Derived tag lists sent to the API.
+  // Derived tag lists.
   const includedTagIds = useMemo(
     () => Object.entries(appliedTagState).filter(([, s]) => s === "include").map(([id]) => id),
     [appliedTagState],
@@ -114,11 +200,9 @@ export default function SourceBrowsePage() {
     [appliedTagState],
   );
   const allTagIds = [...includedTagIds, ...excludedTagIds];
-
-  // isFiltering: tag filters OR search text active
   const hasAppliedTags = allTagIds.length > 0;
-  const isSearching = searchQuery.length > 0;           // pure text search → no tabs
-  const isTagFiltering = hasAppliedTags && !isSearching; // tags only → show filter tab
+  const isSearching = searchQuery.length > 0;
+  const isTagFiltering = hasAppliedTags && !isSearching;
   const isFiltering = hasAppliedTags || isSearching;
 
   // Focus search input when it opens.
@@ -145,6 +229,7 @@ export default function SourceBrowsePage() {
     queryFn: () => customFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage) })}`),
     enabled: !!sourceId && !!source && tab === "popular" && !isFiltering,
     staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 
   const latestQuery = useQuery<ListResponse>({
@@ -152,6 +237,7 @@ export default function SourceBrowsePage() {
     queryFn: () => customFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage) })}`),
     enabled: !!sourceId && !!source && tab === "latest" && !isFiltering,
     staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 
   const filterQuery = useQuery<ListResponse>({
@@ -164,9 +250,10 @@ export default function SourceBrowsePage() {
     })}`),
     enabled: !!sourceId && !!source && isFiltering,
     staleTime: 30 * 1000,
+    retry: 1,
   });
 
-  // Merge paginated results.
+  // Accumulate paginated results.
   useEffect(() => {
     if (!popularQuery.data) return;
     setPopularItems(prev =>
@@ -192,8 +279,6 @@ export default function SourceBrowsePage() {
   }, [filterQuery.data, filterPage]);
 
   // ---- Handlers ----
-
-  // Clicking Popular or Latest clears all filter state.
   const handleBrowseTab = useCallback((newTab: "popular" | "latest") => {
     setAppliedTagState({});
     setSearchInput(""); setSearchQuery("");
@@ -201,27 +286,38 @@ export default function SourceBrowsePage() {
     setTab(newTab);
   }, []);
 
-  // Called when Apply is pressed in the popover.
   const handleApplyFilter = useCallback((newState: Record<string, TagTriState>) => {
     setAppliedTagState(newState);
     setFilterPopoverOpen(false);
-    if (Object.keys(newState).length > 0) {
-      setTab("filter");
-    }
+    if (Object.keys(newState).length > 0) setTab("filter");
   }, []);
 
-  if (!source) {
+  // VPN error: shown when the active-tab query errors out.
+  const activeQuery = isFiltering ? filterQuery : tab === "latest" ? latestQuery : popularQuery;
+  const isSourceError = activeQuery.isError;
+  const coversAvailable = !isSourceError && (popularItems.length > 0 || popularQuery.isSuccess);
+
+  // While we don't yet know the source (loading from catalog), show a spinner.
+  if (!source && !catalogEntry && !!sourceId) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
-        <p className="text-muted-foreground">Source not installed.</p>
-        <Link href="/sources"><Button variant="outline">Back to sources</Button></Link>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  // Determine which data to show.
-  const inSearchMode = isSearching; // text search → bypass tabs entirely
-  const inFilterMode = isTagFiltering; // tags only → show Filter tab
+  if (!source) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
+        <p className="text-muted-foreground">Source not found.</p>
+        <Button variant="outline" onClick={() => window.history.back()}>Go back</Button>
+      </div>
+    );
+  }
+
+  // Decide what grid to show.
+  const inSearchMode = isSearching;
+  const inFilterMode = isTagFiltering;
 
   let gridItems: MangaSummary[];
   let gridLoading: boolean;
@@ -268,15 +364,16 @@ export default function SourceBrowsePage() {
           </div>
 
           <div className="flex items-center gap-0.5 shrink-0">
-            <Link href="/sources">
-              <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Back to sources">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
+            <Button
+              variant="ghost" size="icon" className="h-9 w-9"
+              aria-label="Back"
+              onClick={() => window.history.back()}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
 
             <Button
-              variant="ghost"
-              size="icon"
+              variant="ghost" size="icon"
               className={`h-9 w-9 ${searchOpen ? "text-primary" : ""}`}
               aria-label="Search"
               onClick={() => setSearchOpen(o => !o)}
@@ -299,7 +396,7 @@ export default function SourceBrowsePage() {
           </div>
         </div>
 
-        {/* Expanding search bar */}
+        {/* Search bar */}
         {searchOpen && (
           <div className="px-4 pb-3 animate-in slide-in-from-top-1 duration-150">
             <div className="relative">
@@ -326,7 +423,7 @@ export default function SourceBrowsePage() {
           </div>
         )}
 
-        {/* Tab bar — hidden when in text-search mode */}
+        {/* Tab bar — hidden when text-searching */}
         {!inSearchMode && (
           <div className="flex items-center gap-1 px-4 pb-3">
             {(["popular", "latest"] as const).map(v => (
@@ -344,7 +441,6 @@ export default function SourceBrowsePage() {
               </button>
             ))}
 
-            {/* Filter button — opens tag picker */}
             {availableTags.length > 0 && (
               <Popover open={filterPopoverOpen} onOpenChange={setFilterPopoverOpen}>
                 <PopoverTrigger asChild>
@@ -380,21 +476,19 @@ export default function SourceBrowsePage() {
               </Popover>
             )}
 
-            {/* Clear filter state when in filter mode */}
             {inFilterMode && (
               <button
                 type="button"
                 onClick={() => { setAppliedTagState({}); setTab("popular"); }}
                 className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
-                <X className="h-3 w-3" />
-                Clear filter
+                <X className="h-3 w-3" /> Clear filter
               </button>
             )}
           </div>
         )}
 
-        {/* When in search mode, show a minimal "exit search" hint */}
+        {/* Search mode: show active query hint */}
         {inSearchMode && (
           <div className="flex items-center gap-2 px-4 pb-3 text-xs text-muted-foreground">
             <span>Search results for <strong className="text-foreground">"{searchQuery}"</strong></span>
@@ -409,15 +503,38 @@ export default function SourceBrowsePage() {
         )}
       </header>
 
+      {/* VPN / blocked source warning */}
+      {isSourceError && (
+        <VpnBanner
+          sourceId={sourceId}
+          coversAvailable={coversAvailable}
+          onRetry={() => activeQuery.refetch()}
+        />
+      )}
+
       {/* ── Content ─────────────────────────────────────────────────────── */}
       <main className="flex-1 container mx-auto px-4 py-6 max-w-7xl">
-        <Grid
-          items={gridItems}
-          loading={gridLoading}
-          fetching={gridFetching}
-          hasNext={gridHasNext}
-          onLoadMore={gridLoadMore}
-        />
+        {isSourceError && gridItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
+            <AlertTriangle className="h-12 w-12 text-amber-500" />
+            <h2 className="text-lg font-semibold">Couldn't load {source.name}</h2>
+            <p className="text-sm text-muted-foreground max-w-sm">
+              This source may be temporarily unavailable or blocked in your region.
+            </p>
+            <Button variant="outline" onClick={() => activeQuery.refetch()} className="gap-2">
+              <RefreshCw className="h-4 w-4" /> Try again
+            </Button>
+          </div>
+        ) : (
+          <Grid
+            items={gridItems}
+            loading={gridLoading}
+            fetching={gridFetching}
+            hasNext={gridHasNext}
+            onLoadMore={gridLoadMore}
+            sourceId={sourceId}
+          />
+        )}
       </main>
     </div>
   );
@@ -432,9 +549,10 @@ interface GridProps {
   fetching: boolean;
   hasNext: boolean;
   onLoadMore: () => void;
+  sourceId?: string;
 }
 
-function Grid({ items, loading, fetching, hasNext, onLoadMore }: GridProps) {
+function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridProps) {
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -444,7 +562,7 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore }: GridProps) {
   return (
     <>
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-5">
-        {items.map(m => <MangaCard key={m.id} manga={m as any} />)}
+        {items.map(m => <MangaCard key={m.id} manga={m as any} sourceId={sourceId} />)}
       </div>
       {hasNext && (
         <div className="flex justify-center mt-8">
@@ -458,9 +576,7 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore }: GridProps) {
 }
 
 // ---------------------------------------------------------------------------
-// TagPicker — has its own internal pending state. Only calls onApply when
-// the user explicitly clicks "Apply". This prevents the filter from firing
-// immediately on every tag click.
+// TagPicker
 // ---------------------------------------------------------------------------
 interface TagPickerProps {
   tags: SourceTag[];
@@ -470,11 +586,9 @@ interface TagPickerProps {
 }
 
 function TagPicker({ tags, initialTagState, onApply, onClearAndClose }: TagPickerProps) {
-  // Pending state — local to the popover; doesn't affect the live browse until Apply.
   const [pending, setPending] = useState<Record<string, TagTriState>>(() => ({ ...initialTagState }));
   const [tagSearch, setTagSearch] = useState("");
 
-  // Re-sync when the popover is opened with a fresh initial state.
   const prevInitial = useRef(initialTagState);
   useEffect(() => {
     if (prevInitial.current !== initialTagState) {
@@ -488,9 +602,7 @@ function TagPicker({ tags, initialTagState, onApply, onClearAndClose }: TagPicke
       const cur = prev[id];
       if (!cur) return { ...prev, [id]: "include" };
       if (cur === "include") return { ...prev, [id]: "exclude" };
-      const next = { ...prev };
-      delete next[id];
-      return next;
+      const next = { ...prev }; delete next[id]; return next;
     });
   };
 

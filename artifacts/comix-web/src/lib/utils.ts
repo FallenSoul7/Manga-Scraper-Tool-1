@@ -5,8 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function proxyImage(url: string | undefined): string {
+export function proxyImage(url: string | undefined, source?: string): string {
   if (!url) return '';
   const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
-  return `${baseUrl}/api/image?url=${encodeURIComponent(url)}`;
+  const sourceParam = source ? `&source=${encodeURIComponent(source)}` : '';
+  return `${baseUrl}/api/image?url=${encodeURIComponent(url)}${sourceParam}`;
 }
