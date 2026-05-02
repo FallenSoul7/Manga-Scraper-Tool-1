@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { useRoute } from "wouter";
+import { useRoute, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
@@ -120,6 +120,8 @@ function VpnBanner({
 export default function SourceBrowsePage() {
   const [, params] = useRoute("/sources/:id");
   const sourceId = params?.id || "";
+  const searchString = useSearch();
+  const urlQ = useMemo(() => new URLSearchParams(searchString).get("q") ?? "", [searchString]);
   const installedMap = useStore((s) => s.installedSources);
   const installedSource = installedMap[sourceId];
   const theme = useStore(s => s.theme);
@@ -151,9 +153,13 @@ export default function SourceBrowsePage() {
   // ---- Active tab & search state ----
   const [tab, setTab] = useState<ActiveTab>("popular");
   const [popularSort, setPopularSort] = useState<string | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchInput, setSearchInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(!!urlQ);
+  const [searchInput, setSearchInput] = useState(urlQ);
+  const [searchQuery, setSearchQuery] = useState(urlQ);
+
+  // Track whether this is the initial mount so the source-change reset effect
+  // doesn't clear a query that arrived via ?q= URL param.
+  const isFirstMountRef = useRef(true);
 
   // Applied filter state (only changes when "Apply" is pressed in the popover)
   const [appliedTagState, setAppliedTagState] = useState<Record<string, TagTriState>>({});
@@ -176,8 +182,17 @@ export default function SourceBrowsePage() {
     if (installedSource) storeActions.setActiveSource(sourceId);
   }, [sourceId, installedSource]);
 
-  // Reset state on source change.
+  // Reset state on source change. Skip search reset on the very first mount
+  // so a ?q= URL param coming from global search "See more" is preserved.
   useEffect(() => {
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      // Still reset pagination but leave search intact when arriving via ?q=
+      setPopularPage(1); setPopularItems([]);
+      setLatestPage(1); setLatestItems([]);
+      setFilterPage(1); setFilterItems([]);
+      return;
+    }
     setTab("popular");
     setPopularSort(null);
     setSearchOpen(false); setSearchInput(""); setSearchQuery("");

@@ -84,25 +84,20 @@ function GlobalSearchResults({
     <div className="space-y-1">
       <div className="flex items-center justify-between pb-3">
         <p className="text-sm text-muted-foreground">
-          {withResults.length > 0
-            ? <>{withResults.length} source{withResults.length !== 1 ? "s" : ""} returned results for <strong>"{query}"</strong></>
-            : <>No results across all sources for <strong>"{query}"</strong></>}
+          {results.length === 0
+            ? <>Searching…</>
+            : withResults.length > 0
+              ? <>{withResults.length} of {results.length} source{results.length !== 1 ? "s" : ""} returned results for <strong>"{query}"</strong></>
+              : <>No results across all sources for <strong>"{query}"</strong></>}
         </p>
         <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={onClear}>
           <X className="h-3.5 w-3.5" /> Clear search
         </Button>
       </div>
 
-      {withResults.length === 0 ? (
-        <div className="py-20 flex flex-col items-center gap-4 text-center border rounded-2xl bg-card/50">
-          <SearchX className="h-12 w-12 text-muted" />
-          <p className="text-muted-foreground max-w-xs">
-            None of your installed sources returned anything for this query. Try a different term.
-          </p>
-        </div>
-      ) : (
+      {results.length === 0 ? null : (
         <div className="space-y-7">
-          {withResults.map(({ source, items }) => (
+          {results.map(({ source, items }) => (
             <div key={source.id}>
               {/* Source header */}
               <div className="flex items-center gap-2 mb-3">
@@ -117,38 +112,45 @@ function GlobalSearchResults({
                 )}
                 <span className="text-xs text-muted-foreground">{langLabel(source.lang)}</span>
                 <div className="flex-1" />
-                <Link href={`/sources/${source.id}`}>
+                <Link href={`/sources/${source.id}?q=${encodeURIComponent(query)}`}>
                   <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer">
-                    More <ChevronRight className="h-3 w-3" />
+                    See more <ChevronRight className="h-3 w-3" />
                   </span>
                 </Link>
               </div>
 
-              {/* Horizontal manga row */}
-              <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
-                {items.map((manga) => (
-                  <Link key={manga.id} href={`/sources/${source.id}/manga/${manga.id}`}>
-                    <div className="shrink-0 w-24 sm:w-28 cursor-pointer group">
-                      <div className="aspect-[2/3] rounded-lg overflow-hidden bg-muted mb-1.5 shadow-sm">
-                        <img
-                          src={proxyImage(manga.thumbnail, source.id)}
-                          alt={manga.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          loading="lazy"
-                        />
-                        {manga.isNsfw && (
-                          <div className="absolute top-1 right-1 rounded px-1 py-0 text-[9px] font-bold bg-destructive/90 text-destructive-foreground">
-                            18+
-                          </div>
-                        )}
+              {items.length === 0 ? (
+                <div className="flex items-center gap-2 py-4 px-3 rounded-xl border bg-muted/30 text-sm text-muted-foreground">
+                  <SearchX className="h-4 w-4 shrink-0" />
+                  No results from this source
+                </div>
+              ) : (
+                /* Horizontal manga row */
+                <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
+                  {items.map((manga) => (
+                    <Link key={manga.id} href={`/sources/${source.id}/manga/${manga.id}`}>
+                      <div className="shrink-0 w-24 sm:w-28 cursor-pointer group">
+                        <div className="aspect-[2/3] rounded-lg overflow-hidden bg-muted mb-1.5 shadow-sm">
+                          <img
+                            src={proxyImage(manga.thumbnail, source.id)}
+                            alt={manga.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                          />
+                          {manga.isNsfw && (
+                            <div className="absolute top-1 right-1 rounded px-1 py-0 text-[9px] font-bold bg-destructive/90 text-destructive-foreground">
+                              18+
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs font-medium line-clamp-2 leading-snug group-hover:text-primary transition-colors px-0.5">
+                          {manga.title}
+                        </p>
                       </div>
-                      <p className="text-xs font-medium line-clamp-2 leading-snug group-hover:text-primary transition-colors px-0.5">
-                        {manga.title}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
