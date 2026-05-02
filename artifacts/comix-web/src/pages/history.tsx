@@ -1,204 +1,173 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import { Link } from "wouter";
 import { proxyImage } from "@/lib/utils";
-import { isToday, isYesterday, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Trash2, Clock, Search, X } from "lucide-react";
+import { Trash2, Clock, Trash, Search, X } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { useRegisterHistoryHeader } from "@/lib/header-history";
-
-type TimePeriod = "last-hour" | "today" | "today-yesterday" | "all";
-
-const PERIOD_LABELS: Record<TimePeriod, string> = {
-  "last-hour": "The last hour",
-  "today": "Today",
-  "today-yesterday": "Today and yesterday",
-  "all": "All time",
-};
-
-function relativeTime(ts: number): string {
-  const date = new Date(ts);
-  if (isToday(date)) return "Today";
-  if (isYesterday(date)) return "Yesterday";
-  return formatDistanceToNow(date, { addSuffix: true });
-}
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 export default function HistoryPage() {
   const historyKeys = useStore(s => s.history);
   const progressMap = useStore(s => s.progress);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [clearOpen, setClearOpen] = useState(false);
-  const [confirmPeriod, setConfirmPeriod] = useState<TimePeriod | null>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (searchOpen) searchRef.current?.focus();
-  }, [searchOpen]);
+  const [filterText, setFilterText] = useState("");
 
   const historyItems = historyKeys.map(k => progressMap[k]).filter(Boolean);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return historyItems;
-    return historyItems.filter(i =>
-      i.mangaTitle.toLowerCase().includes(q) ||
-      i.chapterTitle?.toLowerCase().includes(q)
-    );
-  }, [historyItems, query]);
+  const q = filterText.trim().toLowerCase();
+  const filtered = q
+    ? historyItems.filter(i => i.mangaTitle.toLowerCase().includes(q) || i.chapterTitle?.toLowerCase().includes(q))
+    : historyItems;
 
-  const handleClear = (period: TimePeriod) => {
-    const now = Date.now();
-    historyItems.forEach(item => {
-      let match = false;
-      if (period === "last-hour") match = now - item.updatedAt < 60 * 60 * 1000;
-      else if (period === "today") match = isToday(new Date(item.updatedAt));
-      else if (period === "today-yesterday") match = isToday(new Date(item.updatedAt)) || isYesterday(new Date(item.updatedAt));
-      else match = true;
-      if (match) storeActions.markChapterUnread(item.mangaId, item.chapterId);
-    });
-  };
+  const grouped = filtered.reduce((acc, item) => {
+    const date = new Date(item.updatedAt);
+    let groupKey = "";
+    if (isToday(date)) groupKey = "Today";
+    else if (isYesterday(date)) groupKey = "Yesterday";
+    else if (Date.now() - item.updatedAt < 7 * 24 * 60 * 60 * 1000) groupKey = format(date, "EEEE");
+    else groupKey = format(date, "MMM d, yyyy");
 
-  const onSearchClick = useCallback(() => setSearchOpen(v => !v), []);
-  const onClearClick = useCallback(() => setClearOpen(true), []);
-
-  useRegisterHistoryHeader({ onSearchClick, onClearClick });
+    if (!acc[groupKey]) acc[groupKey] = [];
+    acc[groupKey].push(item);
+    return acc;
+  }, {} as Record<string, typeof historyItems>);
 
   return (
-    <main className="max-w-2xl mx-auto animate-in fade-in duration-500">
-
-      {/* Inline search bar (slides in under the header) */}
-      {searchOpen && (
-        <div className="px-4 pt-3 pb-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              ref={searchRef}
-              placeholder="Search history…"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              className="pl-9 pr-9 h-9 bg-muted/40 border-border/60"
-            />
-            {query ? (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setSearchOpen(false)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
+    <main className="container mx-auto px-4 pt-3 pb-8 max-w-4xl animate-in fade-in duration-500">
+      {/* Top row: search + clear all */}
+      <div className="flex items-center gap-3 mb-5">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Filter history…"
+            value={filterText}
+            onChange={e => setFilterText(e.target.value)}
+            className="pl-9 pr-9 h-9"
+          />
+          {filterText && (
+            <button
+              type="button"
+              onClick={() => setFilterText("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
-      )}
 
-      {/* List */}
+        <div className="flex-1" />
+
+        {historyItems.length > 0 && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear all
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Clear History</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to clear your reading history? This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => storeActions.clearHistory()}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Clear
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+      </div>
+
       {historyItems.length === 0 ? (
-        <div className="py-24 flex flex-col items-center justify-center text-center px-6">
+        <div className="py-24 flex flex-col items-center justify-center text-center px-4 border rounded-2xl bg-card/50">
           <Clock className="h-16 w-16 text-muted mb-6" />
           <h3 className="text-xl font-serif font-bold text-foreground mb-2">No reading history</h3>
-          <p className="text-muted-foreground">Your recently read chapters will appear here.</p>
+          <p className="text-muted-foreground max-w-md mx-auto">
+            Your recently read chapters will appear here.
+          </p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-16 flex flex-col items-center text-center px-6">
-          <p className="text-muted-foreground">No results for "{query}".</p>
+        <div className="py-16 flex flex-col items-center text-center">
+          <p className="text-muted-foreground">No history matches "{filterText}".</p>
         </div>
       ) : (
-        <div className="divide-y divide-border/40 pt-2">
-          {filtered.map((item) => (
-            <div key={`${item.mangaId}:${item.chapterId}`} className="flex items-center gap-4 px-4 py-3">
-              <Link href={`/manga/${item.mangaId}`} className="shrink-0">
-                <div className="w-16 h-16 rounded-md overflow-hidden bg-muted shadow-sm">
-                  <img
-                    src={proxyImage(item.mangaThumbnail)}
-                    alt={item.mangaTitle}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              </Link>
+        <div className="space-y-8">
+          {Object.entries(grouped).map(([groupKey, items]) => (
+            <div key={groupKey} className="space-y-4">
+              <h2 className="text-xl font-serif font-bold text-foreground border-b pb-2">{groupKey}</h2>
+              <div className="space-y-3">
+                {items.map((item) => {
+                  const progressPct = item.totalPages > 0 ? (item.lastPageRead / item.totalPages) * 100 : (item.isRead ? 100 : 0);
+                  return (
+                    <div key={`${item.mangaId}:${item.chapterId}`} className="group flex items-center gap-4 p-3 rounded-xl hover:bg-card transition-colors relative">
+                      <Link href={`/manga/${item.mangaId}`} className="shrink-0 cursor-pointer">
+                        <div className="w-16 sm:w-20 aspect-[2/3] rounded-md overflow-hidden bg-muted shadow-sm group-hover:opacity-80 transition-opacity">
+                          <img
+                            src={proxyImage(item.mangaThumbnail)}
+                            alt={item.mangaTitle}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      </Link>
 
-              <div className="flex-1 min-w-0">
-                <Link href={`/manga/${item.mangaId}`}>
-                  <p className="font-semibold text-base text-foreground leading-snug mb-0.5 hover:text-primary transition-colors line-clamp-2">
-                    {item.mangaTitle}
-                  </p>
-                </Link>
-                <p className="text-sm text-muted-foreground truncate mb-1">
-                  Chapter {item.chapterNumber}{item.chapterTitle ? `: ${item.chapterTitle}` : ""}
-                </p>
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Clock className="h-3 w-3 shrink-0" />
-                  <span>{relativeTime(item.updatedAt)}</span>
-                </div>
+                      <div className="flex-1 min-w-0 py-1">
+                        <Link href={`/manga/${item.mangaId}`}>
+                          <h3 className="font-serif font-semibold text-base sm:text-lg mb-0.5 truncate hover:text-primary transition-colors cursor-pointer text-foreground">
+                            {item.mangaTitle}
+                          </h3>
+                        </Link>
+                        <Link href={`/reader/${item.chapterId}?mangaId=${item.mangaId}`}>
+                          <div className="text-sm font-medium text-foreground hover:text-primary transition-colors cursor-pointer truncate mb-1">
+                            Chapter {item.chapterNumber}: {item.chapterTitle || "Read"}
+                          </div>
+                        </Link>
+                        <div className="text-xs text-muted-foreground mb-2">
+                          {formatDistanceToNow(item.updatedAt, { addSuffix: true })}
+                        </div>
+                        {item.totalPages > 0 && (
+                          <div className="flex items-center gap-3">
+                            <Progress value={progressPct} className="h-1.5 flex-1" />
+                            <span className="text-[10px] text-muted-foreground font-medium shrink-0">
+                              {item.lastPageRead + 1} / {item.totalPages}
+                            </span>
+                          </div>
+                        )}
+                        {!item.totalPages && item.isRead && (
+                          <div className="flex items-center gap-3">
+                            <Progress value={100} className="h-1.5 flex-1" />
+                            <span className="text-[10px] text-muted-foreground font-medium shrink-0">Read</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => storeActions.markChapterUnread(item.mangaId, item.chapterId)}
+                        >
+                          <Trash className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                onClick={() => storeActions.markChapterUnread(item.mangaId, item.chapterId)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
             </div>
           ))}
         </div>
       )}
-
-      {/* Clear dropdown (triggered from header trash button) */}
-      <DropdownMenu open={clearOpen} onOpenChange={setClearOpen}>
-        <DropdownMenuTrigger asChild>
-          <span className="sr-only" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
-          {(Object.keys(PERIOD_LABELS) as TimePeriod[]).map(p => (
-            <DropdownMenuItem
-              key={p}
-              className="text-destructive focus:text-destructive"
-              onClick={() => { setClearOpen(false); setConfirmPeriod(p); }}
-            >
-              {PERIOD_LABELS[p]}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* Confirm clear dialog */}
-      <AlertDialog open={!!confirmPeriod} onOpenChange={open => { if (!open) setConfirmPeriod(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Clear History</AlertDialogTitle>
-            <AlertDialogDescription>
-              Remove all history from <strong>{confirmPeriod ? PERIOD_LABELS[confirmPeriod] : ""}</strong>? This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setConfirmPeriod(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { if (confirmPeriod) handleClear(confirmPeriod); setConfirmPeriod(null); }}
-            >
-              Clear
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </main>
   );
 }
