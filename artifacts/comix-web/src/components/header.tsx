@@ -212,15 +212,27 @@ export function Header() {
 
           <div className="flex items-center gap-1 shrink-0">
             {showSearch && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="md:hidden h-9 w-9"
-                onClick={() => setIsMobileSearchOpen(true)}
-                aria-label="Search"
-              >
-                <Search className="h-5 w-5 text-muted-foreground" />
-              </Button>
+              isSources ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="md:hidden h-9 gap-1.5 px-2 text-xs text-muted-foreground"
+                  onClick={() => setIsMobileSearchOpen(true)}
+                >
+                  <Search className="h-4 w-4" />
+                  <span>Global search</span>
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="md:hidden h-9 w-9"
+                  onClick={() => setIsMobileSearchOpen(true)}
+                  aria-label="Search"
+                >
+                  <Search className="h-5 w-5 text-muted-foreground" />
+                </Button>
+              )
             )}
 
             {showTheme && (

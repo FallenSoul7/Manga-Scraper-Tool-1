@@ -260,7 +260,7 @@ export default function MangaDetail() {
           </div>
         </header>
       )}
-    <main className="container mx-auto px-4 py-6 sm:py-8 max-w-5xl animate-in fade-in duration-500">
+    <main className="container mx-auto px-4 py-6 sm:py-8 max-w-5xl animate-in fade-in duration-500 overflow-x-hidden">
       {!sourceContext && (
         <button
           type="button"
@@ -656,7 +656,7 @@ export default function MangaDetail() {
               return (
                 <div 
                   key={chapter.id} 
-                  className={`group p-3 sm:p-4 rounded-xl border transition-all cursor-pointer flex flex-col gap-1 ${
+                  className={`group min-w-0 p-3 sm:p-4 rounded-xl border transition-all cursor-pointer flex flex-col gap-1 ${
                     isNew
                       ? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 hover:bg-primary/10"
                       : isRead
