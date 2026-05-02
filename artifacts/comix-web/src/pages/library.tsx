@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useStore, storeActions } from "@/lib/storage";
 import { MangaCard } from "@/components/manga-card";
@@ -22,6 +22,10 @@ export default function LibraryPage() {
 
   const [activeTab, setActiveTab] = useState<string>(() => sortedCategories[0]?.id ?? FALLBACK_TAB);
 
+  // Refs for auto-scroll behaviour on the category strip.
+  const stripRef = useRef<HTMLDivElement>(null);
+  const tabElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+
   // If the active category gets deleted out from under us, fall back to the
   // first available one so the grid never goes blank.
   useEffect(() => {
@@ -29,6 +33,40 @@ export default function LibraryPage() {
       setActiveTab(sortedCategories[0]?.id ?? FALLBACK_TAB);
     }
   }, [sortedCategories, activeTab]);
+
+  // Whenever the active tab changes, scroll the strip so the active tile is
+  // fully visible — plus a ~56 px "peek" revealing the neighbouring tile so
+  // the user knows more categories exist.
+  useEffect(() => {
+    const strip = stripRef.current;
+    const el = tabElsRef.current.get(activeTab);
+    if (!strip || !el) return;
+
+    // Use getBoundingClientRect for pixel-perfect positioning regardless of
+    // what the offsetParent happens to be.
+    const PEEK = 56;
+    const stripRect = strip.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+
+    // Convert the element's viewport-relative position to a position relative
+    // to the scroll container's content (accounting for current scroll offset).
+    const elLeft  = elRect.left  - stripRect.left + strip.scrollLeft;
+    const elRight = elRect.right - stripRect.left + strip.scrollLeft;
+
+    let targetScroll: number | null = null;
+
+    if (elRight + PEEK > strip.scrollLeft + strip.clientWidth) {
+      // Active tile is near/past the right edge → scroll right to show peek.
+      targetScroll = elRight + PEEK - strip.clientWidth;
+    } else if (elLeft - PEEK < strip.scrollLeft) {
+      // Active tile is near/past the left edge → scroll left to show peek.
+      targetScroll = Math.max(0, elLeft - PEEK);
+    }
+
+    if (targetScroll !== null) {
+      strip.scrollTo({ left: targetScroll, behavior: "smooth" });
+    }
+  }, [activeTab]);
 
   // Live in-grid filter driven by the global header search.
   const [filterText, setFilterText] = useState("");
@@ -79,7 +117,10 @@ export default function LibraryPage() {
     <main className="container mx-auto px-4 pt-3 sm:pt-4 pb-8 max-w-7xl animate-in fade-in duration-300">
       {/* Compact blocky category strip — half the previous height, ~1/4 the width. */}
       <div className="mb-4 sm:mb-6">
-        <div className="grid grid-flow-col auto-cols-[minmax(96px,112px)] sm:auto-cols-[minmax(108px,128px)] gap-1.5 sm:gap-2 overflow-x-auto pb-1 hide-scrollbar">
+        <div
+          ref={stripRef}
+          className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 hide-scrollbar scroll-smooth"
+        >
           {sortedCategories.map((cat) => {
             const count = libraryItems.filter(m => m.categoryIds.includes(cat.id)).length;
             const isActive = activeTab === cat.id;
@@ -87,7 +128,11 @@ export default function LibraryPage() {
             return (
               <div
                 key={cat.id}
-                className={`group relative rounded-xl border overflow-hidden transition-all ${
+                ref={(el) => {
+                  if (el) tabElsRef.current.set(cat.id, el);
+                  else tabElsRef.current.delete(cat.id);
+                }}
+                className={`group relative rounded-xl border overflow-hidden transition-all shrink-0 w-[96px] sm:w-[112px] ${
                   isActive
                     ? "bg-primary text-primary-foreground border-primary shadow-sm"
                     : "bg-card hover:bg-muted border-border"
@@ -155,7 +200,7 @@ export default function LibraryPage() {
           <button
             type="button"
             onClick={() => setIsNewCatOpen(true)}
-            className="rounded-xl border border-dashed border-border bg-card/40 hover:bg-muted hover:border-primary/40 transition-colors flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 sm:py-2 text-muted-foreground hover:text-foreground cursor-pointer leading-tight"
+            className="shrink-0 w-[96px] sm:w-[112px] rounded-xl border border-dashed border-border bg-card/40 hover:bg-muted hover:border-primary/40 transition-colors flex flex-col items-center justify-center gap-0.5 py-1.5 sm:py-2 text-muted-foreground hover:text-foreground cursor-pointer leading-tight"
             aria-label="New category"
           >
             <Plus className="h-3.5 w-3.5" />

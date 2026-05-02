@@ -370,6 +370,16 @@ html[data-theme="emerald"] {
 }
 
 @layer utilities {
+  /* Hide the scrollbar chrome while still allowing scroll — used on the
+     category strip and any horizontal scroll container. */
+  .hide-scrollbar {
+    scrollbar-width: none;        /* Firefox */
+    -ms-overflow-style: none;     /* IE/Edge */
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;                /* Chrome/Safari/Opera */
+  }
+
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
   }
