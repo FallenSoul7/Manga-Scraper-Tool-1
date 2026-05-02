@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Library, Clock, RefreshCw, Sun, Moon, Laptop, Boxes, LayoutGrid } from "lucide-react";
+import { Library, Clock, RefreshCw, Sun, Moon, Boxes, LayoutGrid } from "lucide-react";
 import { useUpdatesCount } from "@/hooks/use-updates-count";
 import { useStore, storeActions } from "@/lib/storage";
 import { Button } from "./ui/button";
@@ -83,7 +83,7 @@ export function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" aria-label="Theme">
-                    {theme === 'light' ? <Sun className="h-5 w-5" /> : theme === 'dark' ? <Moon className="h-5 w-5" /> : <Laptop className="h-5 w-5" />}
+                    {theme === 'light' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -92,9 +92,6 @@ export function Header() {
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => storeActions.setTheme('dark')}>
                     <Moon className="mr-2 h-4 w-4" /> Dark
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => storeActions.setTheme('system')}>
-                    <Laptop className="mr-2 h-4 w-4" /> System
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

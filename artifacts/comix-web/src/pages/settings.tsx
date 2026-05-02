@@ -121,7 +121,7 @@ export default function SettingsPage() {
                     <span className="flex flex-col min-w-0">
                       <span className="text-sm font-semibold truncate">{opt.label}</span>
                       <span className="text-[11px] text-muted-foreground">
-                        {opt.id === 'system' ? 'Follows OS' : opt.isDark ? 'Dark base' : 'Light base'}
+                        {opt.isDark ? 'Dark base' : 'Light base'}
                       </span>
                     </span>
                     {active && (
