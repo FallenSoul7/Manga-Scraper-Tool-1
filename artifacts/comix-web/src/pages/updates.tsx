@@ -1,93 +1,75 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useStore, storeActions } from "@/lib/storage";
-import { useSettings } from "@/hooks/use-settings";
-import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { getGetChaptersQueryOptions } from "@workspace/api-client-react";
 import { proxyImage } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, CheckCircle2, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { RefreshCw, CheckCircle2, Clock, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 const COLLAPSED_LIMIT = 6;
 
 export default function UpdatesPage() {
   const library = useStore(s => s.library);
-  const { settings } = useSettings();
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const libraryItems = useMemo(() => Object.values(library), [library]);
 
-  const queries = useQueries({
-    queries: libraryItems.map((manga) => {
-      const options = getGetChaptersQueryOptions(manga.id, { dedupe: settings.dedupeChapters });
-      return {
-        ...options,
-        staleTime: 10 * 60 * 1000,
-        enabled: true,
-      };
-    })
-  });
+  const updatesByManga = useMemo(() => {
+    return libraryItems
+      .filter(m => (m.pendingUpdates ?? []).length > 0)
+      .map(m => {
+        const chapters = [...(m.pendingUpdates ?? [])].sort((a, b) => b.number - a.number);
+        return { manga: m, chapters, latestDate: chapters[0]?.date ?? 0 };
+      })
+      .sort((a, b) => b.latestDate - a.latestDate);
+  }, [library]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all(queries.map((_, i) =>
-      queryClient.invalidateQueries({ queryKey: getGetChaptersQueryOptions(libraryItems[i].id).queryKey })
-    ));
-    setIsRefreshing(false);
+    try {
+      await Promise.all(
+        libraryItems.map(async (manga) => {
+          const opts = getGetChaptersQueryOptions(manga.id, { dedupe: false });
+          const data = await queryClient.fetchQuery({ ...opts, staleTime: 0 }) as any;
+          if (!data?.items) return;
+          const total: number = data.items.length;
+          const seen: number = manga.lastChapterCountSeen ?? 0;
+          if (total > seen) {
+            const fresh = data.items.slice(0, total - seen);
+            const newChaps = fresh.map((ch: any) => ({
+              id: ch.id as number,
+              number: ch.number as number,
+              title: (ch.title as string) ?? "",
+              date: ch.date as number,
+            }));
+            storeActions.recordDiscoveredUpdates(manga.id, newChaps, total);
+          }
+        })
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleMarkAllSeen = () => {
-    queries.forEach((q, i) => {
-      if (q.data) {
-        storeActions.markChaptersSeen(libraryItems[i].id, q.data.items.length);
-      }
-    });
+    storeActions.clearAllPendingUpdates();
   };
-
-  let updatesByManga: Array<{
-    manga: typeof libraryItems[0],
-    chapters: any[],
-    latestDate: number
-  }> = [];
-
-  let isLoading = false;
-
-  queries.forEach((q, i) => {
-    if (q.isLoading) isLoading = true;
-    if (q.data) {
-      const manga = libraryItems[i];
-      const chaptersNow = q.data.items.length;
-      const seen = manga.lastChapterCountSeen || 0;
-      
-      if (chaptersNow > seen) {
-        const newChapters = q.data.items.slice(0, chaptersNow - seen);
-        if (newChapters.length > 0) {
-          updatesByManga.push({
-            manga,
-            chapters: newChapters,
-            latestDate: newChapters[0].date
-          });
-        }
-      }
-    }
-  });
-
-  updatesByManga.sort((a, b) => b.latestDate - a.latestDate);
 
   return (
     <main className="container mx-auto px-4 py-6 sm:py-8 max-w-4xl animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 sm:mb-8">
         <div>
           <h1 className="text-3xl sm:text-4xl font-serif font-bold text-foreground mb-1 sm:mb-2">Updates</h1>
-          <p className="text-sm sm:text-lg text-muted-foreground">New chapters from your library.</p>
+          <p className="text-sm sm:text-lg text-muted-foreground">New chapters discovered when you open a title.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
+            {isRefreshing ? "Checking…" : "Check all"}
           </Button>
           <Button variant="default" size="sm" onClick={handleMarkAllSeen} disabled={updatesByManga.length === 0}>
             <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -96,7 +78,7 @@ export default function UpdatesPage() {
         </div>
       </div>
 
-      {isLoading && updatesByManga.length === 0 ? (
+      {isRefreshing && updatesByManga.length === 0 ? (
         <div className="space-y-6">
           {[1, 2, 3].map(i => (
             <div key={i} className="flex gap-4 p-4 border rounded-xl bg-card animate-pulse">
@@ -113,7 +95,7 @@ export default function UpdatesPage() {
           <Clock className="h-16 w-16 text-muted mb-6" />
           <h3 className="text-xl font-serif font-bold text-foreground mb-2">All caught up</h3>
           <p className="text-muted-foreground max-w-md mx-auto">
-            We'll let you know when there's something new for the series in your library.
+            Open a title in your library and we'll flag any new chapters here. Or hit "Check all" to scan everything at once.
           </p>
         </div>
       ) : (
@@ -127,28 +109,39 @@ export default function UpdatesPage() {
               <div key={manga.id} className="flex gap-3 sm:gap-4 p-3 sm:p-4 border rounded-xl bg-card hover:shadow-md transition-shadow">
                 <Link href={`/manga/${manga.id}`} className="shrink-0 cursor-pointer">
                   <div className="w-14 sm:w-20 aspect-[2/3] rounded-md overflow-hidden bg-muted shadow-sm hover:opacity-80 transition-opacity">
-                    <img 
-                      src={proxyImage(manga.thumbnail)} 
-                      alt={manga.title} 
+                    <img
+                      src={proxyImage(manga.thumbnail)}
+                      alt={manga.title}
                       className="w-full h-full object-cover"
                     />
                   </div>
                 </Link>
-                
+
                 <div className="flex-1 min-w-0">
-                  <Link href={`/manga/${manga.id}`}>
-                    <h3 className="font-serif font-semibold text-base sm:text-lg mb-1 line-clamp-2 sm:truncate hover:text-primary transition-colors cursor-pointer">
-                      {manga.title}
-                    </h3>
-                  </Link>
-                  <div className="text-xs text-muted-foreground mb-2 sm:mb-3">
-                    {chapters.length} new {chapters.length === 1 ? "chapter" : "chapters"} · Updated {formatDistanceToNow(latestDate * 1000, { addSuffix: true })}
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <Link href={`/manga/${manga.id}`}>
+                      <h3 className="font-serif font-semibold text-base sm:text-lg line-clamp-2 sm:truncate hover:text-primary transition-colors cursor-pointer">
+                        {manga.title}
+                      </h3>
+                    </Link>
+                    <button
+                      title="Mark as seen"
+                      onClick={() => storeActions.clearPendingUpdates(manga.id)}
+                      className="shrink-0 text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                    </button>
                   </div>
-                  
+                  <div className="text-xs text-muted-foreground mb-2 sm:mb-3">
+                    {chapters.length} new {chapters.length === 1 ? "chapter" : "chapters"}
+                    {latestDate > 0 && <> · Updated {formatDistanceToNow(latestDate * 1000, { addSuffix: true })}</>}
+                  </div>
+
                   <div className="flex flex-wrap gap-1.5 sm:gap-2">
                     {visibleChapters.map(ch => (
                       <Link key={ch.id} href={`/reader/${ch.id}?mangaId=${manga.id}`}>
-                        <span className="inline-flex items-center px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-primary/10 text-primary text-xs sm:text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer">
+                        <span className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-primary/10 text-primary text-xs sm:text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer">
+                          <Sparkles className="h-2.5 w-2.5" />
                           Ch. {ch.number}
                         </span>
                       </Link>

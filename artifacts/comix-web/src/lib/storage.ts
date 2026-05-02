@@ -10,6 +10,14 @@ const CategorySchema = z.object({
 });
 export type Category = z.infer<typeof CategorySchema>;
 
+const PendingChapterSchema = z.object({
+  id: z.number(),
+  number: z.number(),
+  title: z.string(),
+  date: z.number(),
+});
+export type PendingChapter = z.infer<typeof PendingChapterSchema>;
+
 const SavedMangaSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -21,6 +29,7 @@ const SavedMangaSchema = z.object({
   addedAt: z.number(),
   categoryIds: z.array(z.string()),
   lastChapterCountSeen: z.number(),
+  pendingUpdates: z.array(PendingChapterSchema).default([]),
 });
 export type SavedManga = z.infer<typeof SavedMangaSchema>;
 
@@ -304,9 +313,46 @@ export const storeActions = {
       ...memoryState,
       library: {
         ...memoryState.library,
-        [mangaId]: { ...manga, lastChapterCountSeen: totalChapterCount }
+        [mangaId]: { ...manga, lastChapterCountSeen: totalChapterCount, pendingUpdates: [] }
       }
     });
+  },
+
+  recordDiscoveredUpdates(mangaId: string, newChapters: PendingChapter[], totalCount: number) {
+    const manga = memoryState.library[mangaId];
+    if (!manga) return;
+    const existingIds = new Set((manga.pendingUpdates ?? []).map(c => c.id));
+    const merged = [
+      ...(manga.pendingUpdates ?? []),
+      ...newChapters.filter(c => !existingIds.has(c.id)),
+    ];
+    saveState({
+      ...memoryState,
+      library: {
+        ...memoryState.library,
+        [mangaId]: { ...manga, lastChapterCountSeen: totalCount, pendingUpdates: merged }
+      }
+    });
+  },
+
+  clearPendingUpdates(mangaId: string) {
+    const manga = memoryState.library[mangaId];
+    if (!manga) return;
+    saveState({
+      ...memoryState,
+      library: {
+        ...memoryState.library,
+        [mangaId]: { ...manga, pendingUpdates: [] }
+      }
+    });
+  },
+
+  clearAllPendingUpdates() {
+    const newLib = { ...memoryState.library };
+    for (const id in newLib) {
+      newLib[id] = { ...newLib[id], pendingUpdates: [] };
+    }
+    saveState({ ...memoryState, library: newLib });
   },
 
   addCategory(name: string): Category {

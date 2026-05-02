@@ -7,12 +7,12 @@ import {
 } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
 import { proxyImage } from "@/lib/utils";
-import { Loader2, ArrowLeft, Star, ChevronDown, ChevronUp, BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown, ArrowUp, Filter, Play } from "lucide-react";
+import { Loader2, ArrowLeft, Star, ChevronDown, ChevronUp, BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown, ArrowUp, Filter, Play, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { format } from "date-fns";
-import { useStore, storeActions } from "@/lib/storage";
+import { useStore, storeActions, type PendingChapter } from "@/lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -91,6 +91,39 @@ export default function MangaDetail() {
 
   // All chapters as fetched (no dedupe). Keyed in the order returned (typically newest first).
   const allChapters = chaptersResponse?.items || [];
+
+  // Track which chapter IDs are "new" (pending updates) for badge rendering.
+  const newChapterIds = useMemo(() => {
+    if (!savedManga) return new Set<number>();
+    return new Set((savedManga.pendingUpdates ?? []).map(c => c.id));
+  }, [savedManga]);
+
+  // When chapters finish loading for a library title, diff against lastChapterCountSeen.
+  // Any extra chapters (newest first from API) are stored as pendingUpdates so the
+  // Updates page can surface them without re-fetching.
+  const didRecordRef = useRef(false);
+  useEffect(() => {
+    if (!id || !inLibrary || chaptersLoading || allChapters.length === 0) return;
+    // Only run once per page visit so navigating around doesn't keep overwriting.
+    if (didRecordRef.current) return;
+    didRecordRef.current = true;
+
+    const seen = savedManga?.lastChapterCountSeen ?? 0;
+    const total = allChapters.length;
+    if (total > seen) {
+      const fresh = allChapters.slice(0, total - seen);
+      const stubs: PendingChapter[] = fresh.map((ch: any) => ({
+        id: ch.id as number,
+        number: ch.number as number,
+        title: (ch.title as string) ?? "",
+        date: ch.date as number,
+      }));
+      storeActions.recordDiscoveredUpdates(id, stubs, total);
+    } else if (total > 0) {
+      // Count is the same — just keep the seen count in sync.
+      storeActions.markChaptersSeen(id, total);
+    }
+  }, [id, inLibrary, chaptersLoading, allChapters.length]);
 
   // Group by scanlator for the filter UI, with counts
   const scanlatorGroups = useMemo(() => {
@@ -541,6 +574,15 @@ export default function MangaDetail() {
           </div>
         </div>
         
+        {/* "Checking for updates" banner — shown while chapters are loading for a
+            library title so the user knows we're actively looking for new content. */}
+        {chaptersLoading && inLibrary && (
+          <div className="flex items-center gap-2 px-4 py-2.5 mb-3 rounded-lg border border-primary/20 bg-primary/5 text-sm text-primary animate-pulse">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            Checking for new chapters…
+          </div>
+        )}
+
         {chaptersLoading ? (
           <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
         ) : visibleChapters.length === 0 ? (
@@ -555,11 +597,17 @@ export default function MangaDetail() {
               const isRead = p?.isRead;
               const inProgress = p && !isRead && p.totalPages > 0;
 
+              const isNew = newChapterIds.has(chapter.id);
+
               return (
                 <div 
                   key={chapter.id} 
-                  className={`group p-3 sm:p-4 rounded-xl border border-border transition-all cursor-pointer flex flex-col gap-1 ${
-                    isRead ? "bg-muted/30 opacity-70 hover:opacity-100" : "bg-card hover:border-primary/30 hover:bg-primary/5"
+                  className={`group p-3 sm:p-4 rounded-xl border transition-all cursor-pointer flex flex-col gap-1 ${
+                    isNew
+                      ? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 hover:bg-primary/10"
+                      : isRead
+                        ? "border-border bg-muted/30 opacity-70 hover:opacity-100"
+                        : "border-border bg-card hover:border-primary/30 hover:bg-primary/5"
                   }`}
                   onClick={(e) => {
                     if (!(e.target as HTMLElement).closest('.kebab-menu')) {
@@ -584,6 +632,11 @@ export default function MangaDetail() {
                       chapter info on mobile — no more huge empty middle stretch that
                       forced you to reach across the screen. */}
                   <div className="font-semibold text-sm sm:text-base text-foreground group-hover:text-primary transition-colors flex items-center gap-2 min-w-0">
+                    {isNew && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase px-1.5 py-0 h-4 rounded bg-primary text-primary-foreground shrink-0">
+                        <Sparkles className="h-2.5 w-2.5" />NEW
+                      </span>
+                    )}
                     {isRead && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Read</Badge>}
                     {inProgress && <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Pg {p.lastPageRead + 1}</Badge>}
                     <span className="truncate flex-1 min-w-0">Ch. {chapter.number}{chapter.title ? `: ${chapter.title}` : ""}</span>
