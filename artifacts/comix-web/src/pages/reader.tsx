@@ -9,7 +9,7 @@ import {
 } from "@workspace/api-client-react";
 import { proxyImage } from "@/lib/utils";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu } from "lucide-react";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
@@ -188,19 +188,53 @@ export default function Reader() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagesData, chapterId]);
 
-  // The first page we successfully measure becomes the "expected" aspect ratio for
-  // pages we haven't measured yet. Most chapters are visually consistent, so unprobed
-  // slots end up the right size and won't shake when their real measurement arrives.
+  // Computed ONCE from the initial pageDims (which is pre-populated from localStorage).
+  // Using [] deps means this NEVER recalculates — so when probes arrive one-by-one,
+  // only the individual slot whose probe just finished changes size. Previously this
+  // recalculated on every probe, causing ALL unprobed slots to resize in cascade → shake.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fallbackAspect = useMemo(() => {
     const measured = Object.values(pageDims);
-    if (!measured.length) return { w: 720, h: 1080 }; // sensible manga default
-    // Use the median to be robust against ad/banner outliers
+    if (!measured.length) return { w: 720, h: 1080 };
     const sorted = measured
       .map((d) => d.h / Math.max(1, d.w))
       .sort((a, b) => a - b);
     const ratio = sorted[Math.floor(sorted.length / 2)];
     return { w: 1000, h: Math.round(1000 * ratio) };
-  }, [pageDims]);
+  }, []); // ← intentionally empty: stable after mount
+
+  // Track the last-committed dims so we know what changed each render.
+  // Initialized with the current pageDims (from localStorage) so the first
+  // useLayoutEffect run has a correct baseline.
+  const prevPageDimsRef = useRef<Record<number, { w: number; h: number }>>({ ...pageDims });
+
+  // Scroll compensation: when a page's aspect-ratio box changes height and that page is
+  // above the midpoint of the viewport, compensate window.scrollY instantly.
+  // Runs synchronously after DOM mutations but before the browser paints, so there's
+  // no visible flash of the shifted layout.
+  useLayoutEffect(() => {
+    const isVertical = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
+    if (!isVertical) { prevPageDimsRef.current = { ...pageDims }; return; }
+
+    let delta = 0;
+    for (const [key, dim] of Object.entries(pageDims)) {
+      const idx = Number(key);
+      const prev = prevPageDimsRef.current[idx] ?? fallbackAspect;
+      if (prev.w === dim.w && prev.h === dim.h) continue; // no change
+      const el = document.getElementById(`page-${idx}`);
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      // Only compensate for pages fully above the viewport midpoint.
+      if (rect.bottom < window.innerHeight * 0.5) {
+        const w = el.clientWidth || window.innerWidth;
+        delta += (w * dim.h / Math.max(1, dim.w)) - (w * prev.h / Math.max(1, prev.w));
+      }
+    }
+    prevPageDimsRef.current = { ...pageDims };
+    if (Math.abs(delta) >= 1) {
+      window.scrollBy({ top: Math.round(delta), behavior: 'instant' as ScrollBehavior });
+    }
+  }, [pageDims]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initial scroll — wait until we've measured the page we want to land on so the
   // scrollIntoView lands at the right pixel and doesn't get nudged later.
@@ -527,7 +561,7 @@ export default function Reader() {
         } ${readerSettings.direction === 'rtl' ? 'flex-row-reverse' : ''}`}
         style={
           readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical'
-            ? { overflowAnchor: 'auto' }
+            ? { overflowAnchor: 'none' as const }
             : undefined
         }
       >

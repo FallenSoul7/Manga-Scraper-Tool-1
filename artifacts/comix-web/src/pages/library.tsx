@@ -249,9 +249,7 @@ export default function LibraryPage() {
               key={manga.id}
               manga={manga as any}
               sourceId={(manga as any).sourceId}
-              href={(manga as any).sourceId
-                ? `/sources/${(manga as any).sourceId}/manga/${manga.id}`
-                : `/manga/${manga.id}`}
+              href={`/manga/${manga.id}`}
             />
           ))}
         </div>

@@ -76,16 +76,21 @@ export default function MangaDetail() {
   const selectedScanlator = id ? (scanlatorPrefs[id] ?? null) : null; // null = "All sources"
   const sortAsc = id ? !!chapterSortAsc[id] : false;
 
-  // When in source context, hold queries until the source header is applied.
-  // This prevents the first render from firing requests against the wrong source.
-  const [sourceReady, setSourceReady] = useState(!sourceContext);
+  // When in source context OR when the manga is in the library with a stored sourceId,
+  // hold queries until applyActiveSource has been called with the right source ID.
+  // This prevents requests firing against the wrong (or default) source.
+  const librarySourceId = savedManga?.sourceId ?? null;
+  const needsSourceInit = !!(sourceContext || librarySourceId);
+  const [sourceReady, setSourceReady] = useState(!needsSourceInit);
 
   useEffect(() => {
-    if (sourceContext) {
-      applyActiveSource(sourceContext);
+    const effectiveSource = sourceContext ?? librarySourceId;
+    if (effectiveSource) {
+      applyActiveSource(effectiveSource);
       setSourceReady(true);
     }
-  }, [sourceContext]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceContext, librarySourceId]);
 
   const mangaParams = {
     poster: settings.posterQuality,
