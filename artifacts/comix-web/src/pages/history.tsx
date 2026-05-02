@@ -2,10 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import { Link } from "wouter";
 import { proxyImage } from "@/lib/utils";
-import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
-import { Button } from "@/components/ui/button";
-import { Trash, Clock, Search, X } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
+import { formatDistanceToNow } from "date-fns";
+import { Clock, Search, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { registerHistoryHeader } from "@/lib/header-history";
 
@@ -20,27 +18,22 @@ export default function HistoryPage() {
 
   const q = filterText.trim().toLowerCase();
   const filtered = q
-    ? historyItems.filter(i => i.mangaTitle.toLowerCase().includes(q) || i.chapterTitle?.toLowerCase().includes(q))
+    ? historyItems.filter(i =>
+        i.mangaTitle.toLowerCase().includes(q) ||
+        i.chapterTitle?.toLowerCase().includes(q)
+      )
     : historyItems;
 
-  const grouped = filtered.reduce((acc, item) => {
-    const date = new Date(item.updatedAt);
-    let groupKey = "";
-    if (isToday(date)) groupKey = "Today";
-    else if (isYesterday(date)) groupKey = "Yesterday";
-    else if (Date.now() - item.updatedAt < 7 * 24 * 60 * 60 * 1000) groupKey = format(date, "EEEE");
-    else groupKey = format(date, "MMM d, yyyy");
-
-    if (!acc[groupKey]) acc[groupKey] = [];
-    acc[groupKey].push(item);
-    return acc;
-  }, {} as Record<string, typeof historyItems>);
-
-  const handleClearRange = (range: "hour" | "day" | "all") => {
+  const handleClearRange = (range: "hour" | "day" | "today-yesterday" | "all") => {
     if (range === "all") {
       storeActions.clearHistory();
     } else if (range === "hour") {
       storeActions.clearHistoryBefore(Date.now() - 60 * 60 * 1000);
+    } else if (range === "today-yesterday") {
+      const startOfYesterday = new Date();
+      startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+      startOfYesterday.setHours(0, 0, 0, 0);
+      storeActions.clearHistoryBefore(startOfYesterday.getTime());
     } else {
       const startOfToday = new Date();
       startOfToday.setHours(0, 0, 0, 0);
@@ -66,11 +59,11 @@ export default function HistoryPage() {
   }, [searchOpen]);
 
   return (
-    <main className="container mx-auto px-4 pt-3 pb-8 max-w-4xl animate-in fade-in duration-500">
+    <main className="pb-8 animate-in fade-in duration-500">
 
       {/* Inline search bar */}
       {searchOpen && (
-        <div className="mb-4 animate-in slide-in-from-top-1 duration-150">
+        <div className="px-4 pt-3 pb-1 animate-in slide-in-from-top-1 duration-150">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -94,81 +87,60 @@ export default function HistoryPage() {
       )}
 
       {historyItems.length === 0 ? (
-        <div className="py-24 flex flex-col items-center justify-center text-center px-4 border rounded-2xl bg-card/50">
+        <div className="py-24 flex flex-col items-center justify-center text-center px-8">
           <Clock className="h-16 w-16 text-muted mb-6" />
-          <h3 className="text-xl font-serif font-bold text-foreground mb-2">No reading history</h3>
-          <p className="text-muted-foreground max-w-md mx-auto">
+          <h3 className="text-lg font-semibold text-foreground mb-2">No reading history</h3>
+          <p className="text-sm text-muted-foreground">
             Your recently read chapters will appear here.
           </p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-16 flex flex-col items-center text-center">
-          <p className="text-muted-foreground">No history matches "{filterText}".</p>
+        <div className="py-16 flex flex-col items-center text-center px-4">
+          <p className="text-muted-foreground text-sm">No history matches "{filterText}".</p>
         </div>
       ) : (
-        <div className="space-y-8">
-          {Object.entries(grouped).map(([groupKey, items]) => (
-            <div key={groupKey} className="space-y-4">
-              <h2 className="text-xl font-serif font-bold text-foreground border-b pb-2">{groupKey}</h2>
-              <div className="space-y-3">
-                {items.map((item) => {
-                  const progressPct = item.totalPages > 0 ? (item.lastPageRead / item.totalPages) * 100 : (item.isRead ? 100 : 0);
-                  return (
-                    <div key={`${item.mangaId}:${item.chapterId}`} className="group flex items-center gap-4 p-3 rounded-xl hover:bg-card transition-colors relative">
-                      <Link href={`/manga/${item.mangaId}`} className="shrink-0 cursor-pointer">
-                        <div className="w-16 sm:w-20 aspect-[2/3] rounded-md overflow-hidden bg-muted shadow-sm group-hover:opacity-80 transition-opacity">
-                          <img
-                            src={proxyImage(item.mangaThumbnail)}
-                            alt={item.mangaTitle}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      </Link>
+        <div className="divide-y divide-border/30">
+          {filtered.map((item) => (
+            <div
+              key={`${item.mangaId}:${item.chapterId}`}
+              className="flex items-center gap-3 px-4 py-2.5"
+            >
+              {/* Cover thumbnail — square, links to manga detail */}
+              <Link href={`/manga/${item.mangaId}`} className="shrink-0">
+                <div className="w-[72px] h-[72px] rounded-md overflow-hidden bg-muted shadow-sm">
+                  <img
+                    src={proxyImage(item.mangaThumbnail)}
+                    alt={item.mangaTitle}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </Link>
 
-                      <div className="flex-1 min-w-0 py-1">
-                        <Link href={`/manga/${item.mangaId}`}>
-                          <h3 className="font-serif font-semibold text-base sm:text-lg mb-0.5 truncate hover:text-primary transition-colors cursor-pointer text-foreground">
-                            {item.mangaTitle}
-                          </h3>
-                        </Link>
-                        <Link href={`/reader/${item.chapterId}?mangaId=${item.mangaId}`}>
-                          <div className="text-sm font-medium text-foreground hover:text-primary transition-colors cursor-pointer truncate mb-1">
-                            Chapter {item.chapterNumber}: {item.chapterTitle || "Read"}
-                          </div>
-                        </Link>
-                        <div className="text-xs text-muted-foreground mb-2">
-                          {formatDistanceToNow(item.updatedAt, { addSuffix: true })}
-                        </div>
-                        {item.totalPages > 0 && (
-                          <div className="flex items-center gap-3">
-                            <Progress value={progressPct} className="h-1.5 flex-1" />
-                            <span className="text-[10px] text-muted-foreground font-medium shrink-0">
-                              {item.lastPageRead + 1} / {item.totalPages}
-                            </span>
-                          </div>
-                        )}
-                        {!item.totalPages && item.isRead && (
-                          <div className="flex items-center gap-3">
-                            <Progress value={100} className="h-1.5 flex-1" />
-                            <span className="text-[10px] text-muted-foreground font-medium shrink-0">Read</span>
-                          </div>
-                        )}
-                      </div>
+              {/* Text info — links to reader */}
+              <Link
+                href={`/reader/${item.chapterId}?mangaId=${item.mangaId}`}
+                className="flex-1 min-w-0 py-0.5"
+              >
+                <p className="font-semibold text-[15px] leading-snug text-foreground line-clamp-2 mb-0.5">
+                  {item.mangaTitle}
+                </p>
+                <p className="text-sm text-muted-foreground truncate mb-1">
+                  Chapter {item.chapterNumber}{item.chapterTitle ? `: ${item.chapterTitle}` : ""}
+                </p>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3 shrink-0" />
+                  <span>{formatDistanceToNow(item.updatedAt, { addSuffix: true })}</span>
+                </div>
+              </Link>
 
-                      <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => storeActions.markChapterUnread(item.mangaId, item.chapterId)}
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              {/* Per-item delete */}
+              <button
+                type="button"
+                className="shrink-0 p-2 text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => storeActions.removeFromHistory(item.mangaId, item.chapterId)}
+              >
+                <Trash2 className="h-5 w-5" />
+              </button>
             </div>
           ))}
         </div>

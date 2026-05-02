@@ -506,6 +506,12 @@ export const storeActions = {
     saveState({ ...memoryState, progress: newProgress, history: newHistory });
   },
 
+  removeFromHistory(mangaId: string, chapterId: number) {
+    const key = `${mangaId}:${chapterId}`;
+    const newHistory = memoryState.history.filter(k => k !== key);
+    saveState({ ...memoryState, history: newHistory });
+  },
+
   clearHistory() {
     saveState({ ...memoryState, history: [] });
   },

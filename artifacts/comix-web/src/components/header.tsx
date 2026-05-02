@@ -168,25 +168,18 @@ export function Header() {
                       <Trash2 className="h-5 w-5" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onClick={() => historyScope.onClearRange("hour")}
-                    >
-                      Remove last hour
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuItem onClick={() => historyScope.onClearRange("hour")}>
+                      The last hour
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onClick={() => historyScope.onClearRange("day")}
-                    >
-                      Remove today
+                    <DropdownMenuItem onClick={() => historyScope.onClearRange("day")}>
+                      Today
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive font-semibold"
-                      onClick={() => historyScope.onClearRange("all")}
-                    >
-                      Remove all
+                    <DropdownMenuItem onClick={() => historyScope.onClearRange("today-yesterday")}>
+                      Today and yesterday
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => historyScope.onClearRange("all")}>
+                      All time
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
