@@ -1,70 +1,68 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import { Link } from "wouter";
 import { proxyImage } from "@/lib/utils";
-import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
+import { isToday, isYesterday, format, subHours } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Trash2, Clock, Trash, Search, X } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
+import { Trash2, Clock } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+
+type TimePeriod = "last-hour" | "today" | "today-yesterday" | "all";
+
+const PERIOD_LABELS: Record<TimePeriod, string> = {
+  "last-hour": "The last hour",
+  "today": "Today",
+  "today-yesterday": "Today and yesterday",
+  "all": "All time",
+};
+
+function timeLabel(ts: number): string {
+  const date = new Date(ts);
+  if (isToday(date)) return "Today";
+  if (isYesterday(date)) return "Yesterday";
+  return format(date, "MMM d, yyyy");
+}
 
 export default function HistoryPage() {
   const historyKeys = useStore(s => s.history);
   const progressMap = useStore(s => s.progress);
-  const [filterText, setFilterText] = useState("");
+  const [period, setPeriod] = useState<TimePeriod>("all");
 
   const historyItems = historyKeys.map(k => progressMap[k]).filter(Boolean);
 
-  const q = filterText.trim().toLowerCase();
-  const filtered = q
-    ? historyItems.filter(i => i.mangaTitle.toLowerCase().includes(q) || i.chapterTitle?.toLowerCase().includes(q))
-    : historyItems;
-
-  const grouped = filtered.reduce((acc, item) => {
-    const date = new Date(item.updatedAt);
-    let groupKey = "";
-    if (isToday(date)) groupKey = "Today";
-    else if (isYesterday(date)) groupKey = "Yesterday";
-    else if (Date.now() - item.updatedAt < 7 * 24 * 60 * 60 * 1000) groupKey = format(date, "EEEE");
-    else groupKey = format(date, "MMM d, yyyy");
-
-    if (!acc[groupKey]) acc[groupKey] = [];
-    acc[groupKey].push(item);
-    return acc;
-  }, {} as Record<string, typeof historyItems>);
+  const filtered = useMemo(() => {
+    const now = Date.now();
+    return historyItems.filter(item => {
+      if (period === "last-hour") return now - item.updatedAt < 60 * 60 * 1000;
+      if (period === "today") return isToday(new Date(item.updatedAt));
+      if (period === "today-yesterday") return isToday(new Date(item.updatedAt)) || isYesterday(new Date(item.updatedAt));
+      return true;
+    });
+  }, [historyItems, period]);
 
   return (
-    <main className="container mx-auto px-4 pt-3 pb-8 max-w-4xl animate-in fade-in duration-500">
-      {/* Top row: search + clear all */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Filter history…"
-            value={filterText}
-            onChange={e => setFilterText(e.target.value)}
-            className="pl-9 pr-9 h-9"
-          />
-          {filterText && (
-            <button
-              type="button"
-              onClick={() => setFilterText("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+    <main className="max-w-2xl mx-auto animate-in fade-in duration-500">
+      {/* Top bar */}
+      <div className="flex items-center gap-3 px-4 pt-4 pb-2">
+        <Select value={period} onValueChange={v => setPeriod(v as TimePeriod)}>
+          <SelectTrigger className="h-9 w-48 text-sm bg-muted/40 border-border/60">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(PERIOD_LABELS) as TimePeriod[]).map(p => (
+              <SelectItem key={p} value={p}>{PERIOD_LABELS[p]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <div className="flex-1" />
 
         {historyItems.length > 0 && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Clear all
+              <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-destructive">
+                <Trash2 className="h-5 w-5" />
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -88,82 +86,62 @@ export default function HistoryPage() {
         )}
       </div>
 
+      {/* List */}
       {historyItems.length === 0 ? (
-        <div className="py-24 flex flex-col items-center justify-center text-center px-4 border rounded-2xl bg-card/50">
+        <div className="py-24 flex flex-col items-center justify-center text-center px-6">
           <Clock className="h-16 w-16 text-muted mb-6" />
           <h3 className="text-xl font-serif font-bold text-foreground mb-2">No reading history</h3>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            Your recently read chapters will appear here.
-          </p>
+          <p className="text-muted-foreground">Your recently read chapters will appear here.</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-16 flex flex-col items-center text-center">
-          <p className="text-muted-foreground">No history matches "{filterText}".</p>
+        <div className="py-16 flex flex-col items-center text-center px-6">
+          <p className="text-muted-foreground">No history in this time period.</p>
         </div>
       ) : (
-        <div className="space-y-8">
-          {Object.entries(grouped).map(([groupKey, items]) => (
-            <div key={groupKey} className="space-y-4">
-              <h2 className="text-xl font-serif font-bold text-foreground border-b pb-2">{groupKey}</h2>
-              <div className="space-y-3">
-                {items.map((item) => {
-                  const progressPct = item.totalPages > 0 ? (item.lastPageRead / item.totalPages) * 100 : (item.isRead ? 100 : 0);
-                  return (
-                    <div key={`${item.mangaId}:${item.chapterId}`} className="group flex items-center gap-4 p-3 rounded-xl hover:bg-card transition-colors relative">
-                      <Link href={`/manga/${item.mangaId}`} className="shrink-0 cursor-pointer">
-                        <div className="w-16 sm:w-20 aspect-[2/3] rounded-md overflow-hidden bg-muted shadow-sm group-hover:opacity-80 transition-opacity">
-                          <img
-                            src={proxyImage(item.mangaThumbnail)}
-                            alt={item.mangaTitle}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      </Link>
+        <div className="divide-y divide-border/40">
+          {filtered.map((item) => (
+            <div
+              key={`${item.mangaId}:${item.chapterId}`}
+              className="flex items-center gap-4 px-4 py-3"
+            >
+              {/* Cover */}
+              <Link href={`/manga/${item.mangaId}`} className="shrink-0">
+                <div className="w-16 h-16 rounded-md overflow-hidden bg-muted shadow-sm">
+                  <img
+                    src={proxyImage(item.mangaThumbnail)}
+                    alt={item.mangaTitle}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </Link>
 
-                      <div className="flex-1 min-w-0 py-1">
-                        <Link href={`/manga/${item.mangaId}`}>
-                          <h3 className="font-serif font-semibold text-base sm:text-lg mb-0.5 truncate hover:text-primary transition-colors cursor-pointer text-foreground">
-                            {item.mangaTitle}
-                          </h3>
-                        </Link>
-                        <Link href={`/reader/${item.chapterId}?mangaId=${item.mangaId}`}>
-                          <div className="text-sm font-medium text-foreground hover:text-primary transition-colors cursor-pointer truncate mb-1">
-                            Chapter {item.chapterNumber}: {item.chapterTitle || "Read"}
-                          </div>
-                        </Link>
-                        <div className="text-xs text-muted-foreground mb-2">
-                          {formatDistanceToNow(item.updatedAt, { addSuffix: true })}
-                        </div>
-                        {item.totalPages > 0 && (
-                          <div className="flex items-center gap-3">
-                            <Progress value={progressPct} className="h-1.5 flex-1" />
-                            <span className="text-[10px] text-muted-foreground font-medium shrink-0">
-                              {item.lastPageRead + 1} / {item.totalPages}
-                            </span>
-                          </div>
-                        )}
-                        {!item.totalPages && item.isRead && (
-                          <div className="flex items-center gap-3">
-                            <Progress value={100} className="h-1.5 flex-1" />
-                            <span className="text-[10px] text-muted-foreground font-medium shrink-0">Read</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => storeActions.markChapterUnread(item.mangaId, item.chapterId)}
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <Link href={`/manga/${item.mangaId}`}>
+                  <p className="font-semibold text-base text-foreground leading-snug mb-0.5 hover:text-primary transition-colors line-clamp-2">
+                    {item.mangaTitle}
+                  </p>
+                </Link>
+                <Link href={`/reader/${item.chapterId}?mangaId=${item.mangaId}`}>
+                  <p className="text-sm text-muted-foreground hover:text-foreground transition-colors truncate mb-1">
+                    Chapter {item.chapterNumber}{item.chapterTitle ? `: ${item.chapterTitle}` : ""}
+                  </p>
+                </Link>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3 shrink-0" />
+                  <span>{timeLabel(item.updatedAt)}</span>
+                </div>
               </div>
+
+              {/* Delete */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={() => storeActions.markChapterUnread(item.mangaId, item.chapterId)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
           ))}
         </div>
