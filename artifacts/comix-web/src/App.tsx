@@ -42,10 +42,13 @@ function AppContent() {
   return (
     <div className="min-h-[100dvh] flex flex-col">
       <Switch>
-        {/* Reader gets no header */}
+        {/* Reader: no header, no nav */}
         <Route path="/reader/:chapterId" component={Reader} />
-        
-        {/* Everything else gets header */}
+
+        {/* Source browse: own immersive header, no global nav */}
+        <Route path="/sources/:id" component={SourceBrowsePage} />
+
+        {/* Everything else gets the global header + bottom nav */}
         <Route path="/.*">
           <Header />
           <div className="flex-1 pb-16 md:pb-0">
@@ -58,7 +61,6 @@ function AppContent() {
               <Route path="/history" component={HistoryPage} />
               <Route path="/stats" component={StatsPage} />
               <Route path="/sources" component={SourcesPage} />
-              <Route path="/sources/:id" component={SourceBrowsePage} />
               <Route path="/system" component={SystemPage} />
               <Route component={NotFound} />
             </Switch>
