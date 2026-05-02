@@ -1,4 +1,4 @@
-import { useRoute, useLocation } from "wouter";
+import { useLocation, useParams } from "wouter";
 import {
   useGetMangaDetails,
   useGetChapters,
@@ -72,10 +72,9 @@ function StarRating({ value }: { value: string }) {
 }
 
 export default function MangaDetail() {
-  const [, params1] = useRoute("/manga/:id");
-  const [, params2] = useRoute("/sources/:sourceId/manga/:mangaId");
-  const id = params1?.id ?? params2?.mangaId ?? null;
-  const sourceContext = params2?.sourceId ?? null;
+  const params = useParams<{ id?: string; mangaId?: string; sourceId?: string }>();
+  const id = params.id ?? params.mangaId ?? null;
+  const sourceContext = params.sourceId ?? null;
   const [, setLocation] = useLocation();
   const { settings } = useSettings();
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
