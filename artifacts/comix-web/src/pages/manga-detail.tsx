@@ -11,7 +11,7 @@ import { applyActiveSource } from "@/lib/source";
 import {
   Loader2, ArrowLeft, Star, ChevronDown, ChevronUp,
   BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown,
-  ArrowUp, Filter, Play, Sparkles, AlertCircle,
+  ArrowUp, Filter, Play, Sparkles, AlertCircle, X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,7 @@ export default function MangaDetail() {
   const [showAllAltTitles, setShowAllAltTitles] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [newCatName, setNewCatName] = useState("");
+  const [coverZoomOpen, setCoverZoomOpen] = useState(false);
 
   const library = useStore(s => s.library);
   const categories = useStore(s => s.categories);
@@ -208,13 +209,13 @@ export default function MangaDetail() {
       <div className="max-w-3xl mx-auto animate-in fade-in duration-500">
 
         {/* ── Hero banner ── */}
-        <div className="relative overflow-hidden" style={{ minHeight: 220 }}>
+        <div className="relative overflow-hidden" style={{ minHeight: 200 }}>
           {/* Blurred background */}
           <div className="absolute inset-0">
             <img
               src={proxyImage(manga.thumbnail, sourceContext ?? undefined)}
               alt=""
-              className="w-full h-full object-cover scale-110"
+              className="w-full h-full object-cover"
               style={{ filter: "blur(24px)", transform: "scale(1.15)" }}
             />
             <div className="absolute inset-0 bg-background/75 dark:bg-background/85" />
@@ -225,15 +226,19 @@ export default function MangaDetail() {
             <button
               type="button"
               onClick={() => window.history.back()}
-              className="absolute top-4 left-4 z-10 flex items-center justify-center h-9 w-9 rounded-full bg-background/40 hover:bg-background/60 backdrop-blur-sm transition-colors"
+              className="absolute top-3 left-3 z-10 flex items-center justify-center h-8 w-8 rounded-full bg-background/40 hover:bg-background/60 backdrop-blur-sm transition-colors"
             >
-              <ArrowLeft className="h-5 w-5" />
+              <ArrowLeft className="h-4 w-4" />
             </button>
           )}
 
           {/* Cover + title row */}
-          <div className="relative z-10 flex items-end gap-4 px-4 pb-5 pt-14">
-            <div className="shrink-0 w-24 sm:w-28 aspect-[2/3] rounded-xl overflow-hidden shadow-2xl bg-muted">
+          <div className="relative z-10 flex items-end gap-4 px-4 pb-4 pt-4">
+            <div
+              className="shrink-0 w-32 sm:w-36 aspect-[2/3] rounded-xl overflow-hidden shadow-2xl bg-muted cursor-pointer active:scale-95 transition-transform"
+              onClick={() => setCoverZoomOpen(true)}
+              title="Tap to zoom"
+            >
               <img
                 src={proxyImage(manga.thumbnail, sourceContext ?? undefined)}
                 alt={manga.title}
@@ -562,6 +567,27 @@ export default function MangaDetail() {
           )}
         </div>
       </div>
+
+      {/* Cover zoom lightbox */}
+      {coverZoomOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+          onClick={() => setCoverZoomOpen(false)}
+        >
+          <button
+            className="absolute top-4 right-4 h-9 w-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+            onClick={() => setCoverZoomOpen(false)}
+          >
+            <X className="h-5 w-5 text-white" />
+          </button>
+          <img
+            src={proxyImage(manga.thumbnail, sourceContext ?? undefined)}
+            alt={manga.title}
+            className="max-h-[85dvh] max-w-[85vw] rounded-xl shadow-2xl object-contain"
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      )}
 
       {/* Category dialog */}
       <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
