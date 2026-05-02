@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 type HistoryScope = {
   onSearchClick: () => void;
-  onClearClick: () => void;
+  onClearRange: (range: "hour" | "day" | "all") => void;
 };
 
 let _scope: HistoryScope | null = null;

@@ -508,6 +508,14 @@ export const storeActions = {
     saveState({ ...memoryState, history: [] });
   },
 
+  clearHistoryBefore(cutoffMs: number) {
+    const newHistory = memoryState.history.filter(k => {
+      const p = memoryState.progress[k];
+      return p ? p.updatedAt < cutoffMs : false;
+    });
+    saveState({ ...memoryState, history: newHistory });
+  },
+
   setReader(updates: Partial<ReaderSettings>) {
     saveState({
       ...memoryState,

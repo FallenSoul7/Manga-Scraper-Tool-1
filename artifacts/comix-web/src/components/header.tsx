@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useUpdatesCount } from "@/hooks/use-updates-count";
 import { useStore, storeActions } from "@/lib/storage";
 import { Button } from "./ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { useHistoryHeader } from "@/lib/header-history";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -156,14 +156,40 @@ export function Header() {
                 >
                   <Search className="h-5 w-5" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                  onClick={historyScope.onClearClick}
-                >
-                  <Trash2 className="h-5 w-5" />
-                </Button>
+
+                {/* Trash → time-range dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => historyScope.onClearRange("hour")}
+                    >
+                      Remove last hour
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => historyScope.onClearRange("day")}
+                    >
+                      Remove last 24 hours
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive font-semibold"
+                      onClick={() => historyScope.onClearRange("all")}
+                    >
+                      Remove all
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             )}
 

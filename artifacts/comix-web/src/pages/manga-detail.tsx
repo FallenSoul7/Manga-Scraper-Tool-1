@@ -12,6 +12,7 @@ import {
   Loader2, ArrowLeft, Star, ChevronDown, ChevronUp,
   BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown,
   ArrowUp, Filter, Play, Sparkles, AlertCircle, X,
+  Users, Globe,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,26 @@ function formatSourceId(sourceId: string) {
   return raw.replace(/\b\w/g, c => c.toUpperCase());
 }
 
+function StarRating({ value }: { value: string }) {
+  const num = parseFloat(value);
+  const out5 = num / 2;
+  return (
+    <div className="flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map(i => {
+        const filled = out5 >= i;
+        const half = !filled && out5 >= i - 0.5;
+        return (
+          <Star
+            key={i}
+            className={`h-3.5 w-3.5 ${filled ? "fill-amber-400 text-amber-400" : half ? "fill-amber-400/50 text-amber-400" : "text-muted-foreground/40"}`}
+          />
+        );
+      })}
+      <span className="text-sm font-semibold text-amber-500 ml-0.5">{num.toFixed(1)}</span>
+    </div>
+  );
+}
+
 export default function MangaDetail() {
   const [, params1] = useRoute("/manga/:id");
   const [, params2] = useRoute("/sources/:sourceId/manga/:mangaId");
@@ -62,6 +83,7 @@ export default function MangaDetail() {
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [coverZoomOpen, setCoverZoomOpen] = useState(false);
+  const [scanlatorSheetOpen, setScanlatorSheetOpen] = useState(false);
 
   const library = useStore(s => s.library);
   const categories = useStore(s => s.categories);
@@ -134,7 +156,7 @@ export default function MangaDetail() {
 
   const visibleChapters = useMemo(() => {
     let list: any[] = selectedScanlator
-      ? allChapters.filter(ch => (ch.scanlator || "Unknown") === selectedScanlator)
+      ? allChapters.filter((ch: any) => (ch.scanlator || "Unknown") === selectedScanlator)
       : dedupeChapters(allChapters);
     return [...list].sort((a, b) => sortAsc ? a.number - b.number : b.number - a.number);
   }, [allChapters, selectedScanlator, sortAsc]);
@@ -162,7 +184,7 @@ export default function MangaDetail() {
         type: manga.type, isNsfw: manga.isNsfw, author: manga.author || manga.artist,
         status: manga.status, sourceId: sourceContext ?? activeSourceId,
         addedAt: Date.now(), categoryIds: ['default'],
-        lastChapterCountSeen: visibleChapters.length || 0,
+        lastChapterCountSeen: visibleChapters.length || 0, pendingUpdates: [],
       });
     }
   };
@@ -192,10 +214,12 @@ export default function MangaDetail() {
 
   const altTitles = manga.altTitles || [];
   const altTitlesToShow = showAllAltTitles ? altTitles : altTitles.slice(0, ALT_TITLES_COLLAPSED_LIMIT);
+  const effectiveSource = sourceContext ?? activeSourceId;
+  const sourceName = effectiveSource ? formatSourceId(effectiveSource) : null;
 
   return (
     <>
-      {/* Always-visible sticky header with back arrow */}
+      {/* Sticky back header */}
       <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border/40">
         <div className="flex items-center gap-2 px-3 h-12 max-w-3xl mx-auto">
           <button
@@ -211,25 +235,27 @@ export default function MangaDetail() {
         </div>
       </header>
 
-      <div className="max-w-3xl mx-auto animate-in fade-in duration-500 overflow-x-hidden">
+      <div className="max-w-3xl mx-auto animate-in fade-in duration-500">
 
         {/* ── Hero banner ── */}
         <div className="relative overflow-hidden" style={{ minHeight: 180 }}>
           {/* Blurred background */}
-          <div className="absolute inset-0">
+          <div className="absolute inset-0 overflow-hidden">
             <img
               src={proxyImage(manga.thumbnail, sourceContext ?? undefined)}
               alt=""
-              className="w-full h-full object-cover"
-              style={{ filter: "blur(24px)", transform: "scale(1.15)" }}
+              className="w-full h-full object-cover scale-110"
+              style={{ filter: "blur(20px)" }}
             />
-            <div className="absolute inset-0 bg-background/75 dark:bg-background/85" />
+            <div className="absolute inset-0 bg-background/80 dark:bg-background/88" />
           </div>
 
-          {/* Cover + title row */}
-          <div className="relative z-10 flex items-end gap-4 px-4 pb-4 pt-4">
-            <div
-              className="shrink-0 w-32 sm:w-36 aspect-[2/3] rounded-xl overflow-hidden shadow-2xl bg-muted cursor-pointer active:scale-95 transition-transform"
+          {/* Cover + info */}
+          <div className="relative z-10 flex items-end gap-3 px-4 pb-4 pt-4">
+            {/* Cover */}
+            <button
+              type="button"
+              className="shrink-0 w-[108px] sm:w-[120px] aspect-[2/3] rounded-xl overflow-hidden shadow-2xl bg-muted active:scale-95 transition-transform"
               onClick={() => setCoverZoomOpen(true)}
               title="Tap to zoom"
             >
@@ -238,42 +264,49 @@ export default function MangaDetail() {
                 alt={manga.title}
                 className="w-full h-full object-cover"
               />
-            </div>
-            <div className="flex-1 min-w-0 overflow-hidden pb-1">
-              <h1 className="font-serif font-bold text-xl sm:text-2xl text-foreground leading-tight mb-1 break-words">
+            </button>
+
+            {/* Info column */}
+            <div className="flex-1 min-w-0 overflow-hidden pb-1 space-y-1">
+              <h1 className="font-bold text-lg sm:text-xl text-foreground leading-tight break-words line-clamp-3">
                 {manga.title}
               </h1>
+
               {(manga.author || manga.artist) && (
-                <p className="text-sm text-muted-foreground mb-1 truncate">
+                <p className="text-sm text-muted-foreground truncate">
                   {[manga.author, manga.artist].filter(Boolean).join(", ")}
                 </p>
               )}
-              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                 {manga.status && (
                   <span className="flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary inline-block" />
+                    <span className={`h-1.5 w-1.5 rounded-full inline-block ${manga.status.toLowerCase().includes("ongoing") ? "bg-green-500" : "bg-muted-foreground"}`} />
                     {manga.status}
                   </span>
                 )}
                 {manga.type && <span>• {manga.type}</span>}
+                {sourceName && (
+                  <span className="flex items-center gap-1">
+                    •
+                    <Globe className="h-3 w-3" />
+                    {sourceName}
+                  </span>
+                )}
               </div>
-              {manga.rating && (
-                <div className="flex items-center gap-1 mt-1.5 text-amber-500">
-                  {[1,2,3,4,5].map(i => (
-                    <Star key={i} className={`h-3.5 w-3.5 ${parseFloat(manga.rating) / 2 >= i ? "fill-current" : "fill-none"}`} />
-                  ))}
-                  <span className="text-xs text-muted-foreground ml-0.5">{manga.rating}</span>
-                </div>
-              )}
+
+              {manga.rating && <StarRating value={manga.rating} />}
+
               {manga.isNsfw && (
-                <Badge variant="destructive" className="mt-1.5 text-[10px] px-1.5 py-0">18+</Badge>
+                <Badge variant="destructive" className="text-[10px] px-1.5 py-0">18+</Badge>
               )}
             </div>
           </div>
         </div>
 
-        {/* ── Action row ── */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border/50">
+        {/* ── Action row (Tachiyomi-style columns) ── */}
+        <div className="flex items-stretch border-b border-border/50">
+          {/* Add to Library */}
           <button
             type="button"
             onClick={() => {
@@ -284,13 +317,28 @@ export default function MangaDetail() {
                 setIsCategoryDialogOpen(true);
               }
             }}
-            className="flex flex-col items-center gap-1 text-muted-foreground hover:text-primary transition-colors min-w-[56px]"
+            className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-muted-foreground hover:text-primary hover:bg-muted/30 transition-colors"
           >
             {inLibrary
               ? <Check className="h-5 w-5 text-primary" />
               : <BookmarkPlus className="h-5 w-5" />}
-            <span className="text-[11px] font-medium whitespace-pre-line text-center">{inLibrary ? "In Library" : "Add to\nLibrary"}</span>
+            <span className="text-[11px] font-medium leading-tight text-center">
+              {inLibrary ? "In Library" : "Add to Library"}
+            </span>
           </button>
+
+          {/* Web view — shown when in source context */}
+          {sourceContext && (
+            <a
+              href={`https://comix.to`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-muted-foreground hover:text-primary hover:bg-muted/30 transition-colors border-l border-border/50"
+            >
+              <Globe className="h-5 w-5" />
+              <span className="text-[11px] font-medium">Web View</span>
+            </a>
+          )}
         </div>
 
         {/* ── Synopsis ── */}
@@ -308,7 +356,9 @@ export default function MangaDetail() {
               onClick={() => setShowFullSynopsis(!showFullSynopsis)}
               className="mt-1.5 text-xs font-medium text-primary hover:underline flex items-center gap-0.5"
             >
-              {showFullSynopsis ? <><ChevronUp className="h-3.5 w-3.5" /> Show less</> : <><ChevronDown className="h-3.5 w-3.5" /> Read more</>}
+              {showFullSynopsis
+                ? <><ChevronUp className="h-3.5 w-3.5" /> Show less</>
+                : <><ChevronDown className="h-3.5 w-3.5" /> Read more</>}
             </button>
           </div>
         )}
@@ -317,7 +367,7 @@ export default function MangaDetail() {
         {manga.genres && manga.genres.length > 0 && (
           <div className="px-4 pb-3">
             <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
-              {[...new Set(manga.genres)].map((genre, i) => (
+              {[...new Set(manga.genres as string[])].map((genre, i) => (
                 <Badge key={`${genre}-${i}`} variant="secondary" className="whitespace-nowrap shrink-0 font-normal text-xs">
                   {genre}
                 </Badge>
@@ -335,7 +385,9 @@ export default function MangaDetail() {
             </p>
             {altTitles.length > ALT_TITLES_COLLAPSED_LIMIT && (
               <button onClick={() => setShowAllAltTitles(!showAllAltTitles)} className="mt-1 text-xs font-medium text-primary hover:underline flex items-center gap-0.5">
-                {showAllAltTitles ? <><ChevronUp className="h-3.5 w-3.5" /> Show less</> : <><ChevronDown className="h-3.5 w-3.5" /> Show all ({altTitles.length})</>}
+                {showAllAltTitles
+                  ? <><ChevronUp className="h-3.5 w-3.5" /> Show less</>
+                  : <><ChevronDown className="h-3.5 w-3.5" /> Show all ({altTitles.length})</>}
               </button>
             )}
           </div>
@@ -344,27 +396,27 @@ export default function MangaDetail() {
         {/* ── START / CONTINUE READING button ── */}
         <div className="px-4 pb-5">
           {chaptersLoading ? (
-            <Button className="w-full h-11 text-base font-semibold" disabled>
+            <Button className="w-full h-12 text-base font-semibold rounded-xl" disabled>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
             </Button>
           ) : latestProgress ? (
             <Button
-              className="w-full h-11 text-base font-semibold"
+              className="w-full h-12 text-base font-semibold rounded-xl"
               onClick={() => setLocation(`/reader/${latestProgress.chapterId}?mangaId=${manga.id}`)}
             >
-              <BookOpen className="mr-2 h-4 w-4" />
-              Continue reading Chapter {latestProgress.chapterNumber}
+              <BookOpen className="mr-2 h-5 w-5" />
+              Continue reading · Ch. {latestProgress.chapterNumber}
             </Button>
           ) : firstChapter ? (
             <Button
-              className="w-full h-11 text-base font-semibold"
+              className="w-full h-12 text-base font-semibold rounded-xl"
               onClick={() => setLocation(`/reader/${firstChapter.id}?mangaId=${manga.id}`)}
             >
-              <Play className="mr-2 h-4 w-4" />
+              <Play className="mr-2 h-5 w-5" />
               Start reading
             </Button>
           ) : (
-            <Button className="w-full h-11 text-base font-semibold" disabled>
+            <Button className="w-full h-12 text-base font-semibold rounded-xl" disabled>
               No chapters available
             </Button>
           )}
@@ -372,58 +424,34 @@ export default function MangaDetail() {
 
         {/* ── Chapters section ── */}
         <div className="border-t border-border/50">
-          {/* Chapter header */}
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="font-semibold text-sm">
-              {visibleChapters.length} Chapter{visibleChapters.length !== 1 ? "s" : ""}
-            </span>
-            <div className="flex items-center gap-1.5">
+
+          {/* Chapter header — Tachiyomi style */}
+          <div className="flex items-center gap-2 px-4 py-3">
+            <div className="flex-1 min-w-0">
+              <span className="font-bold text-sm">
+                {chaptersLoading ? "…" : `${visibleChapters.length} Chapter${visibleChapters.length !== 1 ? "s" : ""}`}
+              </span>
+              {scanlatorGroups.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setScanlatorSheetOpen(true)}
+                  className="flex items-center gap-1 text-xs text-primary hover:underline mt-0.5"
+                >
+                  <Users className="h-3 w-3" />
+                  {scanlatorGroups.length} Scanlators
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-0.5 shrink-0">
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => id && storeActions.setChapterSortAsc(id, !sortAsc)}>
                 {sortAsc ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
               </Button>
 
               {scanlatorGroups.length > 0 && (
-                <Sheet>
-                  <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <Filter className="h-4 w-4" />
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side="right" className="w-[320px] sm:w-[380px]">
-                    <SheetHeader><SheetTitle>Translation Source</SheetTitle></SheetHeader>
-                    <p className="text-xs text-muted-foreground mt-2 mb-4">Choose which group's chapters to show.</p>
-                    <div className="space-y-1.5 overflow-y-auto max-h-[calc(100dvh-180px)] pr-1">
-                      <button
-                        type="button"
-                        onClick={() => id && storeActions.setScanlatorPref(id, null)}
-                        className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${selectedScanlator === null ? "bg-primary/10 border-primary/30" : "bg-card border-border hover:bg-muted"}`}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium text-sm">All sources (recommended)</div>
-                          <div className="text-xs text-muted-foreground">One chapter per number, official preferred</div>
-                        </div>
-                        {selectedScanlator === null && <Check className="h-4 w-4 text-primary shrink-0" />}
-                      </button>
-                      {scanlatorGroups.map(g => {
-                        const isActive = selectedScanlator === g.name;
-                        return (
-                          <button key={g.name} type="button" onClick={() => id && storeActions.setScanlatorPref(id, g.name)}
-                            className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${isActive ? "bg-primary/10 border-primary/30" : "bg-card border-border hover:bg-muted"}`}
-                          >
-                            <div className="font-medium text-sm truncate flex items-center gap-2">
-                              {g.name}
-                              {g.hasOfficial && <span className="text-[10px] font-bold uppercase text-amber-600 bg-amber-500/15 px-1.5 py-0.5 rounded">Official</span>}
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{g.count}</span>
-                              {isActive && <Check className="h-4 w-4 text-primary" />}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </SheetContent>
-                </Sheet>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setScanlatorSheetOpen(true)}>
+                  <Filter className="h-4 w-4" />
+                </Button>
               )}
 
               {visibleChapters.length > 0 && (
@@ -470,6 +498,45 @@ export default function MangaDetail() {
             </div>
           </div>
 
+          {/* Scanlator picker sheet */}
+          <Sheet open={scanlatorSheetOpen} onOpenChange={setScanlatorSheetOpen}>
+            <SheetContent side="bottom" className="max-h-[70dvh]">
+              <SheetHeader><SheetTitle>Translation Source</SheetTitle></SheetHeader>
+              <p className="text-xs text-muted-foreground mt-1 mb-4">Choose which group's chapters to show.</p>
+              <div className="space-y-1.5 overflow-y-auto max-h-[calc(70dvh-120px)] pr-1">
+                <button
+                  type="button"
+                  onClick={() => { id && storeActions.setScanlatorPref(id, null); setScanlatorSheetOpen(false); }}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${selectedScanlator === null ? "bg-primary/10 border-primary/30" : "bg-card border-border hover:bg-muted"}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-sm">All sources (recommended)</div>
+                    <div className="text-xs text-muted-foreground">One chapter per number, official preferred</div>
+                  </div>
+                  {selectedScanlator === null && <Check className="h-4 w-4 text-primary shrink-0" />}
+                </button>
+                {scanlatorGroups.map(g => {
+                  const isActive = selectedScanlator === g.name;
+                  return (
+                    <button key={g.name} type="button"
+                      onClick={() => { id && storeActions.setScanlatorPref(id, g.name); setScanlatorSheetOpen(false); }}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${isActive ? "bg-primary/10 border-primary/30" : "bg-card border-border hover:bg-muted"}`}
+                    >
+                      <div className="font-medium text-sm truncate flex items-center gap-2">
+                        {g.name}
+                        {g.hasOfficial && <span className="text-[10px] font-bold uppercase text-amber-600 bg-amber-500/15 px-1.5 py-0.5 rounded">Official</span>}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{g.count}</span>
+                        {isActive && <Check className="h-4 w-4 text-primary" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </SheetContent>
+          </Sheet>
+
           {/* Loading / error banners */}
           {chaptersLoading && inLibrary && (
             <div className="mx-4 mb-3 flex items-center gap-2 px-4 py-2.5 rounded-lg border border-primary/20 bg-primary/5 text-sm text-primary animate-pulse">
@@ -502,7 +569,7 @@ export default function MangaDetail() {
                 return (
                   <div
                     key={chapter.id}
-                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${isRead ? "opacity-50 hover:opacity-80" : "hover:bg-muted/40"}`}
+                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${isRead ? "opacity-40 hover:opacity-70" : "hover:bg-muted/40"}`}
                     onClick={e => {
                       if ((e.target as HTMLElement).closest('.kebab-menu')) return;
                       if (!p) {
@@ -517,7 +584,7 @@ export default function MangaDetail() {
                     }}
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-0.5">
+                      <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                         {isNew && (
                           <span className="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase px-1.5 py-0 h-4 rounded bg-primary text-primary-foreground shrink-0">
                             <Sparkles className="h-2.5 w-2.5" />NEW
@@ -526,7 +593,7 @@ export default function MangaDetail() {
                         {inProgress && (
                           <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Pg {p.lastPageRead + 1}</Badge>
                         )}
-                        <span className="font-medium text-sm text-foreground truncate">
+                        <span className="font-medium text-sm text-foreground">
                           Chapter {chapter.number}{chapter.title ? `: ${chapter.title}` : ""}
                         </span>
                         {chapter.isOfficial && (
@@ -535,7 +602,7 @@ export default function MangaDetail() {
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <span>{format(new Date(chapter.date * 1000), 'MMM d, yyyy')}</span>
-                        {chapter.scanlator && <><span>•</span><span className="truncate">{chapter.scanlator}</span></>}
+                        {chapter.scanlator && <><span>·</span><span className="truncate">{chapter.scanlator}</span></>}
                       </div>
                     </div>
 

@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Trash, Clock, Search, X } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { registerHistoryHeader } from "@/lib/header-history";
 
 export default function HistoryPage() {
@@ -15,7 +14,6 @@ export default function HistoryPage() {
   const progressMap = useStore(s => s.progress);
   const [filterText, setFilterText] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const historyItems = historyKeys.map(k => progressMap[k]).filter(Boolean);
@@ -38,6 +36,16 @@ export default function HistoryPage() {
     return acc;
   }, {} as Record<string, typeof historyItems>);
 
+  const handleClearRange = (range: "hour" | "day" | "all") => {
+    if (range === "all") {
+      storeActions.clearHistory();
+    } else {
+      const ms = range === "hour" ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+      const cutoff = Date.now() - ms;
+      storeActions.clearHistoryBefore(cutoff);
+    }
+  };
+
   useEffect(() => {
     registerHistoryHeader({
       onSearchClick: () => {
@@ -46,7 +54,7 @@ export default function HistoryPage() {
           return !o;
         });
       },
-      onClearClick: () => setClearDialogOpen(true),
+      onClearRange: handleClearRange,
     });
     return () => registerHistoryHeader(null);
   }, []);
@@ -58,7 +66,7 @@ export default function HistoryPage() {
   return (
     <main className="container mx-auto px-4 pt-3 pb-8 max-w-4xl animate-in fade-in duration-500">
 
-      {/* Inline search bar — shown when header search icon clicked */}
+      {/* Inline search bar */}
       {searchOpen && (
         <div className="mb-4 animate-in slide-in-from-top-1 duration-150">
           <div className="relative">
@@ -82,27 +90,6 @@ export default function HistoryPage() {
           </div>
         </div>
       )}
-
-      {/* Clear all dialog */}
-      <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Clear History</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to clear your reading history? This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => storeActions.clearHistory()}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Clear
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {historyItems.length === 0 ? (
         <div className="py-24 flex flex-col items-center justify-center text-center px-4 border rounded-2xl bg-card/50">

@@ -446,3 +446,9 @@ html[data-theme="emerald"] {
     inset: -1px;
   }
 }
+
+/* Prevent horizontal overflow / page-wider-than-viewport on mobile */
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
