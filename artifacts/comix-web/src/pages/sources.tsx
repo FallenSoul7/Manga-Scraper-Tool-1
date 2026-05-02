@@ -5,6 +5,7 @@ import { customFetch } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { proxyImage } from "@/lib/utils";
 import {
   Search,
@@ -12,12 +13,15 @@ import {
   Plus,
   Trash2,
   Loader2,
-  Globe,
   ShieldAlert,
   ChevronDown,
   ChevronRight,
   X,
   SearchX,
+  Settings2,
+  Pin,
+  AlertCircle,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useStore, storeActions, type InstalledSource } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
@@ -39,35 +43,35 @@ const LANG_LABELS: Record<string, string> = {
 };
 const langLabel = (code: string) => LANG_LABELS[code] ?? code.toUpperCase();
 
-function ExtensionAvatar({ ext, size = 48 }: { ext: { name: string; iconUrl: string | null }; size?: number }) {
+function SourceAvatar({ src, size = 44 }: { src: { name: string; iconUrl: string | null }; size?: number }) {
   const [errored, setErrored] = useState(false);
-  if (ext.iconUrl && !errored) {
+  if (src.iconUrl && !errored) {
     return (
-      <img src={ext.iconUrl} alt="" width={size} height={size} loading="lazy"
+      <img
+        src={src.iconUrl} alt="" width={size} height={size} loading="lazy"
         onError={() => setErrored(true)}
-        className="rounded-md bg-muted shrink-0 object-cover" style={{ width: size, height: size }} />
+        className="rounded-xl bg-muted shrink-0 object-cover"
+        style={{ width: size, height: size }}
+      />
     );
   }
-  const initials = ext.name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const initials = src.name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
   return (
-    <div className="rounded-md bg-muted text-muted-foreground flex items-center justify-center shrink-0 font-semibold"
-      style={{ width: size, height: size, fontSize: size / 3 }}>
+    <div
+      className="rounded-xl bg-muted/60 text-muted-foreground flex items-center justify-center shrink-0 font-bold border border-border/40"
+      style={{ width: size, height: size, fontSize: size / 2.8 }}
+    >
       {initials}
     </div>
   );
 }
 
-// ─── Global search results (Mihon-style) ────────────────────────────────────
+// ─── Global search results ────────────────────────────────────────────────────
 interface GlobalResult { id: string; title: string; thumbnail: string; isNsfw?: boolean }
 interface SourceResults { source: InstalledSource; items: GlobalResult[] }
 
-function GlobalSearchResults({
-  query, results, isSearching, onClear,
-}: {
-  query: string;
-  results: SourceResults[];
-  isSearching: boolean;
-  onClear: () => void;
+function GlobalSearchResults({ query, results, isSearching, onClear }: {
+  query: string; results: SourceResults[]; isSearching: boolean; onClear: () => void;
 }) {
   if (isSearching) {
     return (
@@ -77,89 +81,68 @@ function GlobalSearchResults({
       </div>
     );
   }
-
   const withResults = results.filter(r => r.items.length > 0);
-
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 px-4 pt-3">
       <div className="flex items-center justify-between pb-3">
         <p className="text-sm text-muted-foreground">
-          {results.length === 0
-            ? <>Searching…</>
-            : withResults.length > 0
-              ? <>{withResults.length} of {results.length} source{results.length !== 1 ? "s" : ""} returned results for <strong>"{query}"</strong></>
-              : <>No results across all sources for <strong>"{query}"</strong></>}
+          {results.length === 0 ? <>Searching…</> : withResults.length > 0
+            ? <>{withResults.length} of {results.length} source{results.length !== 1 ? "s" : ""} returned results for <strong>"{query}"</strong></>
+            : <>No results across all sources for <strong>"{query}"</strong></>}
         </p>
         <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={onClear}>
-          <X className="h-3.5 w-3.5" /> Clear search
+          <X className="h-3.5 w-3.5" /> Clear
         </Button>
       </div>
-
-      {results.length === 0 ? null : (
-        <div className="space-y-7">
-          {results.map(({ source, items }) => (
-            <div key={source.id}>
-              {/* Source header */}
-              <div className="flex items-center gap-2 mb-3">
-                {source.iconUrl ? (
-                  <img src={source.iconUrl} alt="" className="w-5 h-5 rounded object-cover shrink-0" />
-                ) : (
-                  <div className="w-5 h-5 rounded bg-muted shrink-0" />
-                )}
-                <span className="font-semibold text-sm">{source.name}</span>
-                {source.isNsfw && (
-                  <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">18+</span>
-                )}
-                <span className="text-xs text-muted-foreground">{langLabel(source.lang)}</span>
-                <div className="flex-1" />
-                <Link href={`/sources/${source.id}?q=${encodeURIComponent(query)}`}>
-                  <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer">
-                    See more <ChevronRight className="h-3 w-3" />
-                  </span>
-                </Link>
-              </div>
-
-              {items.length === 0 ? (
-                <div className="flex items-center gap-2 py-4 px-3 rounded-xl border bg-muted/30 text-sm text-muted-foreground">
-                  <SearchX className="h-4 w-4 shrink-0" />
-                  No results from this source
-                </div>
-              ) : (
-                /* Horizontal manga row */
-                <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
-                  {items.map((manga) => (
-                    <Link key={manga.id} href={`/sources/${source.id}/manga/${manga.id}`}>
-                      <div className="shrink-0 w-24 sm:w-28 cursor-pointer group">
-                        <div className="aspect-[2/3] rounded-lg overflow-hidden bg-muted mb-1.5 shadow-sm">
-                          <img
-                            src={proxyImage(manga.thumbnail, source.id)}
-                            alt={manga.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            loading="lazy"
-                          />
-                          {manga.isNsfw && (
-                            <div className="absolute top-1 right-1 rounded px-1 py-0 text-[9px] font-bold bg-destructive/90 text-destructive-foreground">
-                              18+
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-xs font-medium line-clamp-2 leading-snug group-hover:text-primary transition-colors px-0.5">
-                          {manga.title}
-                        </p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
+      <div className="space-y-7">
+        {results.map(({ source, items }) => (
+          <div key={source.id}>
+            <div className="flex items-center gap-2 mb-3">
+              {source.iconUrl
+                ? <img src={source.iconUrl} alt="" className="w-5 h-5 rounded object-cover shrink-0" />
+                : <div className="w-5 h-5 rounded bg-muted shrink-0" />}
+              <span className="font-semibold text-sm">{source.name}</span>
+              {source.isNsfw && <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">18+</span>}
+              <span className="text-xs text-muted-foreground">{langLabel(source.lang)}</span>
+              <div className="flex-1" />
+              <Link href={`/sources/${source.id}?q=${encodeURIComponent(query)}`}>
+                <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer">
+                  See more <ChevronRight className="h-3 w-3" />
+                </span>
+              </Link>
             </div>
-          ))}
-        </div>
-      )}
+            {items.length === 0 ? (
+              <div className="flex items-center gap-2 py-4 px-3 rounded-xl border bg-muted/30 text-sm text-muted-foreground">
+                <SearchX className="h-4 w-4 shrink-0" /> No results from this source
+              </div>
+            ) : (
+              <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
+                {items.map((manga) => (
+                  <Link key={manga.id} href={`/sources/${source.id}/manga/${manga.id}`}>
+                    <div className="shrink-0 w-24 sm:w-28 cursor-pointer group">
+                      <div className="aspect-[2/3] rounded-lg overflow-hidden bg-muted mb-1.5 shadow-sm">
+                        <img
+                          src={proxyImage(manga.thumbnail, source.id)} alt={manga.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
+                        />
+                      </div>
+                      <p className="text-xs font-medium line-clamp-2 leading-snug group-hover:text-primary transition-colors px-0.5">
+                        {manga.title}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ─── Main page ───────────────────────────────────────────────────────────────
+// ─── Main page ────────────────────────────────────────────────────────────────
 export default function SourcesPage() {
   const installedMap = useStore(s => s.installedSources);
   const activeId     = useStore(s => s.activeSourceId);
@@ -171,59 +154,45 @@ export default function SourcesPage() {
     [installedMap],
   );
 
-  // Global search — driven by ?q= in the URL (set by header form)
   const urlQ = new URLSearchParams(searchString).get("q") ?? "";
-  const [globalResults, setGlobalResults]   = useState<SourceResults[]>([]);
-  const [isSearching, setIsSearching]       = useState(false);
-  const [searchedQuery, setSearchedQuery]   = useState("");
+  const [globalResults, setGlobalResults] = useState<SourceResults[]>([]);
+  const [isSearching, setIsSearching]     = useState(false);
+  const [searchedQuery, setSearchedQuery] = useState("");
 
   useEffect(() => {
-    if (!urlQ) {
-      setGlobalResults([]);
-      setSearchedQuery("");
-      return;
-    }
-    if (urlQ === searchedQuery && globalResults.length > 0) return; // already fetched
-
+    if (!urlQ) { setGlobalResults([]); setSearchedQuery(""); return; }
+    if (urlQ === searchedQuery && globalResults.length > 0) return;
     setIsSearching(true);
     setSearchedQuery(urlQ);
-
     const run = async () => {
       const all = await Promise.allSettled(
         installed.map(async (src): Promise<SourceResults> => {
           try {
-            const res = await fetch(
-              `/api/search?query=${encodeURIComponent(urlQ)}&page=1`,
-              { headers: { "X-Source": src.id } },
-            );
+            const res = await fetch(`/api/search?query=${encodeURIComponent(urlQ)}&page=1`, { headers: { "X-Source": src.id } });
             const data = await res.json();
             return { source: src, items: (data.items ?? []).slice(0, 12) };
-          } catch {
-            return { source: src, items: [] };
-          }
+          } catch { return { source: src, items: [] }; }
         }),
       );
-      const results = all
-        .map(r => (r.status === "fulfilled" ? r.value : null))
-        .filter((r): r is SourceResults => r !== null);
-      setGlobalResults(results);
+      setGlobalResults(all.map(r => r.status === "fulfilled" ? r.value : null).filter((r): r is SourceResults => r !== null));
       setIsSearching(false);
     };
-
     run();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlQ]);
 
-  const clearSearch = () => {
-    setLocation("/sources");
-    setGlobalResults([]);
-    setSearchedQuery("");
-  };
-
+  const clearSearch = () => { setLocation("/sources"); setGlobalResults([]); setSearchedQuery(""); };
   const showGlobalSearch = !!(urlQ || isSearching);
 
+  const { data: catalog } = useQuery<CatalogResponse>({
+    queryKey: ["sources-catalog"],
+    queryFn: () => customFetch<CatalogResponse>("/api/sources/catalog"),
+    staleTime: 24 * 60 * 60 * 1000,
+  });
+  const extensionCount = catalog?.count ?? 0;
+
   return (
-    <main className="container mx-auto px-4 pt-3 pb-8 max-w-5xl">
+    <main className="pb-8 max-w-3xl mx-auto">
       {showGlobalSearch ? (
         <GlobalSearchResults
           query={urlQ || searchedQuery}
@@ -232,23 +201,36 @@ export default function SourcesPage() {
           onClear={clearSearch}
         />
       ) : (
-        <Tabs defaultValue="installed" className="w-full">
-          <TabsList className="mb-4">
-            <TabsTrigger value="installed" className="text-sm sm:text-base px-4 sm:px-6">
-              Added
-              <span className="ml-2 text-xs text-muted-foreground">{installed.length}</span>
-            </TabsTrigger>
-            <TabsTrigger value="browse" className="text-sm sm:text-base px-4 sm:px-6">
-              Browse
-            </TabsTrigger>
-          </TabsList>
+        <Tabs defaultValue="sources" className="w-full">
+          {/* Tab bar */}
+          <div className="sticky top-0 z-10 bg-background border-b border-border/50">
+            <TabsList className="w-full rounded-none bg-transparent h-12 px-0 gap-0 justify-start">
+              <TabsTrigger
+                value="sources"
+                className="rounded-none h-12 px-5 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground bg-transparent shadow-none"
+              >
+                Sources
+              </TabsTrigger>
+              <TabsTrigger
+                value="extensions"
+                className="rounded-none h-12 px-5 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground bg-transparent shadow-none flex items-center gap-1.5"
+              >
+                Extensions
+                {extensionCount > 0 && (
+                  <span className="bg-primary text-primary-foreground text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none">
+                    {extensionCount > 99 ? "99+" : extensionCount}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-          <TabsContent value="installed" className="animate-in fade-in duration-300">
-            <InstalledTab installed={installed} activeId={activeId} />
+          <TabsContent value="sources" className="mt-0 animate-in fade-in duration-300">
+            <SourcesTab installed={installed} activeId={activeId} />
           </TabsContent>
 
-          <TabsContent value="browse" className="animate-in fade-in duration-300">
-            <BrowseTab installedMap={installedMap} />
+          <TabsContent value="extensions" className="mt-0 animate-in fade-in duration-300">
+            <BrowseTab installedMap={installedMap} catalog={catalog ?? null} />
           </TabsContent>
         </Tabs>
       )}
@@ -256,176 +238,190 @@ export default function SourcesPage() {
   );
 }
 
-// ─── Installed tab ───────────────────────────────────────────────────────────
-function InstalledTab({ installed, activeId }: { installed: InstalledSource[]; activeId: string }) {
+// ─── Sources tab (Tachiyomi-style) ───────────────────────────────────────────
+function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; activeId: string }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  return (
-    <div className="space-y-3">
-      {installed.map((src) => {
-        const isActive = src.id === activeId;
-        return (
-          <div
-            key={src.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => { storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}`); }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                storeActions.setActiveSource(src.id);
-                setLocation(`/sources/${src.id}`);
-              }
-            }}
-            className={`group flex items-center gap-4 p-3 sm:p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md hover:border-primary/40 ${
-              isActive ? "border-primary bg-primary/5" : "bg-card"
-            }`}
+
+  const lastUsed = installed.find(s => s.id === activeId);
+  const pinned   = installed.filter(s => s.id !== activeId);
+
+  function SourceRow({ src }: { src: InstalledSource }) {
+    const isActive = src.id === activeId;
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => { storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}`); }}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}`); } }}
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/40 active:bg-muted/60 transition-colors"
+      >
+        <SourceAvatar src={src} size={44} />
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm text-foreground truncate">{src.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{langLabel(src.lang)}</p>
+        </div>
+        {/* Action icons */}
+        <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+          {isActive && (
+            <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Settings">
+              <Settings2 className="h-4 w-4" />
+            </button>
+          )}
+          <button
+            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-primary"
+            title="Pinned"
           >
-            <ExtensionAvatar ext={src} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-semibold truncate">{src.name}</h3>
-                {isActive && (
-                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary text-primary-foreground">
-                    <CheckCircle2 className="h-3 w-3" /> Active
-                  </span>
-                )}
-                {src.isNsfw && (
-                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400">
-                    <ShieldAlert className="h-3 w-3" /> 18+
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                <Globe className="h-3 w-3 inline mr-1" />
-                {langLabel(src.lang)} · {src.id}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-              {src.id !== "en.comix" && (
-                <Button size="icon" variant="ghost"
-                  className="text-muted-foreground hover:text-destructive"
-                  aria-label="Remove"
-                  onClick={() => { storeActions.uninstallSource(src.id); toast({ title: `Removed ${src.name}` }); }}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-              <ChevronRight className="h-5 w-5 text-muted-foreground opacity-60 group-hover:opacity-100 group-hover:text-primary transition-colors" />
-            </div>
+            <Pin className="h-4 w-4" />
+          </button>
+          {src.id !== "en.comix" ? (
+            <button
+              className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-destructive"
+              title="Remove"
+              onClick={() => { storeActions.uninstallSource(src.id); toast({ title: `Removed ${src.name}` }); }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          ) : (
+            <button className="h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground opacity-40" disabled title="Info">
+              <AlertCircle className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (installed.length === 0) {
+    return (
+      <div className="py-20 text-center text-muted-foreground text-sm px-6">
+        <p className="mb-1">No sources installed.</p>
+        <p>Open the <strong>Extensions</strong> tab to add sources.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Last used section */}
+      {lastUsed && (
+        <>
+          <div className="px-4 pt-5 pb-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last used</p>
           </div>
-        );
-      })}
-      <p className="text-xs text-muted-foreground pt-2">
-        Tap any source to browse its popular &amp; latest titles. The default{" "}
-        <strong>Comix</strong> source can't be removed. Visit the{" "}
-        <strong>Browse</strong> tab to add more.
-      </p>
+          <SourceRow src={lastUsed} />
+        </>
+      )}
+
+      {/* Pinned section */}
+      {pinned.length > 0 && (
+        <>
+          <div className="px-4 pt-5 pb-2 flex items-center gap-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Pinned</p>
+            <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+          {pinned.map(src => <SourceRow key={src.id} src={src} />)}
+        </>
+      )}
     </div>
   );
 }
 
-// ─── Browse tab ──────────────────────────────────────────────────────────────
+// ─── Extensions (Browse) tab ──────────────────────────────────────────────────
 const SUPPORTED_FIRST = (a: CatalogExtension, b: CatalogExtension) =>
   Number(b.supported) - Number(a.supported) || a.name.localeCompare(b.name);
 const PAGE_SIZE = 60;
 
-function BrowseTab({ installedMap }: { installedMap: Record<string, InstalledSource> }) {
+function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, InstalledSource>; catalog: CatalogResponse | null }) {
   const { toast } = useToast();
-  const { data, isLoading, error } = useQuery<CatalogResponse>({
-    queryKey: ["sources-catalog"],
-    queryFn: () => customFetch<CatalogResponse>("/api/sources/catalog"),
-    staleTime: 24 * 60 * 60 * 1000,
-  });
 
-  const [search, setSearch]             = useState("");
-  const [lang, setLang]                 = useState<string>("all-langs");
-  const [showNsfw, setShowNsfw]         = useState(false);
+  const [search, setSearch]               = useState("");
+  const [lang, setLang]                   = useState<string>("all-langs");
+  const [showNsfw, setShowNsfw]           = useState(false);
   const [supportedOnly, setSupportedOnly] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [visibleCount, setVisibleCount]   = useState(PAGE_SIZE);
 
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [search, lang, showNsfw, supportedOnly]);
 
   const allLangs = useMemo(() => {
-    if (!data) return [] as string[];
+    if (!catalog) return [] as string[];
     const set = new Set<string>();
-    for (const e of data.extensions) set.add(e.lang);
+    for (const e of catalog.extensions) set.add(e.lang);
     return Array.from(set).sort();
-  }, [data]);
+  }, [catalog]);
 
   const filtered = useMemo(() => {
-    if (!data) return [];
+    if (!catalog) return [];
     const q = search.trim().toLowerCase();
-    return data.extensions
+    return catalog.extensions
       .filter(e => lang === "all-langs" ? true : e.lang === lang)
       .filter(e => showNsfw ? true : !e.isNsfw)
       .filter(e => supportedOnly ? e.supported : true)
       .filter(e => q ? e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) || e.slug.toLowerCase().includes(q) : true)
       .sort(SUPPORTED_FIRST);
-  }, [data, search, lang, showNsfw, supportedOnly]);
+  }, [catalog, search, lang, showNsfw, supportedOnly]);
 
   const visible = filtered.slice(0, visibleCount);
 
-  if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
-  if (error || !data) return <div className="text-center py-20 text-destructive">Failed to load extension catalog.</div>;
+  if (!catalog) {
+    return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
+    <div>
+      {/* Search + filters */}
+      <div className="px-4 pt-4 pb-3 space-y-2">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search extensions by name…" className="pl-9"
-            value={search} onChange={e => setSearch(e.target.value)} />
+          <Input placeholder="Search extensions…" className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <select value={lang} onChange={e => setLang(e.target.value)}
-          className="h-9 px-3 rounded-md border border-input bg-background text-sm">
-          <option value="all-langs">All languages ({data.count})</option>
-          {allLangs.map(l => <option key={l} value={l}>{langLabel(l)}</option>)}
-        </select>
-        <label className="inline-flex items-center gap-2 text-sm px-3 h-9 rounded-md border border-input bg-background cursor-pointer">
-          <input type="checkbox" checked={supportedOnly} onChange={e => setSupportedOnly(e.target.checked)} />
-          Available only
-        </label>
-        <label className="inline-flex items-center gap-2 text-sm px-3 h-9 rounded-md border border-input bg-background cursor-pointer">
-          <input type="checkbox" checked={showNsfw} onChange={e => setShowNsfw(e.target.checked)} />
-          18+
-        </label>
+        <div className="flex gap-2 flex-wrap">
+          <select value={lang} onChange={e => setLang(e.target.value)}
+            className="h-8 px-2 rounded-md border border-input bg-background text-xs flex-1 min-w-[120px]">
+            <option value="all-langs">All languages</option>
+            {allLangs.map(l => <option key={l} value={l}>{langLabel(l)}</option>)}
+          </select>
+          <label className="inline-flex items-center gap-1.5 text-xs px-3 h-8 rounded-md border border-input bg-background cursor-pointer shrink-0">
+            <input type="checkbox" checked={supportedOnly} onChange={e => setSupportedOnly(e.target.checked)} className="rounded" />
+            Available
+          </label>
+          <label className="inline-flex items-center gap-1.5 text-xs px-3 h-8 rounded-md border border-input bg-background cursor-pointer shrink-0">
+            <input type="checkbox" checked={showNsfw} onChange={e => setShowNsfw(e.target.checked)} className="rounded" />
+            18+
+          </label>
+        </div>
+        <p className="text-xs text-muted-foreground">Showing {visible.length.toLocaleString()} of {filtered.length.toLocaleString()}</p>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Showing {visible.length.toLocaleString()} of {filtered.length.toLocaleString()} extensions
-      </p>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Extension rows */}
+      <div className="divide-y divide-border/40">
         {visible.map(ext => {
-          const installed = !!installedMap[ext.id];
+          const isInstalled = !!installedMap[ext.id];
           return (
-            <div key={ext.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
-              <ExtensionAvatar ext={ext} />
+            <div key={ext.id} className="flex items-center gap-3 px-4 py-3">
+              <SourceAvatar src={ext} size={44} />
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-semibold truncate text-sm">{ext.name}</h3>
-                  {ext.isNsfw && (
-                    <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">18+</span>
-                  )}
-                  {!ext.supported && (
-                    <span className="text-[10px] px-1.5 py-0 rounded bg-muted text-muted-foreground">Coming soon</span>
-                  )}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-semibold text-sm truncate">{ext.name}</span>
+                  {ext.isNsfw && <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">18+</span>}
+                  {!ext.supported && <span className="text-[10px] px-1.5 py-0 rounded bg-muted text-muted-foreground">Coming soon</span>}
                 </div>
-                <p className="text-xs text-muted-foreground truncate">{langLabel(ext.lang)} · v{ext.versionCode}</p>
+                <p className="text-xs text-muted-foreground">{langLabel(ext.lang)}</p>
               </div>
-              {installed ? (
-                <span className="inline-flex items-center gap-1 text-xs text-primary px-2">
-                  <CheckCircle2 className="h-4 w-4" /> Added
+              {isInstalled ? (
+                <span className="inline-flex items-center gap-1 text-xs text-primary px-1">
+                  <CheckCircle2 className="h-4 w-4" />
                 </span>
               ) : (
-                <Button size="sm" variant={ext.supported ? "default" : "outline"} disabled={!ext.supported}
+                <Button
+                  size="sm" variant={ext.supported ? "default" : "outline"}
+                  disabled={!ext.supported} className="h-8 text-xs px-3 shrink-0"
                   onClick={() => {
                     storeActions.installSource({ id: ext.id, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl });
-                    toast({ title: `Added ${ext.name}`, description: "Open the Added tab and pick it to start browsing." });
+                    toast({ title: `Added ${ext.name}`, description: "Open the Sources tab to browse it." });
                   }}
                 >
-                  <Plus className="h-4 w-4 mr-1" /> Add
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add
                 </Button>
               )}
             </div>
@@ -434,7 +430,7 @@ function BrowseTab({ installedMap }: { installedMap: Record<string, InstalledSou
       </div>
 
       {visible.length < filtered.length && (
-        <div className="flex justify-center pt-4">
+        <div className="flex justify-center py-4">
           <Button variant="outline" onClick={() => setVisibleCount(c => c + PAGE_SIZE)}>
             <ChevronDown className="h-4 w-4 mr-1" /> Load more
           </Button>

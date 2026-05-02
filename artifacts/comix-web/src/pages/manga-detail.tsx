@@ -195,21 +195,26 @@ export default function MangaDetail() {
 
   return (
     <>
-      {sourceContext && (
-        <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border/50">
-          <div className="flex items-center gap-3 px-4 h-14 max-w-3xl mx-auto">
-            <button type="button" onClick={() => window.history.back()} className="flex items-center justify-center h-9 w-9 rounded-full hover:bg-muted transition-colors shrink-0">
-              <ArrowLeft className="h-5 w-5" />
-            </button>
+      {/* Always-visible sticky header with back arrow */}
+      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border/40">
+        <div className="flex items-center gap-2 px-3 h-12 max-w-3xl mx-auto">
+          <button
+            type="button"
+            onClick={() => window.history.back()}
+            className="flex items-center justify-center h-9 w-9 rounded-full hover:bg-muted transition-colors shrink-0"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          {sourceContext && (
             <span className="font-semibold text-sm truncate">{formatSourceId(sourceContext)}</span>
-          </div>
-        </header>
-      )}
+          )}
+        </div>
+      </header>
 
       <div className="max-w-3xl mx-auto animate-in fade-in duration-500">
 
         {/* ── Hero banner ── */}
-        <div className="relative overflow-hidden" style={{ minHeight: 200 }}>
+        <div className="relative overflow-hidden" style={{ minHeight: 180 }}>
           {/* Blurred background */}
           <div className="absolute inset-0">
             <img
@@ -220,17 +225,6 @@ export default function MangaDetail() {
             />
             <div className="absolute inset-0 bg-background/75 dark:bg-background/85" />
           </div>
-
-          {/* Back button (non-source context) */}
-          {!sourceContext && (
-            <button
-              type="button"
-              onClick={() => window.history.back()}
-              className="absolute top-3 left-3 z-10 flex items-center justify-center h-8 w-8 rounded-full bg-background/40 hover:bg-background/60 backdrop-blur-sm transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-          )}
 
           {/* Cover + title row */}
           <div className="relative z-10 flex items-end gap-4 px-4 pb-4 pt-4">
