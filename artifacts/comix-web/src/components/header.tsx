@@ -32,6 +32,7 @@ export function Header() {
 
   const isHome    = location === "/";
   const isUpdates = location === "/updates";
+  const isHistory = location === "/history";
   const isSources = location === "/sources";
 
   // Global search state (sources page only)
@@ -98,8 +99,8 @@ export function Header() {
     : (scope?.placeholder ?? "Search manga...");
   const showClear = !isSources && scope?.showClear !== false && query.length > 0;
   const showFilter = !isSources && !!(scope?.availableTags && scope.availableTags.length > 0);
-  const showSearch = !isUpdates;
-  const showTheme  = !isUpdates && !isSources;
+  const showSearch = !isUpdates && !isHistory;
+  const showTheme  = !isUpdates && !isSources && !isHistory;
 
   const navLinks = [
     { href: "/", label: "Library", icon: Library },
@@ -154,7 +155,10 @@ export function Header() {
           {showSearch && (
             <div className="flex-1 max-w-xl mx-auto hidden md:flex items-center gap-2">
               {isSources && (
-                <span className="text-border select-none text-lg leading-none shrink-0">│</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-border select-none text-lg leading-none">│</span>
+                  <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Global search</span>
+                </div>
               )}
               <form onSubmit={handleSubmit} className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

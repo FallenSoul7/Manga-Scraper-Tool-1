@@ -191,7 +191,7 @@ export default function SourcesPage() {
         installed.map(async (src): Promise<SourceResults> => {
           try {
             const res = await fetch(
-              `/api/catalog?q=${encodeURIComponent(urlQ)}&page=1`,
+              `/api/search?query=${encodeURIComponent(urlQ)}&page=1`,
               { headers: { "X-Source": src.id } },
             );
             const data = await res.json();
