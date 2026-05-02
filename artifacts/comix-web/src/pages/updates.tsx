@@ -55,27 +55,18 @@ export default function UpdatesPage() {
     }
   };
 
-  const handleMarkAllSeen = () => {
-    storeActions.clearAllPendingUpdates();
-  };
-
   return (
-    <main className="container mx-auto px-4 py-6 sm:py-8 max-w-4xl animate-in fade-in duration-500">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 sm:mb-8">
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-serif font-bold text-foreground mb-1 sm:mb-2">Updates</h1>
-          <p className="text-sm sm:text-lg text-muted-foreground">New chapters discovered when you open a title.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
-            {isRefreshing ? "Checking…" : "Check all"}
-          </Button>
-          <Button variant="default" size="sm" onClick={handleMarkAllSeen} disabled={updatesByManga.length === 0}>
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            Mark all seen
-          </Button>
-        </div>
+    <main className="container mx-auto px-4 pt-3 pb-8 max-w-4xl animate-in fade-in duration-500">
+      {/* Action bar */}
+      <div className="flex items-center justify-end gap-2 mb-5">
+        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
+          {isRefreshing ? "Checking…" : "Check all"}
+        </Button>
+        <Button variant="default" size="sm" onClick={storeActions.clearAllPendingUpdates} disabled={updatesByManga.length === 0}>
+          <CheckCircle2 className="h-4 w-4 mr-2" />
+          Mark all seen
+        </Button>
       </div>
 
       {isRefreshing && updatesByManga.length === 0 ? (
@@ -109,11 +100,7 @@ export default function UpdatesPage() {
               <div key={manga.id} className="flex gap-3 sm:gap-4 p-3 sm:p-4 border rounded-xl bg-card hover:shadow-md transition-shadow">
                 <Link href={`/manga/${manga.id}`} className="shrink-0 cursor-pointer">
                   <div className="w-14 sm:w-20 aspect-[2/3] rounded-md overflow-hidden bg-muted shadow-sm hover:opacity-80 transition-opacity">
-                    <img
-                      src={proxyImage(manga.thumbnail)}
-                      alt={manga.title}
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={proxyImage(manga.thumbnail)} alt={manga.title} className="w-full h-full object-cover" />
                   </div>
                 </Link>
 
@@ -154,11 +141,9 @@ export default function UpdatesPage() {
                         className="h-7 sm:h-8 px-2 text-xs sm:text-sm text-muted-foreground hover:text-foreground"
                         onClick={() => setExpanded(s => ({ ...s, [manga.id]: !isExpanded }))}
                       >
-                        {isExpanded ? (
-                          <>Show less <ChevronUp className="h-3 w-3 ml-1" /></>
-                        ) : (
-                          <>+{hidden} more <ChevronDown className="h-3 w-3 ml-1" /></>
-                        )}
+                        {isExpanded
+                          ? <><ChevronUp className="h-3 w-3 mr-1" />Show less</>
+                          : <>+{hidden} more<ChevronDown className="h-3 w-3 ml-1" /></>}
                       </Button>
                     )}
                   </div>

@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { Search, Library, Clock, RefreshCw, Sun, Moon, Laptop, X, Boxes, LayoutGrid, SlidersHorizontal, Check } from "lucide-react";
 import { Input } from "./ui/input";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -11,8 +11,18 @@ import { useHeaderSearch } from "@/lib/header-search";
 
 const QUERY_DEBOUNCE_MS = 220;
 
+const PAGE_TITLES: Record<string, string> = {
+  "/updates": "Updates",
+  "/history": "History",
+  "/sources": "Sources",
+  "/system": "System",
+  "/search": "Search",
+  "/stats": "Stats",
+};
+
 export function Header() {
   const [location, setLocation] = useLocation();
+  const searchString = useSearch();
   const scope = useHeaderSearch();
   const [query, setQuery] = useState(scope?.initialQuery ?? "");
   const [tagIds, setTagIds] = useState<string[]>(scope?.initialTagIds ?? []);
@@ -20,10 +30,17 @@ export function Header() {
   const theme = useStore(s => s.theme);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
-  // When the active scope changes (i.e. user navigated to a different page),
-  // reset the input/tags to the new scope's defaults so old state doesn't bleed
-  // across pages. Tracked by-reference so the user's typing isn't reset on
-  // every render of the same scope.
+  const isHome    = location === "/";
+  const isUpdates = location === "/updates";
+  const isSources = location === "/sources";
+
+  // Global search state (sources page only)
+  const urlQ = isSources ? (new URLSearchParams(searchString).get("q") ?? "") : "";
+  const [sourcesQuery, setSourcesQuery] = useState(urlQ);
+  useEffect(() => { setSourcesQuery(urlQ); }, [urlQ]);
+
+  const pageTitle = PAGE_TITLES[location] ?? "";
+
   const lastScopeRef = useRef<typeof scope>(undefined as never);
   useEffect(() => {
     if (scope !== lastScopeRef.current) {
@@ -33,8 +50,6 @@ export function Header() {
     }
   }, [scope]);
 
-  // Debounced typing → scope.onChange. Tag toggles fire immediately (handled
-  // in the tag toggle callback) since they're discrete actions.
   useEffect(() => {
     if (!scope) return;
     const id = window.setTimeout(() => {
@@ -47,7 +62,6 @@ export function Header() {
   const toggleTag = (id: string) => {
     setTagIds((prev) => {
       const next = prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id];
-      // Fire scope synchronously so the listing updates immediately.
       if (scope) scope.onChange(query, next);
       return next;
     });
@@ -60,8 +74,14 @@ export function Header() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSources) {
+      if (sourcesQuery.trim()) {
+        setLocation(`/sources?q=${encodeURIComponent(sourcesQuery.trim())}`);
+      }
+      setIsMobileSearchOpen(false);
+      return;
+    }
     if (scope) {
-      // Force the scope to re-evaluate immediately (skip debounce).
       scope.onChange(query, tagIds);
       setIsMobileSearchOpen(false);
       return;
@@ -73,9 +93,13 @@ export function Header() {
     }
   };
 
-  const placeholder = scope?.placeholder ?? "Search manga...";
-  const showClear = scope?.showClear !== false && query.length > 0;
-  const showFilter = !!(scope?.availableTags && scope.availableTags.length > 0);
+  const placeholder = isSources
+    ? "Global search — manga, manhwa, everything…"
+    : (scope?.placeholder ?? "Search manga...");
+  const showClear = !isSources && scope?.showClear !== false && query.length > 0;
+  const showFilter = !isSources && !!(scope?.availableTags && scope.availableTags.length > 0);
+  const showSearch = !isUpdates;
+  const showTheme  = !isUpdates && !isSources;
 
   const navLinks = [
     { href: "/", label: "Library", icon: Library },
@@ -89,19 +113,28 @@ export function Header() {
     <>
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-3 sm:px-4 h-14 sm:h-16 flex items-center gap-2 sm:gap-4">
-          <Link href="/" className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity shrink-0">
-            <Library className="h-5 w-5 sm:h-6 sm:w-6" />
-            <span className="font-serif font-bold text-base sm:text-xl tracking-tight whitespace-nowrap hidden sm:inline">
-              Comix Lounge
+
+          {/* Logo / page title */}
+          {isHome ? (
+            <Link href="/" className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity shrink-0">
+              <Library className="h-5 w-5 sm:h-6 sm:w-6" />
+              <span className="font-serif font-bold text-base sm:text-xl tracking-tight whitespace-nowrap hidden sm:inline">
+                Comix Lounge
+              </span>
+            </Link>
+          ) : (
+            <span className="font-serif font-bold text-base sm:text-xl tracking-tight whitespace-nowrap shrink-0">
+              {pageTitle}
             </span>
-          </Link>
-          
+          )}
+
+          {/* Desktop nav links */}
           <nav className="hidden md:flex items-center gap-1 mx-2 lg:mx-4">
             {navLinks.map((link) => {
               const isActive = location === link.href;
               return (
-                <Link 
-                  key={link.href} 
+                <Link
+                  key={link.href}
                   href={link.href}
                   className={`relative flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                     isActive ? "text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -113,75 +146,103 @@ export function Header() {
                     <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary" />
                   )}
                 </Link>
-              )
+              );
             })}
           </nav>
 
-          <div className="flex-1 max-w-md mx-auto hidden md:flex items-center gap-2">
-            <form onSubmit={handleSubmit} className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder={placeholder}
-                className="w-full pl-9 pr-9 bg-muted/50 border-muted-foreground/20 focus-visible:ring-primary/50 rounded-full"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              {showClear && (
-                <button
-                  type="button"
-                  aria-label="Clear"
-                  onClick={() => setQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+          {/* Center: sources global search OR regular search */}
+          {showSearch && (
+            <div className="flex-1 max-w-xl mx-auto hidden md:flex items-center gap-2">
+              {isSources && (
+                <span className="text-border select-none text-lg leading-none shrink-0">│</span>
               )}
-            </form>
-            {showFilter && (
-              <TagFilterButton
-                tags={scope!.availableTags!}
-                selectedIds={tagIds}
-                onToggle={toggleTag}
-                onClear={clearTags}
-              />
-            )}
-          </div>
+              <form onSubmit={handleSubmit} className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type={isSources ? "text" : "search"}
+                  placeholder={placeholder}
+                  className="w-full pl-9 pr-9 bg-muted/50 border-muted-foreground/20 focus-visible:ring-primary/50 rounded-full"
+                  value={isSources ? sourcesQuery : query}
+                  onChange={(e) => isSources ? setSourcesQuery(e.target.value) : setQuery(e.target.value)}
+                />
+                {isSources ? (
+                  sourcesQuery.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { setSourcesQuery(""); setLocation("/sources"); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )
+                ) : (
+                  showClear && (
+                    <button
+                      type="button"
+                      aria-label="Clear"
+                      onClick={() => setQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )
+                )}
+              </form>
+              {isSources && (
+                <Button type="submit" size="icon" variant="ghost" className="h-9 w-9 shrink-0" onClick={handleSubmit}>
+                  <Search className="h-4 w-4" />
+                </Button>
+              )}
+              {showFilter && (
+                <TagFilterButton
+                  tags={scope!.availableTags!}
+                  selectedIds={tagIds}
+                  onToggle={toggleTag}
+                  onClear={clearTags}
+                />
+              )}
+            </div>
+          )}
 
           <div className="flex-1 md:hidden" />
 
           <div className="flex items-center gap-1 shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden h-9 w-9"
-              onClick={() => setIsMobileSearchOpen(true)}
-              aria-label="Search"
-            >
-              <Search className="h-5 w-5 text-muted-foreground" />
-            </Button>
+            {showSearch && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden h-9 w-9"
+                onClick={() => setIsMobileSearchOpen(true)}
+                aria-label="Search"
+              >
+                <Search className="h-5 w-5 text-muted-foreground" />
+              </Button>
+            )}
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" aria-label="Theme">
-                  {theme === 'light' ? <Sun className="h-5 w-5" /> : theme === 'dark' ? <Moon className="h-5 w-5" /> : <Laptop className="h-5 w-5" />}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => storeActions.setTheme('light')}>
-                  <Sun className="mr-2 h-4 w-4" /> Light
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => storeActions.setTheme('dark')}>
-                  <Moon className="mr-2 h-4 w-4" /> Dark
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => storeActions.setTheme('system')}>
-                  <Laptop className="mr-2 h-4 w-4" /> System
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {showTheme && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" aria-label="Theme">
+                    {theme === 'light' ? <Sun className="h-5 w-5" /> : theme === 'dark' ? <Moon className="h-5 w-5" /> : <Laptop className="h-5 w-5" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => storeActions.setTheme('light')}>
+                    <Sun className="mr-2 h-4 w-4" /> Light
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => storeActions.setTheme('dark')}>
+                    <Moon className="mr-2 h-4 w-4" /> Dark
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => storeActions.setTheme('system')}>
+                    <Laptop className="mr-2 h-4 w-4" /> System
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
 
+        {/* Mobile search overlay */}
         {isMobileSearchOpen && (
           <div className="md:hidden border-t bg-background animate-in slide-in-from-top-2 duration-150">
             <form onSubmit={handleSubmit} className="container mx-auto px-3 py-2 flex items-center gap-2">
@@ -192,14 +253,14 @@ export function Header() {
                   type="search"
                   placeholder={placeholder}
                   className="w-full pl-9 pr-9 h-10 bg-muted/50 rounded-full"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  value={isSources ? sourcesQuery : query}
+                  onChange={(e) => isSources ? setSourcesQuery(e.target.value) : setQuery(e.target.value)}
                 />
-                {showClear && (
+                {(isSources ? sourcesQuery : query).length > 0 && (
                   <button
                     type="button"
                     aria-label="Clear"
-                    onClick={() => setQuery("")}
+                    onClick={() => isSources ? setSourcesQuery("") : setQuery("")}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
                   >
                     <X className="h-4 w-4" />
@@ -222,7 +283,7 @@ export function Header() {
         )}
       </header>
 
-      {/* Mobile bottom nav (fixed) */}
+      {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 border-t">
         <div className="grid grid-cols-5">
           {navLinks.map((link) => {
@@ -243,7 +304,7 @@ export function Header() {
                   </span>
                 )}
               </Link>
-            )
+            );
           })}
         </div>
       </nav>
@@ -262,8 +323,6 @@ function TagFilterButton({ tags, selectedIds, onToggle, onClear }: TagFilterButt
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
-  // Group tags by their `group` field so similar items (Genre, Theme, …)
-  // stay together in the picker. Also filter by the in-popover search.
   const grouped = useMemo(() => {
     const q = search.trim().toLowerCase();
     const map = new Map<string, typeof tags>();
@@ -303,11 +362,7 @@ function TagFilterButton({ tags, selectedIds, onToggle, onClear }: TagFilterButt
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-sm font-semibold">Filter by tag</h4>
             {selectedCount > 0 && (
-              <button
-                type="button"
-                onClick={onClear}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
+              <button type="button" onClick={onClear} className="text-xs text-muted-foreground hover:text-foreground">
                 Clear all
               </button>
             )}
