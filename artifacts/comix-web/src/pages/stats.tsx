@@ -99,15 +99,19 @@ export default function StatsPage() {
     return {
       totalManga,
       chaptersRead,
-      estimatedTime,
+      timeDisplay: formattedTime.value,
+      timeSubtitle,
       categoryCounts,
       topRead,
-      streak
+      streak,
     };
-  }, [library, categories, progressMap, historyKeys]);
+  }, [library, categories, progressMap, historyKeys, trackedReadingMs]);
 
   return (
     <main className="container mx-auto px-4 py-12 max-w-4xl animate-in fade-in duration-500">
+      <Link href="/system" className="inline-flex items-center text-sm text-muted-foreground hover:text-primary mb-3 transition-colors">
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back to System
+      </Link>
       <div className="mb-10">
         <h1 className="text-3xl font-serif font-bold text-foreground mb-2">Reading Statistics</h1>
         <p className="text-muted-foreground">Your journey through the pages.</p>
@@ -140,8 +144,8 @@ export default function StatsPage() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-serif font-bold">{stats.estimatedTime}</div>
-            <p className="text-xs text-muted-foreground mt-1">Est. at 4m / chapter</p>
+            <div className="text-3xl font-serif font-bold">{stats.timeDisplay}</div>
+            <p className="text-xs text-muted-foreground mt-1">{stats.timeSubtitle}</p>
           </CardContent>
         </Card>
 
