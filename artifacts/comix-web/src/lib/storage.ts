@@ -389,6 +389,15 @@ export const storeActions = {
     });
   },
   
+  // Batch-patch any fields on multiple library entries in a single state write.
+  batchPatchLibrary(patches: Array<{ mangaId: string; patch: Partial<Pick<SavedManga, 'categoryIds' | 'sourceId'>> }>) {
+    const newLib = { ...memoryState.library };
+    for (const { mangaId, patch } of patches) {
+      if (newLib[mangaId]) newLib[mangaId] = { ...newLib[mangaId], ...patch };
+    }
+    saveState({ ...memoryState, library: newLib });
+  },
+
   reorderCategories(orderedIds: string[]) {
     const cats = [...memoryState.categories];
     cats.sort((a, b) => {
