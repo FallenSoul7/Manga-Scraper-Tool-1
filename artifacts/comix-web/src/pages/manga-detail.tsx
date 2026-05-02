@@ -217,7 +217,7 @@ export default function MangaDetail() {
   const sourceName = effectiveSource ? formatSourceId(effectiveSource) : null;
 
   return (
-    <>
+    <div style={{ maxWidth: '100vw', overflowX: 'hidden' }}>
       {/* Sticky back header */}
       <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border/40">
         <div className="flex items-center gap-2 px-3 h-12 max-w-3xl mx-auto">
@@ -244,12 +244,10 @@ export default function MangaDetail() {
               src={proxyImage(manga.thumbnail, sourceContext ?? undefined)}
               alt=""
               style={{
-                filter: "blur(20px)",
+                filter: "blur(24px)",
                 objectFit: "cover",
-                width: "110%",
-                height: "110%",
-                marginLeft: "-5%",
-                marginTop: "-5%",
+                width: "100%",
+                height: "100%",
               }}
             />
             <div className="absolute inset-0 bg-background/80 dark:bg-background/88" />
@@ -693,6 +691,6 @@ export default function MangaDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
