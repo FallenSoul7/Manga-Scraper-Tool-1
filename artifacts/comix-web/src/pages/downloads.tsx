@@ -24,34 +24,39 @@ function ProgressBar({ value }: { value: number }) {
 
 export default function DownloadsPage() {
   const [, setLocation] = useLocation();
-  const items = useDownloadQueue(s => s.items);
-  const paused = useDownloadQueue(s => s.paused);
-  const concurrent = useDownloadQueue(s => s.concurrentCount);
+  const items         = useDownloadQueue(s => s.items);
+  const paused        = useDownloadQueue(s => s.paused);
+  const concurrent    = useDownloadQueue(s => s.concurrentCount);
   const [recentOpen, setRecentOpen] = useState(true);
 
   const active = items.filter(i => i.status === 'queued' || i.status === 'downloading');
-  const done = items.filter(i => i.status === 'done');
-  const total = active.length;
+  const done   = items.filter(i => i.status === 'done');
+  const total  = active.length;
   const downloading = items.filter(i => i.status === 'downloading').length;
 
   return (
     <main className="min-h-screen bg-background text-foreground">
+
+      {/* ── Header ── */}
       <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border/50">
-        <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-          <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => setLocation("/system")}>
+        <div className="flex items-center gap-3 px-3 h-14">
+          <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => window.history.back()}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
+
+          {/* Clicking the title takes you to the downloaded-manga list */}
           <button
             type="button"
-            className="flex-1 text-left font-serif font-bold text-2xl tracking-tight hover:text-primary transition-colors"
+            className="flex-1 text-left font-serif font-bold text-xl tracking-tight hover:text-primary transition-colors"
             onClick={() => setLocation("/downloads/library")}
           >
             Downloads
           </button>
         </div>
 
+        {/* Status bar */}
         {total > 0 && (
-          <div className="flex items-center gap-2 px-4 pb-3 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 px-4 py-1.5 text-sm text-muted-foreground border-t border-border/30">
             <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-primary" />
             <span>Downloading {downloading} of {total}</span>
           </div>
@@ -59,6 +64,8 @@ export default function DownloadsPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+
+        {/* ── Pause / Concurrent controls ── */}
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -66,7 +73,7 @@ export default function DownloadsPage() {
             className="flex-1 flex items-center justify-center gap-2 h-11 rounded-full bg-primary/15 text-primary font-semibold text-sm hover:bg-primary/25 transition-colors active:scale-95"
           >
             {paused
-              ? <><Play className="h-4 w-4 fill-current" /> Resume</>
+              ? <><Play  className="h-4 w-4 fill-current" /> Resume</>
               : <><Pause className="h-4 w-4 fill-current" /> Pause</>
             }
           </button>
@@ -95,10 +102,14 @@ export default function DownloadsPage() {
           </DropdownMenu>
         </div>
 
+        {/* ── Active queue ── */}
         {active.length === 0 && done.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
             <div className="text-4xl">( •_•)</div>
             <div className="text-sm">No downloads queued</div>
+            <Button variant="outline" size="sm" onClick={() => setLocation("/sources")}>
+              Browse sources
+            </Button>
           </div>
         ) : (
           <>
@@ -163,6 +174,7 @@ export default function DownloadsPage() {
               </div>
             ))}
 
+            {/* ── Recently Downloaded ── */}
             {done.length > 0 && (
               <div>
                 <button
@@ -171,7 +183,10 @@ export default function DownloadsPage() {
                   className="flex items-center gap-2 w-full py-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <span className="flex-1 text-left">Recently Downloaded</span>
-                  {recentOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {recentOpen
+                    ? <ChevronUp className="h-4 w-4" />
+                    : <ChevronDown className="h-4 w-4" />
+                  }
                 </button>
 
                 {recentOpen && (

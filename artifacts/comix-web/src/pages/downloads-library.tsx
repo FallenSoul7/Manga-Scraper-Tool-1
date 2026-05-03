@@ -7,7 +7,7 @@ import { proxyImage } from "@/lib/utils";
 
 export default function DownloadsLibraryPage() {
   const [, setLocation] = useLocation();
-  const library = useStore(s => s.library);
+  const library  = useStore(s => s.library);
   const progress = useStore(s => s.progress);
 
   const items = useMemo(() => {
@@ -15,8 +15,8 @@ export default function DownloadsLibraryPage() {
       .filter(manga => !!manga.downloadedAt)
       .map(manga => {
         const chapters = Object.values(progress).filter(p => p.mangaId === manga.id);
-        const latest = chapters.sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
-        const author = manga.author ?? null;
+        const latest   = chapters.sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
+        const author   = manga.author ?? null;
         return { manga, latest, author };
       })
       .sort((a, b) => (b.manga.downloadedAt ?? 0) - (a.manga.downloadedAt ?? 0));
@@ -24,8 +24,10 @@ export default function DownloadsLibraryPage() {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
+
+      {/* ── Header ── */}
       <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border/50">
-        <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+        <div className="flex items-center gap-3 px-3 h-14">
           <Button
             variant="ghost"
             size="icon"
@@ -34,7 +36,7 @@ export default function DownloadsLibraryPage() {
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="font-serif font-bold text-2xl tracking-tight">Downloaded</h1>
+          <h1 className="font-serif font-bold text-xl tracking-tight">Downloaded</h1>
         </div>
       </div>
 
@@ -56,12 +58,14 @@ export default function DownloadsLibraryPage() {
               onKeyDown={e => { if (e.key === "Enter" || e.key === " ") setLocation(`/manga/${manga.id}`); }}
               className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-muted/40 active:bg-muted/60 transition-colors"
             >
+              {/* Cover */}
               <img
                 src={proxyImage(manga.thumbnail, manga.sourceId)}
                 alt={manga.title}
                 className="h-20 w-14 rounded-xl object-cover shrink-0 shadow-sm"
               />
 
+              {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-base leading-snug line-clamp-2 mb-0.5">
                   {manga.title}
@@ -73,13 +77,9 @@ export default function DownloadsLibraryPage() {
                   <Clock3 className="h-3 w-3 shrink-0" />
                   <span>{manga.status ? manga.status.charAt(0).toUpperCase() + manga.status.slice(1) : "Ongoing"}</span>
                 </div>
-                {latest && (
-                  <div className="mt-1 text-[11px] text-muted-foreground">
-                    Last downloaded: Chapter {latest.chapterNumber}
-                  </div>
-                )}
               </div>
 
+              {/* Delete */}
               <button
                 type="button"
                 onClick={e => {
