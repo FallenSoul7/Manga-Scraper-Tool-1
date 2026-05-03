@@ -272,7 +272,12 @@ function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; act
       >
         <SourceAvatar src={src} size={44} />
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm text-foreground truncate">{src.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-sm text-foreground truncate">{src.name}</p>
+            {(src.id === "en.comix" || src.id === "en.ninehentai") && (
+              <span className="text-[11px] font-semibold text-emerald-500 shrink-0">Working</span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">{langLabel(src.lang)}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>

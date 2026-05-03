@@ -224,8 +224,8 @@ export default function Reader() {
       const el = document.getElementById(`page-${idx}`);
       if (!el) continue;
       const rect = el.getBoundingClientRect();
-      // Only compensate for pages fully above the viewport midpoint.
-      if (rect.bottom < window.innerHeight * 0.5) {
+      // Only compensate for pages completely above the viewport top.
+      if (rect.bottom <= 0) {
         const w = el.clientWidth || window.innerWidth;
         delta += (w * dim.h / Math.max(1, dim.w)) - (w * prev.h / Math.max(1, prev.w));
       }
