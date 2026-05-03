@@ -143,57 +143,58 @@
 }
 
 .dark {
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
+  --button-outline: rgba(255,255,255, .08);
+  --badge-outline: rgba(255,255,255, .04);
 
   --opaque-button-border-intensity: 9;
 
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
+  --elevate-1: rgba(255,255,255, .03);
+  --elevate-2: rgba(255,255,255, .07);
 
-  --background: 20 15% 12%;
-  --foreground: 40 20% 90%;
-  --border: 20 10% 22%;
+  /* Near-pure black — matches Tachiyomi/Mihon dark palette */
+  --background: 0 0% 7%;
+  --foreground: 0 0% 92%;
+  --border: 0 0% 18%;
 
-  --card: 20 12% 15%;
-  --card-foreground: 40 20% 90%;
-  --card-border: 20 10% 22%;
+  --card: 0 0% 11%;
+  --card-foreground: 0 0% 92%;
+  --card-border: 0 0% 18%;
 
-  --sidebar: 20 15% 12%;
-  --sidebar-foreground: 40 20% 90%;
-  --sidebar-border: 20 10% 22%;
+  --sidebar: 0 0% 7%;
+  --sidebar-foreground: 0 0% 92%;
+  --sidebar-border: 0 0% 18%;
   --sidebar-primary: 15 40% 55%;
-  --sidebar-primary-foreground: 20 15% 12%;
-  --sidebar-accent: 20 10% 20%;
-  --sidebar-accent-foreground: 40 20% 90%;
+  --sidebar-primary-foreground: 0 0% 7%;
+  --sidebar-accent: 0 0% 16%;
+  --sidebar-accent-foreground: 0 0% 92%;
   --sidebar-ring: 15 40% 55%;
 
-  --popover: 20 12% 15%;
-  --popover-foreground: 40 20% 90%;
-  --popover-border: 20 10% 22%;
+  --popover: 0 0% 11%;
+  --popover-foreground: 0 0% 92%;
+  --popover-border: 0 0% 18%;
 
   --primary: 15 40% 55%;
-  --primary-foreground: 20 15% 12%;
+  --primary-foreground: 0 0% 7%;
 
-  --secondary: 20 10% 20%;
-  --secondary-foreground: 40 20% 90%;
+  --secondary: 0 0% 16%;
+  --secondary-foreground: 0 0% 92%;
 
-  --muted: 20 10% 20%;
-  --muted-foreground: 30 15% 65%;
+  --muted: 0 0% 16%;
+  --muted-foreground: 0 0% 60%;
 
-  --accent: 15 25% 25%;
+  --accent: 15 20% 22%;
   --accent-foreground: 15 50% 85%;
 
   --destructive: 0 60% 55%;
-  --destructive-foreground: 40 20% 90%;
+  --destructive-foreground: 0 0% 92%;
 
-  --input: 20 10% 22%;
+  --input: 0 0% 18%;
   --ring: 15 40% 55%;
 
   --chart-1: 15 40% 55%;
   --chart-2: 30 25% 35%;
   --chart-3: 20 15% 65%;
-  --chart-4: 40 20% 25%;
+  --chart-4: 0 0% 22%;
   --chart-5: 15 25% 25%;
 }
 
