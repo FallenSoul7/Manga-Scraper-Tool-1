@@ -123,6 +123,8 @@ function buildSearchBody(opts: {
   text?: string;
   page: number; // 0-indexed
   sort: number;
+  included?: number[];
+  excluded?: number[];
 }) {
   return {
     search: {
@@ -130,9 +132,29 @@ function buildSearchBody(opts: {
       page: opts.page,
       sort: opts.sort,
       pages: { range: [0, 2000] },
-      tag: { items: { included: [], excluded: [] } },
+      tag: {
+        items: {
+          included: opts.included ?? [],
+          excluded: opts.excluded ?? [],
+        },
+      },
     },
   };
+}
+
+function parseTagIds(tagIds?: string[]): { included: number[]; excluded: number[] } {
+  const included: number[] = [];
+  const excluded: number[] = [];
+  for (const id of tagIds ?? []) {
+    if (id.startsWith("-")) {
+      const n = Number(id.slice(1));
+      if (!isNaN(n)) excluded.push(n);
+    } else {
+      const n = Number(id);
+      if (!isNaN(n)) included.push(n);
+    }
+  }
+  return { included, excluded };
 }
 
 function thumbUrl(book: NineBook): string {
@@ -157,8 +179,10 @@ async function fetchPage(
   sort: number,
   page: number,
   query?: string,
+  tagIds?: string[],
 ): Promise<MangaListResponse> {
-  const body = buildSearchBody({ text: query, page: page - 1, sort });
+  const { included, excluded } = parseTagIds(tagIds);
+  const body = buildSearchBody({ text: query, page: page - 1, sort, included, excluded });
   const data = await apiPost<SearchResponseBody>("/api/getBook", body);
   if (!data.status) throw new Error("9hentai.so returned status:false");
   const totalPages = Math.ceil(data.total_count / 20);
@@ -170,6 +194,45 @@ async function fetchPage(
 }
 
 let tagCache: SourceTag[] | null = null;
+
+interface NineTagResult extends NineTag {
+  books_count?: number;
+}
+
+interface TagListResponseBody {
+  status: boolean;
+  results: NineTagResult[];
+  total_count?: number;
+}
+
+const TAG_TYPE_MAP: Array<{ type: number; group: string; pages: number }> = [
+  { type: 6, group: "Category", pages: 1 },  // ~7 categories, 1 page is enough
+  { type: 1, group: "Tag", pages: 2 },        // thousands of tags, take 2 pages sorted
+];
+
+async function fetchTags(): Promise<SourceTag[]> {
+  const all: SourceTag[] = [];
+  for (const { type, group, pages } of TAG_TYPE_MAP) {
+    try {
+      for (let page = 0; page < pages; page++) {
+        const data = await apiPost<TagListResponseBody>("/api/getTags", {
+          search: { text: "", page, letter: "", sort: 0, uses: 1 },
+          type,
+        });
+        if (!data.status || !Array.isArray(data.results)) break;
+        for (const t of data.results) {
+          all.push({ id: String(t.id), name: t.name, group, count: t.books_count });
+        }
+        if (data.results.length < 50) break; // last page
+      }
+    } catch {
+      // skip on error
+    }
+  }
+  // Sort tags by book count descending so most popular appear first
+  all.sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
+  return all;
+}
 
 // ────────── Source ──────────
 
@@ -194,24 +257,23 @@ export const NineHentaiSource: MangaSource = {
     const sortNum = o.sort !== undefined && NINE_SORTS[o.sort] !== undefined
       ? NINE_SORTS[o.sort]
       : 1;
-    return fetchPage(sortNum, o.page);
+    return fetchPage(sortNum, o.page, undefined, o.tagIds);
   },
 
   async latest(o: ListOptions) {
     const sortNum = o.sort !== undefined && NINE_SORTS[o.sort] !== undefined
       ? NINE_SORTS[o.sort]
       : 0;
-    return fetchPage(sortNum, o.page);
+    return fetchPage(sortNum, o.page, undefined, o.tagIds);
   },
 
   async search(query: string, o: ListOptions) {
-    return fetchPage(0, o.page, query || undefined);
+    return fetchPage(0, o.page, query || undefined, o.tagIds);
   },
 
   async tags(): Promise<SourceTag[]> {
     if (tagCache) return tagCache;
-    // Return common tag types so users can filter
-    tagCache = [];
+    tagCache = await fetchTags();
     return tagCache;
   },
 
