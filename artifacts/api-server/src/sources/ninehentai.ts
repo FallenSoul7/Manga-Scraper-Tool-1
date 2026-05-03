@@ -119,12 +119,14 @@ interface DetailResponseBody {
 
 // ────────── Helpers ──────────
 
+interface TagItem { id: number; type: number }
+
 function buildSearchBody(opts: {
   text?: string;
   page: number; // 0-indexed
   sort: number;
-  included?: number[];
-  excluded?: number[];
+  included?: TagItem[];
+  excluded?: TagItem[];
 }) {
   return {
     search: {
@@ -142,17 +144,21 @@ function buildSearchBody(opts: {
   };
 }
 
-function parseTagIds(tagIds?: string[]): { included: number[]; excluded: number[] } {
-  const included: number[] = [];
-  const excluded: number[] = [];
-  for (const id of tagIds ?? []) {
-    if (id.startsWith("-")) {
-      const n = Number(id.slice(1));
-      if (!isNaN(n)) excluded.push(n);
-    } else {
-      const n = Number(id);
-      if (!isNaN(n)) included.push(n);
-    }
+/**
+ * Tag IDs are encoded as "TYPE:ID" (e.g. "1:42" = tag 42, "6:15" = category 15).
+ * Excluded tags are prefixed with "-" (e.g. "-1:42").
+ */
+function parseTagIds(tagIds?: string[]): { included: TagItem[]; excluded: TagItem[] } {
+  const included: TagItem[] = [];
+  const excluded: TagItem[] = [];
+  for (let raw of tagIds ?? []) {
+    const isExcluded = raw.startsWith("-");
+    if (isExcluded) raw = raw.slice(1);
+    const [typePart, idPart] = raw.split(":");
+    const type = Number(typePart);
+    const id = Number(idPart);
+    if (isNaN(type) || isNaN(id)) continue;
+    (isExcluded ? excluded : included).push({ id, type });
   }
   return { included, excluded };
 }
@@ -221,7 +227,8 @@ async function fetchTags(): Promise<SourceTag[]> {
         });
         if (!data.status || !Array.isArray(data.results)) break;
         for (const t of data.results) {
-          all.push({ id: String(t.id), name: t.name, group, count: t.books_count });
+          // Encode type into the ID so parseTagIds can reconstruct {id, type}
+          all.push({ id: `${type}:${t.id}`, name: t.name, group, count: t.books_count });
         }
         if (data.results.length < 50) break; // last page
       }
