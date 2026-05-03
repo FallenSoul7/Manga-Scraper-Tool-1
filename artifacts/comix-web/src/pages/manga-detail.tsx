@@ -282,38 +282,38 @@ export default function MangaDetail() {
   // Show spinner while source header is being applied (runs in useEffect, so first
   // render with sourceReady=false has disabled queries → isLoading=false, data=undefined).
   // Without this guard the page immediately shows "Manga not found."
-  if (!sourceReady || mangaLoading) {
-    return <div className="flex justify-center py-32"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
-  }
-
-  if (!manga) {
-    // API returned nothing but we have the entry in the local library —
-    // show a fallback card instead of a dead "not found" screen.
-    if (savedManga) {
-      return (
-        <div className="flex flex-col items-center justify-center py-32 gap-5 px-6">
-          <img
-            src={proxyImage(savedManga.thumbnail, savedManga.sourceId)}
-            alt={savedManga.title}
-            className="h-36 w-26 rounded-xl object-cover shadow-lg"
-          />
-          <div className="text-center">
-            <div className="text-xl font-semibold mb-1">{savedManga.title}</div>
-            <div className="text-muted-foreground text-sm">Could not load details from source.</div>
-          </div>
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={() => window.history.back()}>Go back</Button>
-            <Button onClick={() => window.location.reload()}>Retry</Button>
-          </div>
-        </div>
-      );
-    }
-    return <div className="py-32 text-center text-muted-foreground">Manga not found.</div>;
-  }
-
-  const altTitles = manga.altTitles || [];
+  const showLoading = !sourceReady || mangaLoading;
+  const showFallback = !showLoading && !manga && !!savedManga;
+  const showNotFound = !showLoading && !manga && !savedManga;
+  const altTitles = manga?.altTitles || [];
   const effectiveSource = sourceContext ?? activeSourceId;
   const sourceName = effectiveSource ? formatSourceId(effectiveSource) : null;
+
+  if (showLoading) {
+    return <div className="flex justify-center py-32"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+  if (showFallback) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 gap-5 px-6">
+        <img
+          src={proxyImage(savedManga!.thumbnail, savedManga!.sourceId)}
+          alt={savedManga!.title}
+          className="h-36 w-26 rounded-xl object-cover shadow-lg"
+        />
+        <div className="text-center">
+          <div className="text-xl font-semibold mb-1">{savedManga!.title}</div>
+          <div className="text-muted-foreground text-sm">Could not load details from source.</div>
+        </div>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={() => window.history.back()}>Go back</Button>
+          <Button onClick={() => window.location.reload()}>Retry</Button>
+        </div>
+      </div>
+    );
+  }
+  if (showNotFound || !manga) {
+    return <div className="py-32 text-center text-muted-foreground">Manga not found.</div>;
+  }
 
   return (
     <div style={{ maxWidth: '100vw', overflowX: 'hidden' }}>
@@ -481,7 +481,7 @@ export default function MangaDetail() {
           <div className="px-4 pb-3">
             <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
               {manga.sourceTags && manga.sourceTags.length > 0
-                ? manga.sourceTags.map((tag) => (
+                ? manga.sourceTags.map((tag: any) => (
                     <button
                       key={tag.id}
                       type="button"
@@ -543,7 +543,7 @@ export default function MangaDetail() {
               {scanlatorGroups.length > 1 && (
                 <button
                   type="button"
-                  onClick={() => setScanlatorSheetOpen(true)}
+                  onClick={() => { setScanlatorSheetOpen(true); }}
                   className="flex items-center gap-1 text-xs text-primary hover:underline mt-0.5"
                 >
                   <Users className="h-3 w-3" />
@@ -558,7 +558,7 @@ export default function MangaDetail() {
               </Button>
 
               {scanlatorGroups.length > 0 && (
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setScanlatorSheetOpen(true)}>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setScanlatorSheetOpen(true); }}>
                   <Filter className="h-4 w-4" />
                 </Button>
               )}
@@ -573,7 +573,7 @@ export default function MangaDetail() {
               <div className="space-y-1.5 overflow-y-auto max-h-[calc(70dvh-120px)] pr-1">
                 <button
                   type="button"
-                  onClick={() => { id && storeActions.setScanlatorPref(id, null); setScanlatorSheetOpen(false); }}
+                  onClick={() => { if (id) storeActions.setScanlatorPref(id, null); setScanlatorSheetOpen(false); }}
                   className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${selectedScanlator === null ? "bg-primary/10 border-primary/30" : "bg-card border-border hover:bg-muted"}`}
                 >
                   <div className="min-w-0 flex-1">
@@ -586,7 +586,7 @@ export default function MangaDetail() {
                   const isActive = selectedScanlator === g.name;
                   return (
                     <button key={g.name} type="button"
-                      onClick={() => { id && storeActions.setScanlatorPref(id, g.name); setScanlatorSheetOpen(false); }}
+                      onClick={() => { if (id) storeActions.setScanlatorPref(id, g.name); setScanlatorSheetOpen(false); }}
                       className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${isActive ? "bg-primary/10 border-primary/30" : "bg-card border-border hover:bg-muted"}`}
                     >
                       <div className="font-medium text-sm truncate flex items-center gap-2">
