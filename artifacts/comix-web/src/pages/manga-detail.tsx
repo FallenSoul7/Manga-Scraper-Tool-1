@@ -92,6 +92,7 @@ export default function MangaDetail() {
   const { settings } = useSettings();
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
+  const [categoryDialogIsNewAdd, setCategoryDialogIsNewAdd] = useState(false);
   const [coverZoomOpen, setCoverZoomOpen] = useState(false);
   const [scanlatorSheetOpen, setScanlatorSheetOpen] = useState(false);
 
@@ -323,6 +324,7 @@ export default function MangaDetail() {
                 storeActions.removeFromLibrary(manga.id);
               } else {
                 handleToggleLibrary();
+                setCategoryDialogIsNewAdd(true);
                 setIsCategoryDialogOpen(true);
               }
             }}
@@ -462,7 +464,7 @@ export default function MangaDetail() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {inLibrary && (
-                    <DropdownMenuItem onClick={() => setIsCategoryDialogOpen(true)}>Edit categories</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setCategoryDialogIsNewAdd(false); setIsCategoryDialogOpen(true); }}>Edit categories</DropdownMenuItem>
                   )}
                   {visibleChapters.length > 0 && (
                     <AlertDialog>
@@ -657,7 +659,13 @@ export default function MangaDetail() {
       )}
 
       {/* Category dialog */}
-      <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
+      <Dialog open={isCategoryDialogOpen} onOpenChange={(open) => {
+          if (!open && categoryDialogIsNewAdd && manga) {
+            storeActions.removeFromLibrary(manga.id);
+          }
+          setIsCategoryDialogOpen(open);
+          if (!open) setCategoryDialogIsNewAdd(false);
+        }}>
         <DialogContent className="w-[260px] max-w-[260px] p-0 gap-0 rounded-2xl overflow-hidden [&>button]:hidden">
           <div className="px-5 pt-5 pb-2 flex items-center justify-between">
             <DialogTitle className="text-base font-semibold">Add manga to...</DialogTitle>
@@ -701,7 +709,7 @@ export default function MangaDetail() {
             </button>
             <Button
               size="sm"
-              onClick={() => setIsCategoryDialogOpen(false)}
+              onClick={() => { setCategoryDialogIsNewAdd(false); setIsCategoryDialogOpen(false); }}
               className="rounded-full px-5 text-sm h-8"
             >
               Done
