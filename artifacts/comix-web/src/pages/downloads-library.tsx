@@ -30,7 +30,7 @@ export default function DownloadsLibraryPage() {
             variant="ghost"
             size="icon"
             className="h-9 w-9 shrink-0"
-            onClick={() => setLocation("/system")}
+            onClick={() => setLocation("/downloads")}
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
