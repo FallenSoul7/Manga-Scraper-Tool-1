@@ -12,14 +12,15 @@ import {
   Loader2, ArrowLeft, Star, ChevronDown, ChevronUp,
   BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown,
   ArrowUp, Filter, Play, Sparkles, AlertCircle, X,
-  Users, Globe, ExternalLink,
+  Users, Globe, ExternalLink, Settings,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { useStore, storeActions, type PendingChapter } from "@/lib/storage";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -657,31 +658,55 @@ export default function MangaDetail() {
 
       {/* Category dialog */}
       <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Edit Categories</DialogTitle></DialogHeader>
-          <div className="py-2 space-y-3">
-            <div className="space-y-1.5">
-              {categories.map(cat => {
-                const isChecked = !!savedManga?.categoryIds.includes(cat.id);
-                const isOnlyDefault = cat.id === 'default' && savedManga?.categoryIds.length === 1 && savedManga?.categoryIds.includes('default');
-                return (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    disabled={isOnlyDefault}
-                    onClick={() => handleToggleCategory(cat.id)}
-                    className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${isChecked ? "bg-primary/10 border-primary/30 text-foreground" : "bg-card border-border hover:bg-muted"} ${isOnlyDefault ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
-                  >
-                    <span className="font-medium text-sm">{cat.name}</span>
-                    {isChecked && <Check className="h-4 w-4 text-primary shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
+        <DialogContent className="w-[260px] max-w-[260px] p-0 gap-0 rounded-2xl overflow-hidden [&>button]:hidden">
+          <div className="px-5 pt-5 pb-2 flex items-center justify-between">
+            <DialogTitle className="text-base font-semibold">Add manga to...</DialogTitle>
+            <button
+              type="button"
+              onClick={() => { setIsCategoryDialogOpen(false); setLocation("/categories"); }}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
           </div>
-          <DialogFooter>
-            <Button onClick={() => setIsCategoryDialogOpen(false)} className="w-full sm:w-auto">Done</Button>
-          </DialogFooter>
+          <div className="px-2 py-2 max-h-72 overflow-y-auto">
+            {categories.map(cat => {
+              const isChecked = !!savedManga?.categoryIds.includes(cat.id);
+              const isOnlyDefault = cat.id === 'default' && savedManga?.categoryIds.length === 1 && savedManga?.categoryIds.includes('default');
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  disabled={isOnlyDefault}
+                  onClick={() => handleToggleCategory(cat.id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left ${isOnlyDefault ? "opacity-50 cursor-not-allowed" : "hover:bg-muted cursor-pointer"}`}
+                >
+                  <Checkbox
+                    checked={isChecked}
+                    disabled={isOnlyDefault}
+                    className="pointer-events-none h-[18px] w-[18px] rounded-sm"
+                  />
+                  <span className="text-sm font-medium">{cat.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+            <button
+              type="button"
+              onClick={() => setIsCategoryDialogOpen(false)}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <Button
+              size="sm"
+              onClick={() => setIsCategoryDialogOpen(false)}
+              className="rounded-full px-5 text-sm h-8"
+            >
+              Done
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
