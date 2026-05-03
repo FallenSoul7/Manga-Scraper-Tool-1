@@ -12,7 +12,7 @@ import {
   Loader2, ArrowLeft, Star, ChevronDown, ChevronUp,
   BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown, ArrowDownToLine,
   ArrowUp, Filter, Play, Sparkles, AlertCircle, X,
-  Users, Globe, ExternalLink, Settings, Download,
+  Users, Globe, ExternalLink, Settings,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -210,10 +210,35 @@ export default function MangaDetail() {
   };
 
 
-  if (mangaLoading) {
+  // Show spinner while source header is being applied (runs in useEffect, so first
+  // render with sourceReady=false has disabled queries → isLoading=false, data=undefined).
+  // Without this guard the page immediately shows "Manga not found."
+  if (!sourceReady || mangaLoading) {
     return <div className="flex justify-center py-32"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
+
   if (!manga) {
+    // API returned nothing but we have the entry in the local library —
+    // show a fallback card instead of a dead "not found" screen.
+    if (savedManga) {
+      return (
+        <div className="flex flex-col items-center justify-center py-32 gap-5 px-6">
+          <img
+            src={proxyImage(savedManga.thumbnail, savedManga.sourceId)}
+            alt={savedManga.title}
+            className="h-36 w-26 rounded-xl object-cover shadow-lg"
+          />
+          <div className="text-center">
+            <div className="text-xl font-semibold mb-1">{savedManga.title}</div>
+            <div className="text-muted-foreground text-sm">Could not load details from source.</div>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => window.history.back()}>Go back</Button>
+            <Button onClick={() => window.location.reload()}>Retry</Button>
+          </div>
+        </div>
+      );
+    }
     return <div className="py-32 text-center text-muted-foreground">Manga not found.</div>;
   }
 
@@ -627,25 +652,17 @@ export default function MangaDetail() {
                       </div>
                     </div>
 
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 kebab-menu shrink-0" onClick={e => e.stopPropagation()}>
-                          <MoreVertical className="h-4 w-4 text-white/70" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="kebab-menu">
-                        <DropdownMenuItem onClick={e => { e.stopPropagation(); storeActions.markChapterRead(manga.id, chapter, manga); }}>
-                          Mark as read
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={e => { e.stopPropagation(); storeActions.markChapterUnread(manga.id, chapter.id); }}>
-                          Mark as unread
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={e => { e.stopPropagation(); setDownloadTarget({ id: chapter.id, title: `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}` }); }}>
-                          <ArrowDownToLine className="mr-2 h-4 w-4 text-white/80" />
-                          Download
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <button
+                      type="button"
+                      className="kebab-menu shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-white/30 hover:text-white/80 transition-colors"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setDownloadTarget({ id: chapter.id, title: `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}` });
+                      }}
+                      title="Download chapter"
+                    >
+                      <ArrowDownToLine className="h-4 w-4" />
+                    </button>
                   </div>
                 );
               })}

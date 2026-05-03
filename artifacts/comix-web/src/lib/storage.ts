@@ -180,8 +180,43 @@ function loadState(): StoreState {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return DEFAULT_STATE;
     const parsed = JSON.parse(raw);
+
     // Backfill any missing top-level fields so older snapshots don't fail validation
     const merged = { ...DEFAULT_STATE, ...parsed };
+
+    // --- Rescue individual library entries before full validation ---
+    // If even one manga entry has an invalid shape (e.g. from a schema migration),
+    // a strict safeParse of the whole state would wipe the entire library.
+    // Instead, validate each entry individually and drop only the broken ones.
+    if (merged.library && typeof merged.library === 'object') {
+      const rescuedLibrary: Record<string, unknown> = {};
+      for (const [key, entry] of Object.entries(merged.library)) {
+        // Backfill defaults that older entries might be missing
+        const withDefaults = { pendingUpdates: [], categoryIds: ['default'], ...( entry as object) };
+        const result = SavedMangaSchema.safeParse(withDefaults);
+        if (result.success) {
+          rescuedLibrary[key] = result.data;
+        } else {
+          console.warn(`Dropping invalid library entry "${key}" (won't wipe rest of library)`, result.error.flatten());
+        }
+      }
+      merged.library = rescuedLibrary;
+    }
+
+    // --- Same rescue for progress entries ---
+    if (merged.progress && typeof merged.progress === 'object') {
+      const rescuedProgress: Record<string, unknown> = {};
+      for (const [key, entry] of Object.entries(merged.progress)) {
+        const result = ChapterProgressSchema.safeParse(entry);
+        if (result.success) {
+          rescuedProgress[key] = result.data;
+        } else {
+          console.warn(`Dropping invalid progress entry "${key}"`, result.error.flatten());
+        }
+      }
+      merged.progress = rescuedProgress;
+    }
+
     const validated = StoreStateSchema.safeParse(merged);
     if (validated.success) {
       if (!validated.data.categories.find(c => c.id === 'default')) {
@@ -204,9 +239,20 @@ function loadState(): StoreState {
       }
       return validated.data;
     }
-    console.warn("Store parse error, falling back to defaults", validated.error);
-    return DEFAULT_STATE;
+
+    // Last resort: try to preserve the library at minimum so data isn't lost
+    console.warn("Store schema validation failed even after rescue — preserving library only", validated.error.flatten());
+    try {
+      const fallback: StoreState = { ...DEFAULT_STATE };
+      if (merged.library && typeof merged.library === 'object') {
+        fallback.library = merged.library as StoreState['library'];
+      }
+      return fallback;
+    } catch {
+      return DEFAULT_STATE;
+    }
   } catch (e) {
+    console.error("loadState: unexpected error, using defaults", e);
     return DEFAULT_STATE;
   }
 }
