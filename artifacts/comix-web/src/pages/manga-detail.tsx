@@ -12,7 +12,7 @@ import {
   Loader2, ArrowLeft, Star, ChevronDown, ChevronUp,
   BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown,
   ArrowUp, Filter, Play, Sparkles, AlertCircle, X,
-  Users, Globe,
+  Users, Globe, ExternalLink,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -218,43 +218,45 @@ export default function MangaDetail() {
 
   return (
     <div style={{ maxWidth: '100vw', overflowX: 'hidden' }}>
-      {/* Sticky back header */}
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border/40">
-        <div className="flex items-center gap-2 px-3 h-12 max-w-3xl mx-auto">
-          <button
-            type="button"
-            onClick={() => window.history.back()}
-            className="flex items-center justify-center h-9 w-9 rounded-full hover:bg-muted transition-colors shrink-0"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          {sourceContext && (
-            <span className="font-semibold text-sm truncate">{formatSourceId(sourceContext)}</span>
-          )}
-        </div>
-      </header>
-
       <div className="max-w-3xl mx-auto animate-in fade-in duration-500">
 
-        {/* ── Hero banner ── */}
-        <div className="relative overflow-hidden" style={{ minHeight: 180 }}>
-          {/* Blurred background */}
+        {/* ── Hero banner — back/action buttons float over it ── */}
+        <div className="relative overflow-hidden" style={{ minHeight: 200 }}>
+          {/* Blurred background — extends behind the floating top buttons */}
           <div className="absolute inset-0 overflow-hidden">
             <img
               src={proxyImage(manga.thumbnail, sourceContext ?? undefined)}
               alt=""
-              style={{
-                filter: "blur(24px)",
-                objectFit: "cover",
-                width: "100%",
-                height: "100%",
-              }}
+              style={{ filter: "blur(24px)", objectFit: "cover", width: "100%", height: "100%" }}
             />
             <div className="absolute inset-0 bg-background/80 dark:bg-background/88" />
           </div>
 
-          {/* Cover + info */}
-          <div className="relative z-10 flex items-end gap-3 px-4 pb-4 pt-4">
+          {/* Floating back arrow — top-left, over the blurred hero */}
+          <button
+            type="button"
+            onClick={() => window.history.back()}
+            className="absolute top-3 left-3 z-20 flex items-center justify-center h-9 w-9 rounded-full bg-black/25 backdrop-blur-sm text-white hover:bg-black/40 active:scale-90 transition-all"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+
+          {/* Floating right actions — top-right */}
+          <div className="absolute top-3 right-3 z-20 flex items-center gap-1">
+            {sourceContext && (
+              <a
+                href={`https://comix.to`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center h-9 w-9 rounded-full bg-black/25 backdrop-blur-sm text-white hover:bg-black/40 active:scale-90 transition-all"
+              >
+                <ExternalLink className="h-[18px] w-[18px]" />
+              </a>
+            )}
+          </div>
+
+          {/* Cover + info — top padding reserves space for floating buttons */}
+          <div className="relative z-10 flex items-end gap-3 px-4 pb-4 pt-14">
             {/* Cover */}
             <button
               type="button"
