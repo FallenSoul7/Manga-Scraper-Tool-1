@@ -280,23 +280,45 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
       const { $, html } = await fetchHtml(http, url);
       const pages: PageInfo[] = [];
 
-      const m = html.match(/ts_reader\.run\((\{[\s\S]+?\})\)/);
-      if (m) {
-        try {
-          const data = JSON.parse(m[1]!);
-          const sources = (data.sources as Array<{ images: string[] }>) || [];
-          const imgs = sources[0]?.images || [];
-          imgs.forEach((src, i) => {
-            if (src) pages.push({ index: i, url: absUrl(baseUrl, src) });
-          });
-        } catch { /* fall through */ }
+      // Strategy 1: parse ts_reader.run({...}) with brace-counting so nested
+      // objects don't confuse the match (the lazy-regex approach stops at the
+      // first inner `}` and JSON.parse always fails).
+      const callIdx = html.indexOf("ts_reader.run(");
+      if (callIdx >= 0) {
+        const start = html.indexOf("{", callIdx);
+        if (start >= 0) {
+          let depth = 0;
+          let end = -1;
+          for (let i = start; i < html.length; i++) {
+            if (html[i] === "{") depth++;
+            else if (html[i] === "}") {
+              depth--;
+              if (depth === 0) { end = i; break; }
+            }
+          }
+          if (end > start) {
+            try {
+              const data = JSON.parse(html.slice(start, end + 1));
+              const sources: Array<{ images: string[] }> = data.sources ?? [];
+              const imgs: string[] = sources[0]?.images ?? [];
+              imgs.forEach((src, i) => {
+                if (src) pages.push({ index: i, url: absUrl(baseUrl, src) });
+              });
+            } catch { /* fall through to DOM strategy */ }
+          }
+        }
       }
+
+      // Strategy 2: images directly in #readerarea DOM (e.g. non-JS themes)
       if (pages.length === 0) {
         $("#readerarea img, div.reader-area img").each((i, el) => {
           const src = imgAttr($(el));
-          if (src) pages.push({ index: i, url: absUrl(baseUrl, src) });
+          if (src && !src.includes("/themes/") && !src.includes("404")) {
+            pages.push({ index: i, url: absUrl(baseUrl, src) });
+          }
         });
       }
+
       return { chapterId, pages };
     },
   };
