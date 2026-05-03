@@ -122,6 +122,7 @@ export default function SourceBrowsePage() {
   const sourceId = params?.id || "";
   const searchString = useSearch();
   const urlQ = useMemo(() => new URLSearchParams(searchString).get("q") ?? "", [searchString]);
+  const urlTagId = useMemo(() => new URLSearchParams(searchString).get("tagId") ?? "", [searchString]);
   const installedMap = useStore((s) => s.installedSources);
   const installedSource = installedMap[sourceId];
   const theme = useStore(s => s.theme);
@@ -151,7 +152,7 @@ export default function SourceBrowsePage() {
   const popularSorts: PopularSortOption[] = catalogEntry?.popularSorts ?? [];
 
   // ---- Active tab & search state ----
-  const [tab, setTab] = useState<ActiveTab>("popular");
+  const [tab, setTab] = useState<ActiveTab>(() => urlTagId ? "filter" : "popular");
   const [popularSort, setPopularSort] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(!!urlQ);
   const [searchInput, setSearchInput] = useState(urlQ);
@@ -161,8 +162,11 @@ export default function SourceBrowsePage() {
   // doesn't clear a query that arrived via ?q= URL param.
   const isFirstMountRef = useRef(true);
 
-  // Applied filter state (only changes when "Apply" is pressed in the popover)
-  const [appliedTagState, setAppliedTagState] = useState<Record<string, TagTriState>>({});
+  // Applied filter state (only changes when "Apply" is pressed in the popover).
+  // Pre-populated from ?tagId= URL param when navigating from a manga detail page.
+  const [appliedTagState, setAppliedTagState] = useState<Record<string, TagTriState>>(
+    () => urlTagId ? { [urlTagId]: "include" } : {},
+  );
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 

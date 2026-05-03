@@ -23,6 +23,12 @@ export interface MangaListResponse {
   page: number;
 }
 
+export interface MangaDetailSourceTagsItem {
+  id: string;
+  name: string;
+  group?: string;
+}
+
 export interface MangaDetail {
   id: string;
   title: string;
@@ -38,6 +44,7 @@ export interface MangaDetail {
   genres: string[];
   score?: string;
   scorePosition?: string;
+  sourceTags?: MangaDetailSourceTagsItem[];
 }
 
 export interface Chapter {

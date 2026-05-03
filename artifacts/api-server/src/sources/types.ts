@@ -40,6 +40,12 @@ export interface MangaListResponse {
   hasNextPage: boolean;
 }
 
+export interface MangaDetailSourceTag {
+  id: string;
+  name: string;
+  group?: string;
+}
+
 export interface MangaDetail {
   id: string;
   title: string;
@@ -55,6 +61,8 @@ export interface MangaDetail {
   genres: string[];
   score: string;
   scorePosition: "top" | "bottom" | "none";
+  /** Source-specific tags with IDs, used to enable clickable tag navigation. */
+  sourceTags?: MangaDetailSourceTag[];
 }
 
 export interface DetailOptions {

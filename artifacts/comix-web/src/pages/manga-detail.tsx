@@ -381,15 +381,27 @@ export default function MangaDetail() {
           </div>
         )}
 
-        {/* ── Genres ── */}
-        {manga.genres && manga.genres.length > 0 && (
+        {/* ── Tags / Genres ── */}
+        {((manga.sourceTags && manga.sourceTags.length > 0) || (manga.genres && manga.genres.length > 0)) && (
           <div className="px-4 pb-3">
             <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
-              {[...new Set(manga.genres as string[])].map((genre, i) => (
-                <Badge key={`${genre}-${i}`} variant="secondary" className="whitespace-nowrap shrink-0 font-normal text-xs">
-                  {genre}
-                </Badge>
-              ))}
+              {manga.sourceTags && manga.sourceTags.length > 0
+                ? manga.sourceTags.map((tag) => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => effectiveSource && setLocation(`/sources/${effectiveSource}?tagId=${encodeURIComponent(tag.id)}`)}
+                      className="whitespace-nowrap shrink-0 inline-flex items-center rounded-full border border-transparent bg-secondary text-secondary-foreground px-2.5 py-0.5 text-xs font-normal hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer"
+                    >
+                      {tag.name}
+                    </button>
+                  ))
+                : [...new Set(manga.genres as string[])].map((genre, i) => (
+                    <Badge key={`${genre}-${i}`} variant="secondary" className="whitespace-nowrap shrink-0 font-normal text-xs">
+                      {genre}
+                    </Badge>
+                  ))
+              }
             </div>
           </div>
         )}

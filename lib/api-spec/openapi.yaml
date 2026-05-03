@@ -166,6 +166,15 @@ components:
           items: { type: string }
         score: { type: string }
         scorePosition: { type: string }
+        sourceTags:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              group: { type: string }
+            required: [id, name]
       required: [id, title, status, thumbnail, genres]
     Chapter:
       type: object

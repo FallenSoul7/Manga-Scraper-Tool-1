@@ -3,6 +3,7 @@ import type {
   ListOptions,
   MangaListResponse,
   MangaDetail,
+  MangaDetailSourceTag,
   DetailOptions,
   ChapterListResponse,
   PageListResponse,
@@ -285,19 +286,49 @@ export const NineHentaiSource: MangaSource = {
   },
 
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
+    // getBookByID doesn't return tags — enrich with title search after fetching basic info.
     const data = await apiPost<DetailResponseBody>("/api/getBookByID", { id: Number(id) });
     if (!data.status) throw new Error(`9hentai.so: book ${id} not found`);
     const book = data.results;
 
-    const artists = tagsOf(book, 4);
-    const groups = tagsOf(book, 2);
-    const tags = tagsOf(book, 1);
-    const parodies = tagsOf(book, 3);
-    const characters = tagsOf(book, 5);
-    const categories = tagsOf(book, 6);
+    // Now do the tag-enrichment search using the actual title.
+    let enrichedBook: NineBook | null = null;
+    if (book.title) {
+      try {
+        const titleSearch = await apiPost<SearchResponseBody>("/api/getBook", {
+          search: {
+            text: book.title.slice(0, 80),
+            page: 0,
+            sort: 0,
+            pages: { range: [0, 2000] },
+            tag: { items: { included: [], excluded: [] } },
+          },
+        });
+        enrichedBook = titleSearch.results?.find(b => b.id === book.id) ?? null;
+      } catch {
+        // tag enrichment failed — fall through with empty tags
+      }
+    }
+
+    const effective = enrichedBook ?? book;
+
+    const artists = tagsOf(effective, 4);
+    const groups = tagsOf(effective, 2);
+    const tags = tagsOf(effective, 1);
+    const parodies = tagsOf(effective, 3);
+    const characters = tagsOf(effective, 5);
+    const categories = tagsOf(effective, 6);
 
     const allGenres = [...tags, ...parodies, ...characters, ...categories];
 
+    const GROUP_NAMES: Record<number, string> = {
+      1: "Tag", 3: "Parody", 5: "Character", 6: "Category",
+    };
+    const sourceTags: MangaDetailSourceTag[] = (effective.tags || [])
+      .filter(t => GROUP_NAMES[t.type])
+      .map(t => ({ id: `${t.type}:${t.id}`, name: t.name, group: GROUP_NAMES[t.type] }));
+
+    // Use basic book data (always available) for non-tag fields.
     return {
       id,
       title: book.title || `Gallery ${id}`,
@@ -313,6 +344,7 @@ export const NineHentaiSource: MangaSource = {
       genres: allGenres,
       score: book.total_favorite ? String(book.total_favorite) : "",
       scorePosition: book.total_favorite ? "left" : "none",
+      sourceTags,
     };
   },
 
