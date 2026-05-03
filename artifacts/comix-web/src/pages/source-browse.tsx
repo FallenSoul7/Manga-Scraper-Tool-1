@@ -209,7 +209,6 @@ export default function SourceBrowsePage() {
   // Reset state on source change. Skip search reset on the very first mount
   // so a ?q= URL param coming from global search "See more" is preserved.
   useEffect(() => {
-    if (restoreSnapshotRef.current && !hasRestoredRef.current) return;
     if (isFirstMountRef.current) {
       isFirstMountRef.current = false;
       return;
