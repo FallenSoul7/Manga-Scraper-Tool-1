@@ -23,6 +23,21 @@ import type { SourceTag } from "@/lib/header-search";
 // ---------------------------------------------------------------------------
 interface MangaSummary { id: string; title: string; thumbnail: string; type: string; isNsfw: boolean }
 interface ListResponse { items: MangaSummary[]; page: number; hasNextPage: boolean }
+interface PageSnapshot {
+  tab: ActiveTab;
+  popularSort: string | null;
+  searchOpen: boolean;
+  searchInput: string;
+  searchQuery: string;
+  appliedTagState: Record<string, TagTriState>;
+  popularPage: number;
+  latestPage: number;
+  filterPage: number;
+  popularItems: MangaSummary[];
+  latestItems: MangaSummary[];
+  filterItems: MangaSummary[];
+  scrollY: number;
+}
 type TagTriState = "include" | "exclude";
 type ActiveTab = "popular" | "latest" | "filter";
 
@@ -158,6 +173,7 @@ export default function SourceBrowsePage() {
   const [searchInput, setSearchInput] = useState(urlQ);
   const [searchQuery, setSearchQuery] = useState(urlQ);
   const pageScrollKey = `source-scroll:${sourceId}`;
+  const pageStateKey = `source-page-state:${sourceId}`;
 
   // Track whether this is the initial mount so the source-change reset effect
   // doesn't clear a query that arrived via ?q= URL param.
@@ -171,6 +187,8 @@ export default function SourceBrowsePage() {
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const scrollRestoreRef = useRef<number | null>(null);
+  const restoreSnapshotRef = useRef<PageSnapshot | null>(null);
+  const hasRestoredRef = useRef(false);
 
   // ---- Pagination ----
   const [popularPage, setPopularPage] = useState(1);
@@ -191,21 +209,23 @@ export default function SourceBrowsePage() {
   // Reset state on source change. Skip search reset on the very first mount
   // so a ?q= URL param coming from global search "See more" is preserved.
   useEffect(() => {
+    if (restoreSnapshotRef.current && !hasRestoredRef.current) return;
     if (isFirstMountRef.current) {
       isFirstMountRef.current = false;
-      // Still reset pagination but leave search intact when arriving via ?q=
-      setPopularPage(1); setPopularItems([]);
-      setLatestPage(1); setLatestItems([]);
-      setFilterPage(1); setFilterItems([]);
       return;
     }
     setTab("popular");
     setPopularSort(null);
-    setSearchOpen(false); setSearchInput(""); setSearchQuery("");
+    setSearchOpen(false);
+    setSearchInput("");
+    setSearchQuery("");
     setAppliedTagState({});
-    setPopularPage(1); setPopularItems([]);
-    setLatestPage(1); setLatestItems([]);
-    setFilterPage(1); setFilterItems([]);
+    setPopularPage(1);
+    setPopularItems([]);
+    setLatestPage(1);
+    setLatestItems([]);
+    setFilterPage(1);
+    setFilterItems([]);
   }, [sourceId]);
 
   // Reset pagination when sort changes.
@@ -245,24 +265,31 @@ export default function SourceBrowsePage() {
   }, [searchOpen]);
 
   useEffect(() => {
-    const saved = Number(sessionStorage.getItem(pageScrollKey) || "0");
-    if (saved > 0) requestAnimationFrame(() => window.scrollTo({ top: saved, behavior: "auto" }));
-  }, [pageScrollKey]);
+    const raw = sessionStorage.getItem(pageStateKey);
+    if (!raw) return;
+    try {
+      restoreSnapshotRef.current = JSON.parse(raw) as PageSnapshot;
+    } catch {}
+  }, [pageStateKey]);
 
   useEffect(() => {
-    const onPopState = () => {
-      const scrollY = window.history.state?.sourceScrollY;
-      if (typeof scrollY === "number") {
-        scrollRestoreRef.current = scrollY;
-        requestAnimationFrame(() => {
-          window.scrollTo({ top: scrollY, behavior: "auto" });
-          scrollRestoreRef.current = null;
-        });
-      }
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+    const snap = restoreSnapshotRef.current;
+    if (!snap || hasRestoredRef.current) return;
+    hasRestoredRef.current = true;
+    setTab(snap.tab);
+    setPopularSort(snap.popularSort);
+    setSearchOpen(snap.searchOpen);
+    setSearchInput(snap.searchInput);
+    setSearchQuery(snap.searchQuery);
+    setAppliedTagState(snap.appliedTagState);
+    setPopularPage(snap.popularPage);
+    setLatestPage(snap.latestPage);
+    setFilterPage(snap.filterPage);
+    setPopularItems(snap.popularItems);
+    setLatestItems(snap.latestItems);
+    setFilterItems(snap.filterItems);
+    requestAnimationFrame(() => window.scrollTo({ top: snap.scrollY, behavior: "auto" }));
+  }, [tab, popularPage, latestPage, filterPage]);
 
   // ---- Tags ----
   const { data: availableTags = [] } = useQuery<SourceTag[]>({
@@ -350,6 +377,41 @@ export default function SourceBrowsePage() {
   const activeQuery = isFiltering ? filterQuery : tab === "latest" ? latestQuery : popularQuery;
   const isSourceError = activeQuery.isError;
   const coversAvailable = !isSourceError && (popularItems.length > 0 || popularQuery.isSuccess);
+
+  useEffect(() => {
+    const snapshot: PageSnapshot = {
+      tab,
+      popularSort,
+      searchOpen,
+      searchInput,
+      searchQuery,
+      appliedTagState,
+      popularPage,
+      latestPage,
+      filterPage,
+      popularItems,
+      latestItems,
+      filterItems,
+      scrollY: window.scrollY,
+    };
+    sessionStorage.setItem(pageStateKey, JSON.stringify(snapshot));
+    sessionStorage.setItem(pageScrollKey, String(window.scrollY));
+  }, [
+    pageStateKey,
+    pageScrollKey,
+    tab,
+    popularSort,
+    searchOpen,
+    searchInput,
+    searchQuery,
+    appliedTagState,
+    popularPage,
+    latestPage,
+    filterPage,
+    popularItems,
+    latestItems,
+    filterItems,
+  ]);
 
   // While we don't yet know the source (loading from catalog), show a spinner.
   if (!source && !catalogEntry && !!sourceId) {
