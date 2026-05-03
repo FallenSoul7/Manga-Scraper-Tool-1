@@ -282,7 +282,7 @@ export default function LibraryPage() {
                 else tabElsRef.current.delete(cat.id);
               }}
               onClick={() => setActiveTab(cat.id)}
-              className={`relative shrink-0 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
+              className={`relative shrink-0 px-5 py-3 text-base font-medium whitespace-nowrap transition-colors ${
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
