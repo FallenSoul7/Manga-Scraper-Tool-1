@@ -10,18 +10,17 @@ import { proxyImage } from "@/lib/utils";
 import { applyActiveSource } from "@/lib/source";
 import {
   Loader2, ArrowLeft, Star, ChevronDown, ChevronUp,
-  BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown, ArrowDownToLine,
+  BookmarkPlus, BookOpen, Check, ArrowDown, ArrowDownToLine,
   ArrowUp, Filter, Play, Sparkles, AlertCircle, X,
   Users, Globe, ExternalLink, Settings,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { format } from "date-fns";
 import { useStore, storeActions, type PendingChapter } from "@/lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
@@ -96,6 +95,9 @@ export default function MangaDetail() {
   const [coverZoomOpen, setCoverZoomOpen] = useState(false);
   const [downloadTarget, setDownloadTarget] = useState<{ id: number; title: string } | null>(null);
   const [scanlatorSheetOpen, setScanlatorSheetOpen] = useState(false);
+  const [chapterSelectionMode, setChapterSelectionMode] = useState(false);
+  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<number>>(new Set());
+  const chapterSelectionModeRef = useRef(false);
 
   const library = useStore(s => s.library);
   const categories = useStore(s => s.categories);
@@ -185,6 +187,73 @@ export default function MangaDetail() {
     items.sort((a, b) => b.updatedAt - a.updatedAt);
     return items[0];
   }, [id, progressMap]);
+
+  const enterChapterSelection = useCallback((chapterId: number) => {
+    chapterSelectionModeRef.current = true;
+    setChapterSelectionMode(true);
+    setSelectedChapterIds(new Set([chapterId]));
+  }, []);
+
+  const exitChapterSelection = useCallback(() => {
+    chapterSelectionModeRef.current = false;
+    setChapterSelectionMode(false);
+    setSelectedChapterIds(new Set());
+  }, []);
+
+  const toggleChapterSelection = useCallback((chapterId: number) => {
+    setSelectedChapterIds(prev => {
+      const next = new Set(prev);
+      if (next.has(chapterId)) next.delete(chapterId);
+      else next.add(chapterId);
+      if (next.size === 0) {
+        setTimeout(() => {
+          chapterSelectionModeRef.current = false;
+          setChapterSelectionMode(false);
+        }, 120);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectedChapters = useMemo(() => {
+    const ids = selectedChapterIds;
+    return visibleChapters.filter(ch => ids.has(ch.id));
+  }, [selectedChapterIds, visibleChapters]);
+
+  const bulkMarkRead = useCallback(() => {
+    if (!manga) return;
+    for (const chapter of selectedChapters) {
+      storeActions.markChapterRead(manga.id, chapter, manga);
+    }
+    exitChapterSelection();
+  }, [exitChapterSelection, manga, selectedChapters]);
+
+  const bulkMarkUnread = useCallback(() => {
+    if (!manga) return;
+    for (const chapter of selectedChapters) {
+      storeActions.markChapterUnread(manga.id, chapter.id);
+    }
+    exitChapterSelection();
+  }, [exitChapterSelection, manga, selectedChapters]);
+
+  const bulkDownload = useCallback(() => {
+    if (!selectedChapters.length) return;
+    const chapter = selectedChapters[0];
+    setDownloadTarget({
+      id: chapter.id,
+      title: `${selectedChapters.length > 1 ? `${selectedChapters.length} chapters` : `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}`}`,
+    });
+    exitChapterSelection();
+  }, [exitChapterSelection, selectedChapters]);
+
+  const toggleSelectAllChapters = useCallback(() => {
+    const allIds = visibleChapters.map(ch => ch.id);
+    if (selectedChapterIds.size === allIds.length) {
+      setSelectedChapterIds(new Set());
+    } else {
+      setSelectedChapterIds(new Set(allIds));
+    }
+  }, [selectedChapterIds, visibleChapters]);
 
   const handleToggleLibrary = () => {
     if (!manga) return;
@@ -483,7 +552,7 @@ export default function MangaDetail() {
               )}
             </div>
 
-            <div className="flex items-center gap-0.5 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0">
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => id && storeActions.setChapterSortAsc(id, !sortAsc)}>
                 {sortAsc ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
               </Button>
@@ -493,54 +562,6 @@ export default function MangaDetail() {
                   <Filter className="h-4 w-4" />
                 </Button>
               )}
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {inLibrary && (
-                    <DropdownMenuItem onClick={() => { setCategoryDialogIsNewAdd(false); setIsCategoryDialogOpen(true); }}>Edit categories</DropdownMenuItem>
-                  )}
-                  {visibleChapters.length > 0 && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <DropdownMenuItem onSelect={e => e.preventDefault()}>Mark all read</DropdownMenuItem>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Mark all read?</AlertDialogTitle>
-                          <AlertDialogDescription>This will mark all {visibleChapters.length} visible chapters as read.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => storeActions.markAllChaptersRead(manga.id, visibleChapters, manga)}>Confirm</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
-                  {visibleChapters.length > 0 && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <DropdownMenuItem onSelect={e => e.preventDefault()}>Mark all unread</DropdownMenuItem>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Mark all unread?</AlertDialogTitle>
-                          <AlertDialogDescription>This will remove all reading progress for this series.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => storeActions.markAllChaptersUnread(manga.id)}>Confirm</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
             </div>
           </div>
 
@@ -617,7 +638,12 @@ export default function MangaDetail() {
                     key={chapter.id}
                     className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${isRead ? "opacity-40 hover:opacity-70" : "hover:bg-muted/40"}`}
                     onClick={e => {
-                      if ((e.target as HTMLElement).closest('.kebab-menu')) return;
+                      if (chapterSelectionModeRef.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleChapterSelection(chapter.id);
+                        return;
+                      }
                       if (!p) {
                         storeActions.recordProgress({
                           mangaId: manga.id, chapterId: chapter.id,
@@ -628,9 +654,22 @@ export default function MangaDetail() {
                       }
                       setLocation(`/reader/${chapter.id}?mangaId=${manga.id}`);
                     }}
+                    onContextMenu={e => {
+                      e.preventDefault();
+                      if (!chapterSelectionModeRef.current) enterChapterSelection(chapter.id);
+                      else toggleChapterSelection(chapter.id);
+                    }}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                        {chapterSelectionMode && (
+                          <Checkbox
+                            checked={selectedChapterIds.has(chapter.id)}
+                            onCheckedChange={() => toggleChapterSelection(chapter.id)}
+                            onClick={e => e.stopPropagation()}
+                            className="mr-1"
+                          />
+                        )}
                         {isNew && (
                           <span className="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase px-1.5 py-0 h-4 rounded bg-primary text-primary-foreground shrink-0">
                             <Sparkles className="h-2.5 w-2.5" />NEW
@@ -652,17 +691,31 @@ export default function MangaDetail() {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      className="kebab-menu shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-white/30 hover:text-white/80 transition-colors"
-                      onClick={e => {
-                        e.stopPropagation();
-                        setDownloadTarget({ id: chapter.id, title: `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}` });
-                      }}
-                      title="Download chapter"
-                    >
-                      <ArrowDownToLine className="h-4 w-4" />
-                    </button>
+                    {!chapterSelectionMode ? (
+                      <button
+                        type="button"
+                        className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-white/30 hover:text-white/80 transition-colors"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setDownloadTarget({ id: chapter.id, title: `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}` });
+                        }}
+                        title="Download chapter"
+                      >
+                        <ArrowDownToLine className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`shrink-0 h-8 w-8 flex items-center justify-center rounded-full transition-colors ${selectedChapterIds.has(chapter.id) ? "bg-primary text-primary-foreground" : "text-white/30 hover:text-white/80"}`}
+                        onClick={e => {
+                          e.stopPropagation();
+                          toggleChapterSelection(chapter.id);
+                        }}
+                        title="Select chapter"
+                      >
+                        <Check className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -670,6 +723,31 @@ export default function MangaDetail() {
           )}
         </div>
       </div>
+
+      {chapterSelectionMode && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-t shadow-xl">
+          <div className="container mx-auto max-w-7xl px-3 py-2.5 flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-semibold min-w-[5rem]">{selectedChapterIds.size} selected</span>
+            <Button size="sm" variant="ghost" className="h-8 text-xs px-2" onClick={toggleSelectAllChapters}>
+              {selectedChapterIds.size === visibleChapters.length ? "Deselect all" : "Select all"}
+            </Button>
+            <div className="flex-1" />
+            <Button size="sm" variant="ghost" className="h-8 text-xs px-2.5 gap-1.5" onClick={bulkMarkRead}>
+              Mark read
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 text-xs px-2.5 gap-1.5" onClick={bulkMarkUnread}>
+              Mark unread
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 text-xs px-2.5 gap-1.5" onClick={bulkDownload}>
+              <ArrowDownToLine className="h-3.5 w-3.5" />
+              Download
+            </Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8 ml-1" onClick={exitChapterSelection}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Cover zoom lightbox */}
       {coverZoomOpen && (
