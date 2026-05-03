@@ -229,7 +229,7 @@ export default function LibraryPage() {
   const { data: catalogData } = useQuery({
     queryKey: ["sources-catalog"],
     queryFn: async () => {
-      const res = await customFetch("/api/sources/catalog");
+      const res = await customFetch("/api/sources/catalog") as Response;
       return res.json();
     },
     enabled: sourcePickerOpen,

@@ -132,19 +132,35 @@ export const queueActions = {
   },
 
   moveUp(id: string) {
-    const idx = state.items.findIndex(i => i.id === id);
-    if (idx <= 0) return;
     const items = [...state.items];
-    [items[idx - 1], items[idx]] = [items[idx], items[idx - 1]];
+    const idx = items.findIndex(i => i.id === id);
+    if (idx <= 0) return;
+    let prevIdx = -1;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (items[i].status === 'queued' || items[i].status === 'downloading') {
+        prevIdx = i;
+        break;
+      }
+    }
+    if (prevIdx === -1) return;
+    [items[prevIdx], items[idx]] = [items[idx], items[prevIdx]];
     state = { ...state, items };
     notify();
   },
 
   moveDown(id: string) {
-    const idx = state.items.findIndex(i => i.id === id);
-    if (idx < 0 || idx >= state.items.length - 1) return;
     const items = [...state.items];
-    [items[idx + 1], items[idx]] = [items[idx], items[idx + 1]];
+    const idx = items.findIndex(i => i.id === id);
+    if (idx < 0 || idx >= items.length - 1) return;
+    let nextIdx = -1;
+    for (let i = idx + 1; i < items.length; i++) {
+      if (items[i].status === 'queued' || items[i].status === 'downloading') {
+        nextIdx = i;
+        break;
+      }
+    }
+    if (nextIdx === -1) return;
+    [items[nextIdx], items[idx]] = [items[idx], items[nextIdx]];
     state = { ...state, items };
     notify();
   },
