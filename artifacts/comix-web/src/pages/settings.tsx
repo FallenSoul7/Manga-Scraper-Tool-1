@@ -8,18 +8,36 @@ import { useStore, storeActions, THEME_OPTIONS, type Theme } from "@/lib/storage
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Download, Upload, BarChart3, AlertTriangle, ArrowLeft, Check } from "lucide-react";
+import { Download, Upload, BarChart3, AlertTriangle, ArrowLeft, Check, CirclePlay, Trash2 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
   const theme = useStore(s => s.theme);
   const readerSettings = useStore(s => s.reader);
   const categories = useStore(s => s.categories);
+  const library = useStore(s => s.library);
+  const progress = useStore(s => s.progress);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const downloadedItems = useMemo(() => {
+    return Object.values(library)
+      .map(manga => {
+        const chapters = Object.values(progress).filter(p => p.mangaId === manga.id && p.isRead);
+        const latest = chapters.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        if (!latest && !manga.downloadedAt) return null;
+        return {
+          manga,
+          latest,
+          count: chapters.length,
+          status: latest ? `Chapter ${latest.chapterNumber}` : "Downloaded",
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+      .sort((a, b) => (b.manga.downloadedAt ?? 0) - (a.manga.downloadedAt ?? 0));
+  }, [library, progress]);
 
   const handleExport = () => {
     const data = storeActions.exportBackup();
@@ -83,6 +101,37 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-8 bg-card border border-border rounded-2xl p-6 md:p-8 shadow-sm">
+        <section className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-foreground">Downloads</h2>
+              <p className="text-sm text-muted-foreground">Saved manga and read chapters on this device.</p>
+            </div>
+            <Link href="/downloads">
+              <Button variant="outline" className="gap-2">
+                <Download className="h-4 w-4" /> Open Downloads
+              </Button>
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {downloadedItems.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border p-8 text-center text-muted-foreground">
+                No downloads yet
+              </div>
+            ) : downloadedItems.slice(0, 3).map(({ manga, status, count }) => (
+              <div key={manga.id} className="flex items-center gap-3 rounded-2xl border border-border p-3">
+                <img src={manga.thumbnail} alt={manga.title} className="h-16 w-12 rounded-lg object-cover" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{manga.title}</div>
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <CirclePlay className="h-3 w-3" /> {status} • {count} chapters
+                  </div>
+                </div>
+                <Trash2 className="h-4 w-4 text-muted-foreground" />
+              </div>
+            ))}
+          </div>
+        </section>
         
         {/* Appearance Section */}
         <section className="space-y-6">

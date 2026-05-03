@@ -18,6 +18,7 @@ import SourcesPage from "@/pages/sources";
 import SourceBrowsePage from "@/pages/source-browse";
 import SystemPage from "@/pages/system";
 import CategoriesPage from "@/pages/categories";
+import DownloadsPage from "@/pages/downloads";
 
 import { useActiveSourceId, applyActiveSource, registerQueryClient } from "@/lib/source";
 
@@ -65,6 +66,7 @@ function AppContent() {
               <Route path="/sources/:sourceId/manga/:mangaId" component={MangaDetail} />
               <Route path="/settings" component={SettingsPage} />
               <Route path="/updates" component={UpdatesPage} />
+              <Route path="/downloads" component={DownloadsPage} />
               <Route path="/history" component={HistoryPage} />
               <Route path="/stats" component={StatsPage} />
               <Route path="/sources" component={SourcesPage} />

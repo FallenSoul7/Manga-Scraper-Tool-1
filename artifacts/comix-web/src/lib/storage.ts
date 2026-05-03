@@ -27,6 +27,7 @@ const SavedMangaSchema = z.object({
   author: z.string().optional(),
   status: z.string().optional(),
   sourceId: z.string().optional(),
+  downloadedAt: z.number().optional(),
   addedAt: z.number(),
   categoryIds: z.array(z.string()),
   lastChapterCountSeen: z.number(),
@@ -45,6 +46,7 @@ const ChapterProgressSchema = z.object({
   lastPageRead: z.number(),
   isRead: z.boolean(),
   updatedAt: z.number(),
+  downloadedAt: z.number().optional(),
 });
 export type ChapterProgress = z.infer<typeof ChapterProgressSchema>;
 

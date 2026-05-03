@@ -12,7 +12,7 @@ import {
   Loader2, ArrowLeft, Star, ChevronDown, ChevronUp,
   BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown,
   ArrowUp, Filter, Play, Sparkles, AlertCircle, X,
-  Users, Globe, ExternalLink, Settings,
+  Users, Globe, ExternalLink, Settings, Download,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -293,7 +293,7 @@ export default function MangaDetail() {
                 )}
               </div>
 
-              {manga.rating && <StarRating value={manga.rating} />}
+              {manga.rating && <StarRating value={String(manga.rating)} />}
 
               {/* Source URL link — taps to open manga in source context within the app */}
               {effectiveSource && id && (
@@ -638,6 +638,10 @@ export default function MangaDetail() {
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={e => { e.stopPropagation(); storeActions.markChapterUnread(manga.id, chapter.id); }}>
                           Mark as unread
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={e => { e.stopPropagation(); setLocation("/downloads"); }}>
+                          <Download className="mr-2 h-4 w-4" />
+                          Download
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
