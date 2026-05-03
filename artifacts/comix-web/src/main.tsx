@@ -1,10 +1,13 @@
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "./index.css";
 import { setExtraHeader } from "@workspace/api-client-react";
+import { registerQueryClient } from "@/lib/source";
 
-// Register the active source header before any data fetching starts so the
-// very first request already carries the correct X-Source value.
+const queryClient = new QueryClient();
+registerQueryClient(queryClient);
+
 try {
   const raw = localStorage.getItem("comix-lounge:v1");
   if (raw) {
@@ -14,7 +17,10 @@ try {
     }
   }
 } catch {
-  /* noop */
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <QueryClientProvider client={queryClient}>
+    <App />
+  </QueryClientProvider>
+);
