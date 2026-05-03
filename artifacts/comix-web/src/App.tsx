@@ -46,7 +46,10 @@ function AppContent() {
         {/* Reader: no header, no nav */}
         <Route path="/reader/:chapterId" component={Reader} />
 
-        {/* Source-context manga detail: no global nav, keeps source header */}
+        {/* Manga detail: no global header — floating back arrow handles nav */}
+        <Route path="/manga/:id" component={MangaDetail} />
+
+        {/* Source-context manga detail: no global nav */}
         <Route path="/sources/:sourceId/manga/:mangaId" component={MangaDetail} />
 
         {/* Source browse: own immersive header, no global nav */}
@@ -59,7 +62,6 @@ function AppContent() {
             <Switch>
               <Route path="/" component={LibraryPage} />
               <Route path="/search" component={SearchPage} />
-              <Route path="/manga/:id" component={MangaDetail} />
               <Route path="/sources/:sourceId/manga/:mangaId" component={MangaDetail} />
               <Route path="/settings" component={SettingsPage} />
               <Route path="/updates" component={UpdatesPage} />

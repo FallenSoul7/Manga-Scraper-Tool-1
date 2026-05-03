@@ -25,7 +25,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
-const ALT_TITLES_COLLAPSED_LIMIT = 6;
 
 function dedupeChapters(items: any[]): any[] {
   const map = new Map<number, any>();
@@ -78,7 +77,6 @@ export default function MangaDetail() {
   const [, setLocation] = useLocation();
   const { settings } = useSettings();
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
-  const [showAllAltTitles, setShowAllAltTitles] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [coverZoomOpen, setCoverZoomOpen] = useState(false);
@@ -212,7 +210,6 @@ export default function MangaDetail() {
   }
 
   const altTitles = manga.altTitles || [];
-  const altTitlesToShow = showAllAltTitles ? altTitles : altTitles.slice(0, ALT_TITLES_COLLAPSED_LIMIT);
   const effectiveSource = sourceContext ?? activeSourceId;
   const sourceName = effectiveSource ? formatSourceId(effectiveSource) : null;
 
@@ -253,6 +250,57 @@ export default function MangaDetail() {
                 <ExternalLink className="h-[18px] w-[18px]" />
               </a>
             )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex items-center justify-center h-9 w-9 rounded-full bg-black/25 backdrop-blur-sm text-white hover:bg-black/40 active:scale-90 transition-all"
+                >
+                  <MoreVertical className="h-5 w-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {inLibrary && (
+                  <DropdownMenuItem onClick={() => setIsCategoryDialogOpen(true)}>
+                    Edit categories
+                  </DropdownMenuItem>
+                )}
+                {visibleChapters.length > 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <DropdownMenuItem onSelect={e => e.preventDefault()}>Mark all read</DropdownMenuItem>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Mark all read?</AlertDialogTitle>
+                        <AlertDialogDescription>This will mark all {visibleChapters.length} visible chapters as read.</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => storeActions.markAllChaptersRead(manga.id, visibleChapters, manga)}>Confirm</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+                {visibleChapters.length > 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <DropdownMenuItem onSelect={e => e.preventDefault()}>Mark all unread</DropdownMenuItem>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Mark all unread?</AlertDialogTitle>
+                        <AlertDialogDescription>This will remove all reading progress for this series.</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => storeActions.markAllChaptersUnread(manga.id)}>Confirm</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Cover + info — top padding reserves space for floating buttons */}
@@ -346,13 +394,16 @@ export default function MangaDetail() {
           )}
         </div>
 
-        {/* ── Synopsis ── */}
-        {manga.synopsis && (
+        {/* ── Synopsis + alt titles (alt titles hidden under Read more) ── */}
+        {(manga.synopsis || altTitles.length > 0) && (
           <div className="px-4 pt-4 pb-2">
             <div className={showFullSynopsis ? "" : "relative"}>
-              <p className={`text-sm text-muted-foreground leading-relaxed ${showFullSynopsis ? "" : "line-clamp-3"}`}>
-                {manga.synopsis}
-              </p>
+              <div className={`text-sm text-muted-foreground leading-relaxed ${showFullSynopsis ? "" : "line-clamp-3"}`}>
+                {manga.synopsis && <p>{manga.synopsis}</p>}
+                {altTitles.length > 0 && (
+                  <p className="mt-2 text-xs opacity-70">{altTitles.join(", ")}</p>
+                )}
+              </div>
               {!showFullSynopsis && (
                 <div className="absolute bottom-0 left-0 w-full h-8 bg-gradient-to-t from-background to-transparent pointer-events-none" />
               )}
@@ -381,22 +432,6 @@ export default function MangaDetail() {
           </div>
         )}
 
-        {/* ── Alt titles ── */}
-        {settings.showAltNames && altTitles.length > 0 && (
-          <div className="px-4 pb-4">
-            <p className="text-xs text-muted-foreground leading-relaxed break-words">
-              {altTitlesToShow.join(", ")}
-              {!showAllAltTitles && altTitles.length > ALT_TITLES_COLLAPSED_LIMIT && "…"}
-            </p>
-            {altTitles.length > ALT_TITLES_COLLAPSED_LIMIT && (
-              <button onClick={() => setShowAllAltTitles(!showAllAltTitles)} className="mt-1 text-xs font-medium text-primary hover:underline flex items-center gap-0.5">
-                {showAllAltTitles
-                  ? <><ChevronUp className="h-3.5 w-3.5" /> Show less</>
-                  : <><ChevronDown className="h-3.5 w-3.5" /> Show all ({altTitles.length})</>}
-              </button>
-            )}
-          </div>
-        )}
 
         {/* ── START / CONTINUE READING button ── */}
         <div className="px-4 pb-5">
@@ -459,47 +494,6 @@ export default function MangaDetail() {
                 </Button>
               )}
 
-              {visibleChapters.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <DropdownMenuItem onSelect={e => e.preventDefault()}>Mark all read</DropdownMenuItem>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Mark all read?</AlertDialogTitle>
-                          <AlertDialogDescription>This will mark all {visibleChapters.length} visible chapters as read.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => storeActions.markAllChaptersRead(manga.id, visibleChapters, manga)}>Confirm</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <DropdownMenuItem onSelect={e => e.preventDefault()}>Mark all unread</DropdownMenuItem>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Mark all unread?</AlertDialogTitle>
-                          <AlertDialogDescription>This will remove all reading progress for this series.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => storeActions.markAllChaptersUnread(manga.id)}>Confirm</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
             </div>
           </div>
 
