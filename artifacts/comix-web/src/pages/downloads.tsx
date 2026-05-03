@@ -37,13 +37,13 @@ export default function DownloadsPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border/50">
-        <div className="flex items-center gap-3 px-3 h-14">
+        <div className="flex items-center gap-3 px-4 pt-4 pb-3">
           <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => setLocation("/system")}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <button
             type="button"
-            className="flex-1 text-left font-serif font-bold text-xl tracking-tight hover:text-primary transition-colors"
+            className="flex-1 text-left font-serif font-bold text-2xl tracking-tight hover:text-primary transition-colors"
             onClick={() => setLocation("/downloads/library")}
           >
             Downloads
@@ -51,7 +51,7 @@ export default function DownloadsPage() {
         </div>
 
         {total > 0 && (
-          <div className="flex items-center gap-2 px-4 py-1.5 text-sm text-muted-foreground border-t border-border/30">
+          <div className="flex items-center gap-2 px-4 pb-3 text-sm text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-primary" />
             <span>Downloading {downloading} of {total}</span>
           </div>

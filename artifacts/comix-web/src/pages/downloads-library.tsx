@@ -25,7 +25,7 @@ export default function DownloadsLibraryPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border/50">
-        <div className="flex items-center gap-3 px-3 h-14">
+        <div className="flex items-center gap-3 px-4 pt-4 pb-3">
           <Button
             variant="ghost"
             size="icon"
@@ -34,7 +34,7 @@ export default function DownloadsLibraryPage() {
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="font-serif font-bold text-xl tracking-tight">Downloaded</h1>
+          <h1 className="font-serif font-bold text-2xl tracking-tight">Downloaded</h1>
         </div>
       </div>
 
