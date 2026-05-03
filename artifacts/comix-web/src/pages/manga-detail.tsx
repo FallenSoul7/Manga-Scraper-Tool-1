@@ -299,7 +299,7 @@ export default function MangaDetail() {
               {effectiveSource && id && (
                 <button
                   type="button"
-                  onClick={() => setLocation(`/sources/${effectiveSource}/manga/${id}`)}
+                  onClick={() => setLocation(`/sources/${effectiveSource}/manga/${String(id)}`)}
                   className="flex items-center gap-1 text-[11px] text-primary/70 hover:text-primary truncate max-w-full text-left mt-0.5"
                 >
                   <ExternalLink className="h-3 w-3 shrink-0" />

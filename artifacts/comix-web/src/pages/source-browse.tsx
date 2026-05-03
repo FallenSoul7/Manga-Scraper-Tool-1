@@ -188,7 +188,6 @@ export default function SourceBrowsePage() {
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const scrollRestoreRef = useRef<number | null>(null);
-  const restoreTargetRef = useRef<string | null>(null);
 
   // ---- Pagination ----
   const [popularPage, setPopularPage] = useState(1);
@@ -262,15 +261,6 @@ export default function SourceBrowsePage() {
   useEffect(() => {
     if (searchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
   }, [searchOpen]);
-
-  useEffect(() => {
-    const raw = sessionStorage.getItem(pageStateKey);
-    if (!raw) return;
-    try {
-      const snap = JSON.parse(raw) as PageSnapshot;
-      if (snap.focusedMangaId) restoreTargetRef.current = snap.focusedMangaId;
-    } catch {}
-  }, [pageStateKey]);
 
   // ---- Tags ----
   const { data: availableTags = [] } = useQuery<SourceTag[]>({
@@ -374,7 +364,6 @@ export default function SourceBrowsePage() {
       latestItems,
       filterItems,
       scrollY: window.scrollY,
-      focusedMangaId: restoreTargetRef.current ?? undefined,
     };
     sessionStorage.setItem(pageStateKey, JSON.stringify(snapshot));
     sessionStorage.setItem(pageScrollKey, String(window.scrollY));
@@ -393,16 +382,6 @@ export default function SourceBrowsePage() {
     latestItems,
     filterItems,
   ]);
-
-  useEffect(() => {
-    if (!restoreTargetRef.current) return;
-    const el = document.querySelector(`[data-manga-id="${restoreTargetRef.current}"]`);
-    if (!(el instanceof HTMLElement)) return;
-    requestAnimationFrame(() => {
-      el.scrollIntoView({ block: "center", behavior: "auto" });
-      restoreTargetRef.current = null;
-    });
-  }, [popularItems, latestItems, filterItems]);
 
   // While we don't yet know the source (loading from catalog), show a spinner.
   if (!source && !catalogEntry && !!sourceId) {
@@ -701,32 +680,12 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
     <>
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-5">
         {items.map(m => (
-          <div key={m.id} data-manga-id={m.id}>
-            <MangaCard
-              manga={m as any}
-              sourceId={sourceId}
-              href={sourceId ? `/sources/${sourceId}/manga/${m.id}` : undefined}
-              onNavigate={() => {
-                restoreTargetRef.current = m.id;
-                sessionStorage.setItem(pageStateKey, JSON.stringify({
-                  tab,
-                  popularSort,
-                  searchOpen,
-                  searchInput,
-                  searchQuery,
-                  appliedTagState,
-                  popularPage,
-                  latestPage,
-                  filterPage,
-                  popularItems,
-                  latestItems,
-                  filterItems,
-                  scrollY: window.scrollY,
-                  focusedMangaId: m.id,
-                } satisfies PageSnapshot));
-              }}
-            />
-          </div>
+          <MangaCard
+            key={m.id}
+            manga={m as any}
+            sourceId={sourceId}
+            href={sourceId ? `/sources/${sourceId}/manga/${m.id}` : undefined}
+          />
         ))}
       </div>
       {hasNext && (
