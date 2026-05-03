@@ -20,7 +20,6 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { useStore, storeActions, type PendingChapter } from "@/lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -92,7 +91,6 @@ export default function MangaDetail() {
   const { settings } = useSettings();
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
-  const [newCatName, setNewCatName] = useState("");
   const [coverZoomOpen, setCoverZoomOpen] = useState(false);
   const [scanlatorSheetOpen, setScanlatorSheetOpen] = useState(false);
 
@@ -208,13 +206,6 @@ export default function MangaDetail() {
     storeActions.setMangaCategories(savedManga.id, Array.from(current));
   };
 
-  const handleAddCategory = () => {
-    if (newCatName.trim()) {
-      const cat = storeActions.addCategory(newCatName.trim());
-      handleToggleCategory(cat.id);
-      setNewCatName("");
-    }
-  };
 
   if (mangaLoading) {
     return <div className="flex justify-center py-32"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -686,15 +677,6 @@ export default function MangaDetail() {
                   </button>
                 );
               })}
-            </div>
-            <div className="flex items-center gap-2 pt-3 border-t">
-              <Input
-                placeholder="New category name..."
-                value={newCatName}
-                onChange={e => setNewCatName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCategory(); } }}
-              />
-              <Button variant="secondary" onClick={handleAddCategory} disabled={!newCatName.trim()}>Add</Button>
             </div>
           </div>
           <DialogFooter>
