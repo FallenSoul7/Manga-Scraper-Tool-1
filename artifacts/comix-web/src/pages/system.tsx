@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Settings, Download, BarChart3, Database, Info } from "lucide-react";
+import { Settings, Download, BarChart3, Database, Info, FolderOpen } from "lucide-react";
 
 interface SystemBlock {
   href?: string;
@@ -15,6 +15,12 @@ const blocks: SystemBlock[] = [
     label: "Settings",
     description: "Theme, library defaults, reader, backup & restore.",
     icon: Settings,
+  },
+  {
+    href: "/categories",
+    label: "Categories",
+    description: "Create, rename, reorder and delete library categories.",
+    icon: FolderOpen,
   },
   {
     label: "Downloads",

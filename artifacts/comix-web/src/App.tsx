@@ -17,6 +17,7 @@ import StatsPage from "@/pages/stats";
 import SourcesPage from "@/pages/sources";
 import SourceBrowsePage from "@/pages/source-browse";
 import SystemPage from "@/pages/system";
+import CategoriesPage from "@/pages/categories";
 
 import { useActiveSourceId, applyActiveSource, registerQueryClient } from "@/lib/source";
 
@@ -66,6 +67,7 @@ function AppContent() {
               <Route path="/stats" component={StatsPage} />
               <Route path="/sources" component={SourcesPage} />
               <Route path="/system" component={SystemPage} />
+              <Route path="/categories" component={CategoriesPage} />
               <Route component={NotFound} />
             </Switch>
           </div>

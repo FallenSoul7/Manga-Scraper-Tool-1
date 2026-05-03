@@ -281,8 +281,16 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
     async pages(chapterId: string): Promise<PageListResponse> {
       const path = decodeURIComponent(chapterId);
       const url = `${baseUrl}/${path}/?style=list`;
-      const { $ } = await fetchHtml(http, url);
+      const { $, html } = await fetchHtml(http, url);
       const pages: PageInfo[] = [];
+
+      const isPlaceholder = (src: string) =>
+        !src ||
+        src.includes("/themes/") ||
+        src.includes("404") ||
+        src.includes("placeholder") ||
+        src.includes("loading");
+
       const sel = [
         ".reading-content img",
         ".page-break img",
@@ -298,10 +306,27 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
         ".comic-page img",
         ".wp-block-image img",
       ].join(", ");
+
       $(sel).each((i, el) => {
         const src = imgAttr($(el));
-        if (src) pages.push({ index: i, url: absUrl(baseUrl, src) });
+        if (src && !isPlaceholder(src)) pages.push({ index: i, url: absUrl(baseUrl, src) });
       });
+
+      // Fallback: extract image URLs from inline scripts / JSON embedded in the page.
+      // Catches sites that lazy-load images via JS (e.g. Elftoon).
+      if (pages.length === 0) {
+        const seen = new Set<string>();
+        const imgRe = /https?:\/\/[^\s"'\\]+\.(?:jpe?g|png|webp)(?:[?#][^\s"'\\]*)?/gi;
+        let m: RegExpExecArray | null;
+        while ((m = imgRe.exec(html)) !== null) {
+          const u = m[0];
+          if (!isPlaceholder(u) && !seen.has(u)) {
+            seen.add(u);
+            pages.push({ index: pages.length, url: u });
+          }
+        }
+      }
+
       return { chapterId, pages };
     },
   };

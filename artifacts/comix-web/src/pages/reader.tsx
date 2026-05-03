@@ -435,9 +435,15 @@ export default function Reader() {
 
   if (!pagesData || pagesData.pages.length === 0) {
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white/50">
-        <p className="mb-4">No pages found or chapter is empty.</p>
-        <Button variant="outline" onClick={goBack}>Go Back</Button>
+      <div className="min-h-screen bg-[#1a1a1a] flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="text-4xl">📭</div>
+        <h2 className="text-white text-lg font-bold">Chapter unavailable</h2>
+        <p className="text-white/60 text-sm max-w-xs">
+          This chapter's images couldn't be loaded. The site may require JavaScript to display pages, which our reader doesn't support yet.
+        </p>
+        <Button variant="outline" className="mt-2 text-white border-white/30 hover:bg-white/10" onClick={goBack}>
+          Go Back
+        </Button>
       </div>
     );
   }
