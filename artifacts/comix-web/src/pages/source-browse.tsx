@@ -37,7 +37,6 @@ interface PageSnapshot {
   latestItems: MangaSummary[];
   filterItems: MangaSummary[];
   scrollY: number;
-  focusedMangaId?: string;
 }
 type TagTriState = "include" | "exclude";
 type ActiveTab = "popular" | "latest" | "filter";
@@ -174,7 +173,6 @@ export default function SourceBrowsePage() {
   const [searchInput, setSearchInput] = useState(urlQ);
   const [searchQuery, setSearchQuery] = useState(urlQ);
   const pageScrollKey = `source-scroll:${sourceId}`;
-  const pageStateKey = `source-page-state:${sourceId}`;
 
   // Track whether this is the initial mount so the source-change reset effect
   // doesn't clear a query that arrived via ?q= URL param.
@@ -365,22 +363,9 @@ export default function SourceBrowsePage() {
       filterItems,
       scrollY: window.scrollY,
     };
-    sessionStorage.setItem(pageStateKey, JSON.stringify(snapshot));
     sessionStorage.setItem(pageScrollKey, String(window.scrollY));
   }, [
     pageScrollKey,
-    tab,
-    popularSort,
-    searchOpen,
-    searchInput,
-    searchQuery,
-    appliedTagState,
-    popularPage,
-    latestPage,
-    filterPage,
-    popularItems,
-    latestItems,
-    filterItems,
   ]);
 
   // While we don't yet know the source (loading from catalog), show a spinner.
