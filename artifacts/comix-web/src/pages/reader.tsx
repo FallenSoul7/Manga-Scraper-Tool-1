@@ -208,10 +208,11 @@ export default function Reader() {
   // useLayoutEffect run has a correct baseline.
   const prevPageDimsRef = useRef<Record<number, { w: number; h: number }>>({ ...pageDims });
 
-  // Scroll compensation: when a page's aspect-ratio box changes height and that page is
-  // above the midpoint of the viewport, compensate window.scrollY instantly.
-  // Runs synchronously after DOM mutations but before the browser paints, so there's
-  // no visible flash of the shifted layout.
+  // Scroll compensation: when a page's aspect-ratio box changes height and any part of
+  // that page is above the viewport top (rect.top < 0), the height change shifts all
+  // content below it. We compensate window.scrollY by the exact pixel delta so the
+  // visible content stays locked in place.
+  // Runs synchronously after DOM mutations but before the browser paints — no flash.
   useLayoutEffect(() => {
     const isVertical = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
     if (!isVertical) { prevPageDimsRef.current = { ...pageDims }; return; }
@@ -224,8 +225,10 @@ export default function Reader() {
       const el = document.getElementById(`page-${idx}`);
       if (!el) continue;
       const rect = el.getBoundingClientRect();
-      // Only compensate for pages completely above the viewport top.
-      if (rect.bottom <= 0) {
+      // Compensate when ANY part of the page is above the viewport top — including
+      // pages that are only partially scrolled off. Previously rect.bottom <= 0 missed
+      // partially-visible pages at the top, causing the remaining content to jump.
+      if (rect.top < 0) {
         const w = el.clientWidth || window.innerWidth;
         delta += (w * dim.h / Math.max(1, dim.w)) - (w * prev.h / Math.max(1, prev.w));
       }
