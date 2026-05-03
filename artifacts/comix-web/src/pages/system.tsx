@@ -23,10 +23,10 @@ const blocks: SystemBlock[] = [
     icon: FolderOpen,
   },
   {
+    href: "/downloads",
     label: "Downloads",
-    description: "Save chapters for offline reading. Coming soon.",
+    description: "Save chapters for offline reading.",
     icon: Download,
-    comingSoon: true,
   },
   {
     href: "/stats",
