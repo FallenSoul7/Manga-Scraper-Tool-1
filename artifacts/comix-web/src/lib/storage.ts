@@ -671,4 +671,16 @@ export const storeActions = {
     if (memoryState.activeSourceId === id) return;
     saveState({ ...memoryState, activeSourceId: id });
   },
+
+  markMangaDownloaded(mangaId: string) {
+    const manga = memoryState.library[mangaId];
+    if (!manga) return;
+    saveState({
+      ...memoryState,
+      library: {
+        ...memoryState.library,
+        [mangaId]: { ...manga, downloadedAt: Date.now() },
+      },
+    });
+  },
 };

@@ -20,6 +20,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { format } from "date-fns";
 import { useStore, storeActions, type PendingChapter } from "@/lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { queueActions } from "@/lib/download-queue";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -93,7 +94,14 @@ export default function MangaDetail() {
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [categoryDialogIsNewAdd, setCategoryDialogIsNewAdd] = useState(false);
   const [coverZoomOpen, setCoverZoomOpen] = useState(false);
-  const [downloadTarget, setDownloadTarget] = useState<{ id: number; title: string } | null>(null);
+  const [downloadTarget, setDownloadTarget] = useState<{
+    chapters: Array<{ id: number; number: number; title: string }>;
+    mangaId: string;
+    mangaTitle: string;
+    thumbnail: string;
+    sourceId?: string;
+    label: string;
+  } | null>(null);
   const [scanlatorSheetOpen, setScanlatorSheetOpen] = useState(false);
   const [chapterSelectionMode, setChapterSelectionMode] = useState(false);
   const [selectedChapterIds, setSelectedChapterIds] = useState<Set<number>>(new Set());
@@ -237,14 +245,19 @@ export default function MangaDetail() {
   }, [exitChapterSelection, manga, selectedChapters]);
 
   const bulkDownload = useCallback(() => {
-    if (!selectedChapters.length) return;
-    const chapter = selectedChapters[0];
+    if (!selectedChapters.length || !manga) return;
     setDownloadTarget({
-      id: chapter.id,
-      title: `${selectedChapters.length > 1 ? `${selectedChapters.length} chapters` : `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}`}`,
+      chapters: selectedChapters.map(ch => ({ id: ch.id, number: ch.number, title: ch.title ?? "" })),
+      mangaId: manga.id,
+      mangaTitle: manga.title,
+      thumbnail: manga.thumbnail,
+      sourceId: sourceContext ?? activeSourceId ?? undefined,
+      label: selectedChapters.length > 1
+        ? `${selectedChapters.length} chapters`
+        : `Chapter ${selectedChapters[0].number}${selectedChapters[0].title ? `: ${selectedChapters[0].title}` : ""}`,
     });
     exitChapterSelection();
-  }, [exitChapterSelection, selectedChapters]);
+  }, [exitChapterSelection, selectedChapters, manga, sourceContext, activeSourceId]);
 
   const toggleSelectAllChapters = useCallback(() => {
     const allIds = visibleChapters.map(ch => ch.id);
@@ -697,7 +710,14 @@ export default function MangaDetail() {
                         className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-white/30 hover:text-white/80 transition-colors"
                         onClick={e => {
                           e.stopPropagation();
-                          setDownloadTarget({ id: chapter.id, title: `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}` });
+                          setDownloadTarget({
+                            chapters: [{ id: chapter.id, number: chapter.number, title: chapter.title ?? "" }],
+                            mangaId: manga.id,
+                            mangaTitle: manga.title,
+                            thumbnail: manga.thumbnail,
+                            sourceId: sourceContext ?? activeSourceId ?? undefined,
+                            label: `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}`,
+                          });
                         }}
                         title="Download chapter"
                       >
@@ -775,17 +795,38 @@ export default function MangaDetail() {
           <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-background px-5 pt-4 pb-5 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted" />
             <div className="flex items-start gap-3">
-              <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <ArrowDownToLine className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-lg font-semibold">Download chapter?</div>
-                <div className="text-sm text-muted-foreground truncate">{downloadTarget.title}</div>
+              <img
+                src={proxyImage(downloadTarget.thumbnail, downloadTarget.sourceId)}
+                alt={downloadTarget.mangaTitle}
+                className="h-14 w-10 rounded-lg object-cover shrink-0"
+              />
+              <div className="min-w-0 pt-0.5">
+                <div className="text-base font-semibold line-clamp-1">{downloadTarget.mangaTitle}</div>
+                <div className="text-sm text-muted-foreground truncate">{downloadTarget.label}</div>
               </div>
             </div>
             <div className="mt-5 flex gap-2">
               <Button variant="secondary" className="flex-1" onClick={() => setDownloadTarget(null)}>Cancel</Button>
-              <Button className="flex-1" onClick={() => setDownloadTarget(null)}>Download</Button>
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  queueActions.enqueueMany(
+                    downloadTarget.chapters.map(ch => ({
+                      mangaId: downloadTarget.mangaId,
+                      mangaTitle: downloadTarget.mangaTitle,
+                      mangaThumbnail: downloadTarget.thumbnail,
+                      sourceId: downloadTarget.sourceId,
+                      chapterId: ch.id,
+                      chapterNumber: ch.number,
+                      chapterTitle: ch.title,
+                    }))
+                  );
+                  setDownloadTarget(null);
+                  setLocation("/downloads");
+                }}
+              >
+                <ArrowDownToLine className="h-4 w-4 mr-2" /> Download
+              </Button>
             </div>
           </div>
         </div>
