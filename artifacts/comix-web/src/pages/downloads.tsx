@@ -99,9 +99,6 @@ export default function DownloadsPage() {
           <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
             <div className="text-4xl">( •_•)</div>
             <div className="text-sm">No downloads queued</div>
-            <Button variant="outline" size="sm" onClick={() => setLocation("/sources") }>
-              Browse sources
-            </Button>
           </div>
         ) : (
           <>
