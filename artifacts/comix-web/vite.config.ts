@@ -57,6 +57,24 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/")) {
+            return "vendor-react";
+          }
+          if (id.includes("node_modules/@tanstack/")) {
+            return "vendor-query";
+          }
+          if (id.includes("node_modules/@radix-ui/") || id.includes("node_modules/lucide-react")) {
+            return "vendor-ui";
+          }
+          if (id.includes("node_modules/date-fns") || id.includes("node_modules/zod") || id.includes("node_modules/axios")) {
+            return "vendor-misc";
+          }
+        },
+      },
+    },
   },
   server: {
     port,
