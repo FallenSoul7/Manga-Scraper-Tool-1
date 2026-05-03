@@ -62,8 +62,8 @@ export function Header() {
           {isHome ? (
             <Link href="/" className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity shrink-0">
               <Library className="h-5 w-5 sm:h-6 sm:w-6" />
-              <span className="font-serif font-bold text-base sm:text-xl tracking-tight whitespace-nowrap hidden sm:inline">
-                Comix Lounge
+              <span className="font-serif font-bold text-base sm:text-xl tracking-tight whitespace-nowrap">
+                Library
               </span>
             </Link>
           ) : (

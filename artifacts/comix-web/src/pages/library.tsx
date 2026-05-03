@@ -268,7 +268,7 @@ export default function LibraryPage() {
       {/* Category tab strip — Tachiyomi flat-pill style */}
       <div
         ref={stripRef}
-        className="flex overflow-x-auto hide-scrollbar mb-4"
+        className="flex overflow-x-auto hide-scrollbar mb-4 -mt-2"
       >
         {sortedCategories.map((cat) => {
           const count = libraryItems.filter(m => m.categoryIds.includes(cat.id)).length;
