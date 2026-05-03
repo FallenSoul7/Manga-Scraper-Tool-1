@@ -9,7 +9,7 @@ import {
 } from "@workspace/api-client-react";
 import { proxyImage } from "@/lib/utils";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
@@ -35,20 +35,14 @@ export default function Reader() {
   const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(currentProgress?.lastPageRead || 0);
 
-  // Map of page index -> natural { w, h } of the image. We probe these BEFORE rendering so
-  // each page slot can reserve its exact aspect ratio. This eliminates the "shake" where
-  // an unloaded slot suddenly grows when its image arrives, and removes the dark filler
-  // gap that came from the old min-height placeholder.
-  const [pageDims, setPageDims] = useState<Record<number, { w: number; h: number }>>(() => {
-    // Hydrate from a per-chapter localStorage cache so re-reads are perfectly shake-free.
-    try {
-      const raw = localStorage.getItem(`comix:page-dims:${chapterId}`);
-      if (raw) return JSON.parse(raw);
-    } catch {}
-    return {};
-  });
   // Track which images are fully decoded and visible
   const [loadedImgs, setLoadedImgs] = useState<Record<number, boolean>>({});
+
+  // Continuous reading: chapters appended below the current one as user scrolls
+  type AppendedChapter = { id: number; number: number; title: string; pages: { index: number; url: string }[] };
+  const [appendedChapters, setAppendedChapters] = useState<AppendedChapter[]>([]);
+  const [loadingNextChapter, setLoadingNextChapter] = useState(false);
+  const appendedIdsRef = useRef<Set<number>>(new Set());
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -143,132 +137,31 @@ export default function Reader() {
     }
   }, [readerSettings.keepScreenOn]);
 
-  // Probe every page's natural dimensions in parallel so we can reserve exact aspect-ratio
-  // boxes BEFORE the <img> elements render. The browser caches the loaded image, so the
-  // real <img> tag below renders instantly from cache without any layout shift.
-  // Persisted to localStorage per-chapter, so re-reads have ZERO layout shift.
+
+  // Initial scroll — restore last-read page position on chapter open.
+  const didInitialScroll = useRef(false);
   useEffect(() => {
-    if (!pagesData?.pages.length) return;
-    let cancelled = false;
-    const persist = (() => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      return (next: Record<number, { w: number; h: number }>) => {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-          try { localStorage.setItem(`comix:page-dims:${chapterId}`, JSON.stringify(next)); } catch {}
-        }, 250);
-      };
-    })();
-    pagesData.pages.forEach((page, idx) => {
-      // Skip pages whose dimensions we already cached
-      if (pageDims[idx]) return;
-      const probe = new Image();
-      probe.decoding = 'async';
-      probe.onload = () => {
-        if (cancelled) return;
-        setPageDims(prev => {
-          if (prev[idx]) return prev;
-          const next = { ...prev, [idx]: { w: probe.naturalWidth || 800, h: probe.naturalHeight || 1200 } };
-          persist(next);
-          return next;
-        });
-      };
-      probe.onerror = () => {
-        if (cancelled) return;
-        setPageDims(prev => {
-          if (prev[idx]) return prev;
-          const next = { ...prev, [idx]: { w: 800, h: 1200 } };
-          persist(next);
-          return next;
-        });
-      };
-      probe.src = proxyImage(page.url);
-    });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagesData, chapterId]);
-
-  // Computed ONCE from the initial pageDims (which is pre-populated from localStorage).
-  // Using [] deps means this NEVER recalculates — so when probes arrive one-by-one,
-  // only the individual slot whose probe just finished changes size. Previously this
-  // recalculated on every probe, causing ALL unprobed slots to resize in cascade → shake.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const fallbackAspect = useMemo(() => {
-    const measured = Object.values(pageDims);
-    if (!measured.length) return { w: 720, h: 1080 };
-    const sorted = measured
-      .map((d) => d.h / Math.max(1, d.w))
-      .sort((a, b) => a - b);
-    const ratio = sorted[Math.floor(sorted.length / 2)];
-    return { w: 1000, h: Math.round(1000 * ratio) };
-  }, []); // ← intentionally empty: stable after mount
-
-  // Track the last-committed dims so we know what changed each render.
-  // Initialized with the current pageDims (from localStorage) so the first
-  // useLayoutEffect run has a correct baseline.
-  const prevPageDimsRef = useRef<Record<number, { w: number; h: number }>>({ ...pageDims });
-
-  // Scroll compensation: when a page's aspect-ratio box changes height and any part of
-  // that page is above the viewport top (rect.top < 0), the height change shifts all
-  // content below it. We compensate window.scrollY by the exact pixel delta so the
-  // visible content stays locked in place.
-  // Runs synchronously after DOM mutations but before the browser paints — no flash.
-  useLayoutEffect(() => {
-    const isVertical = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
-    if (!isVertical) { prevPageDimsRef.current = { ...pageDims }; return; }
-
-    let delta = 0;
-    for (const [key, dim] of Object.entries(pageDims)) {
-      const idx = Number(key);
-      const prev = prevPageDimsRef.current[idx] ?? fallbackAspect;
-      if (prev.w === dim.w && prev.h === dim.h) continue; // no change
-      const el = document.getElementById(`page-${idx}`);
-      if (!el) continue;
-      const rect = el.getBoundingClientRect();
-      // Compensate when ANY part of the page is above the viewport top — including
-      // pages that are only partially scrolled off. Previously rect.bottom <= 0 missed
-      // partially-visible pages at the top, causing the remaining content to jump.
-      if (rect.top < 0) {
-        const w = el.clientWidth || window.innerWidth;
-        delta += (w * dim.h / Math.max(1, dim.w)) - (w * prev.h / Math.max(1, prev.w));
-      }
-    }
-    prevPageDimsRef.current = { ...pageDims };
-    if (Math.abs(delta) >= 1) {
-      window.scrollBy({ top: Math.round(delta), behavior: 'instant' as ScrollBehavior });
-    }
-  }, [pageDims]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Initial scroll — wait until we've measured the page we want to land on so the
-  // scrollIntoView lands at the right pixel and doesn't get nudged later.
-  useEffect(() => {
-    if (!pagesData?.pages.length) return;
+    if (!pagesData?.pages.length || didInitialScroll.current) return;
     const target = currentProgress?.lastPageRead;
-    if (!target || target === 0) return;
+    if (!target || target === 0) { didInitialScroll.current = true; return; }
 
-    // For paginated modes we can scroll immediately (every page is one viewport wide).
     if (readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl') {
       if (containerRef.current) {
         containerRef.current.scrollTo({
           left: (readerSettings.direction === 'ltr' ? target : -target) * containerRef.current.clientWidth,
         });
       }
+      didInitialScroll.current = true;
       return;
     }
 
-    // For vertical / webtoon: wait until ALL preceding pages have known dimensions so
-    // their reserved heights are accurate. Otherwise we'd land in the wrong place.
-    let allKnown = true;
-    for (let i = 0; i <= target; i++) {
-      if (!pageDims[i]) { allKnown = false; break; }
-    }
-    if (!allKnown) return;
-
-    const pageEl = document.getElementById(`page-${target}`);
-    if (pageEl) {
-      pageEl.scrollIntoView({ behavior: 'auto', block: 'start' });
-    }
-  }, [pagesData, currentProgress?.lastPageRead, readerSettings.direction, pageDims]);
+    // Vertical/webtoon: wait one rAF so images start rendering, then scroll.
+    requestAnimationFrame(() => {
+      const pageEl = document.getElementById(`page-${target}`);
+      if (pageEl) pageEl.scrollIntoView({ behavior: 'auto', block: 'start' });
+      didInitialScroll.current = true;
+    });
+  }, [pagesData, currentProgress?.lastPageRead, readerSettings.direction]);
 
   // Scroll tracking
   useEffect(() => {
@@ -381,6 +274,32 @@ export default function Reader() {
 
   const prevChapter = chapterIndex >= 0 && chapterIndex < navChapters.length - 1 ? navChapters[chapterIndex + 1] : null;
   const nextChapter = chapterIndex > 0 ? navChapters[chapterIndex - 1] : null;
+
+  // Auto-load next chapter when user reaches the last 3 pages (continuous reading).
+  // Placed after nextChapter is declared so we can reference it safely.
+  useEffect(() => {
+    const isVertical = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
+    if (!isVertical || !nextChapter || loadingNextChapter) return;
+    if (appendedIdsRef.current.has(nextChapter.id)) return;
+    const totalPages = pagesData?.pages.length ?? 0;
+    if (totalPages === 0 || currentPage < totalPages - 3) return;
+
+    const nc = nextChapter;
+    appendedIdsRef.current.add(nc.id);
+    setLoadingNextChapter(true);
+    fetch(`/api/chapter/${nc.id}/pages`)
+      .then(r => r.json())
+      .then((data: { pages: { index: number; url: string }[] }) => {
+        setAppendedChapters(prev => [...prev, {
+          id: nc.id,
+          number: nc.number,
+          title: nc.title ?? '',
+          pages: data.pages,
+        }]);
+      })
+      .catch(() => { appendedIdsRef.current.delete(nc.id); })
+      .finally(() => setLoadingNextChapter(false));
+  }, [currentPage, nextChapter, pagesData, loadingNextChapter, readerSettings.direction]);
 
   const navigateToChapter = (id: number) => {
     setLocation(`/reader/${id}?mangaId=${mangaId}`);
@@ -568,25 +487,10 @@ export default function Reader() {
           ? 'h-[100dvh] flex overflow-x-auto snap-x snap-mandatory hide-scrollbar flex-row'
           : 'flex flex-col items-center max-w-3xl mx-auto'
         } ${readerSettings.direction === 'rtl' ? 'flex-row-reverse' : ''}`}
-        style={
-          readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical'
-            ? { overflowAnchor: 'none' as const }
-            : undefined
-        }
       >
         {pagesData.pages.map((page, idx) => {
           const isVerticalLike = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
-          const dim = pageDims[idx] ?? fallbackAspect;
           const isLoaded = !!loadedImgs[idx];
-
-          // Wrapper style: for vertical/webtoon modes reserve an EXACT aspect-ratio box
-          // for every page (using either the real measurement or the median fallback).
-          // The slot's size never changes after first render, so neighbouring pages
-          // never shift while you're reading.
-          const wrapperStyle: React.CSSProperties | undefined = isVerticalLike
-            ? { aspectRatio: `${dim.w} / ${dim.h}`, width: '100%' }
-            : undefined;
-
           const isWebtoon = readerSettings.direction === 'webtoon';
           const isPaged = readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl';
 
@@ -601,25 +505,21 @@ export default function Reader() {
                   ? 'w-full'
                   : 'flex items-center justify-center bg-black w-full'
               } ${readerSettings.direction === 'vertical' ? 'mb-8' : ''}`}
-              style={wrapperStyle}
             >
-              {/* Dark loading shell with spinner */}
+              {/* Loading spinner — shown until image loads. Min-height keeps slot visible. */}
               {!isLoaded && (
-                <div className={`${isWebtoon ? 'absolute inset-0' : 'absolute inset-0'} flex flex-col items-center justify-center bg-black text-white/40 pointer-events-none`}>
+                <div className="flex flex-col items-center justify-center min-h-[40vw] w-full bg-black text-white/40 pointer-events-none">
                   <Loader2 className="h-10 w-10 animate-spin" />
                   <div className="mt-3 text-xs tabular-nums">{idx + 1} / {pagesData.pages.length}</div>
                 </div>
               )}
-
               {readerSettings.direction === 'vertical' && (
                 <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
               )}
               <img
                 src={proxyImage(page.url)}
                 alt={`Page ${page.index}`}
-                width={dim.w}
-                height={dim.h}
-                className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
                 loading={isVerticalLike ? 'eager' : (idx < 3 ? 'eager' : 'lazy')}
                 decoding="async"
                 onLoad={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
@@ -633,16 +533,64 @@ export default function Reader() {
             </div>
           );
         })}
-      </div>
 
-      {/* Next Chapter Button at bottom (Webtoon/Vertical) */}
-      {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && nextChapter && (
-        <div className="py-20 flex justify-center">
-          <Button size="lg" onClick={(e) => { e.stopPropagation(); navigateToChapter(nextChapter.id); }}>
-            Next Chapter
-          </Button>
-        </div>
-      )}
+        {/* Continuous reading: appended chapters rendered inline */}
+        {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && appendedChapters.map((ch) => (
+          <div key={ch.id} className="w-full">
+            {/* Chapter separator */}
+            <div className="flex items-center gap-4 px-4 py-6 bg-black/80 border-y border-white/10">
+              <div className="flex-1 h-px bg-white/20" />
+              <div className="text-center">
+                <div className="text-white/50 text-xs mb-1">Next Chapter</div>
+                <div className="text-white font-semibold text-sm">Ch. {ch.number}{ch.title ? ` — ${ch.title}` : ''}</div>
+              </div>
+              <div className="flex-1 h-px bg-white/20" />
+            </div>
+            {/* Pages */}
+            {ch.pages.map((page, idx) => {
+              const isWebtoon = readerSettings.direction === 'webtoon';
+              return (
+                <div
+                  key={page.index}
+                  className={`reader-page relative flex-shrink-0 ${
+                    isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full mb-8'
+                  }`}
+                >
+                  <img
+                    src={proxyImage(page.url)}
+                    alt={`Ch${ch.number} Page ${page.index}`}
+                    loading="lazy"
+                    decoding="async"
+                    style={
+                      isWebtoon
+                        ? { display: 'block', width: '100%', height: 'auto', margin: 0, padding: 0, verticalAlign: 'top', lineHeight: 0 }
+                        : { display: 'block', maxWidth: '100%', objectFit: 'contain' }
+                    }
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ))}
+
+        {/* Loading next chapter indicator */}
+        {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && loadingNextChapter && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-white/50">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <span className="text-sm">Loading next chapter…</span>
+          </div>
+        )}
+
+        {/* End of chapter — no next chapter exists */}
+        {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && !nextChapter && appendedChapters.length === 0 && (
+          <div className="py-16 flex flex-col items-center gap-4 text-white/40">
+            <div className="text-sm">You've reached the end</div>
+            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); goBack(); }}>
+              Back to Manga
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* Page Indicator — hidden along with the rest of the UI when controls are toggled off */}
       {readerSettings.showPageNumber && showControls && (
