@@ -157,6 +157,7 @@ export default function SourceBrowsePage() {
   const [searchOpen, setSearchOpen] = useState(!!urlQ);
   const [searchInput, setSearchInput] = useState(urlQ);
   const [searchQuery, setSearchQuery] = useState(urlQ);
+  const pageScrollKey = `source-scroll:${sourceId}`;
 
   // Track whether this is the initial mount so the source-change reset effect
   // doesn't clear a query that arrived via ?q= URL param.
@@ -169,6 +170,7 @@ export default function SourceBrowsePage() {
   );
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const scrollRestoreRef = useRef<number | null>(null);
 
   // ---- Pagination ----
   const [popularPage, setPopularPage] = useState(1);
@@ -241,6 +243,26 @@ export default function SourceBrowsePage() {
   useEffect(() => {
     if (searchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
   }, [searchOpen]);
+
+  useEffect(() => {
+    const saved = Number(sessionStorage.getItem(pageScrollKey) || "0");
+    if (saved > 0) requestAnimationFrame(() => window.scrollTo({ top: saved, behavior: "auto" }));
+  }, [pageScrollKey]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const scrollY = window.history.state?.sourceScrollY;
+      if (typeof scrollY === "number") {
+        scrollRestoreRef.current = scrollY;
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: "auto" });
+          scrollRestoreRef.current = null;
+        });
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   // ---- Tags ----
   const { data: availableTags = [] } = useQuery<SourceTag[]>({
@@ -378,6 +400,14 @@ export default function SourceBrowsePage() {
   }
 
   const activeTabValue: ActiveTab = inSearchMode ? "filter" : inFilterMode ? "filter" : tab;
+
+  useEffect(() => {
+    const onScroll = () => {
+      sessionStorage.setItem(pageScrollKey, String(window.scrollY));
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [pageScrollKey]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
