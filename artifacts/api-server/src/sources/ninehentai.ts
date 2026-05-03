@@ -184,9 +184,10 @@ export const NineHentaiSource: MangaSource = {
   imageReferer: `${BASE_URL}/`,
 
   popularSorts: [
+    { value: "0", label: "Newest" },
     { value: "1", label: "Popular" },
-    { value: "3", label: "Most Viewed" },
     { value: "2", label: "Most Fapped" },
+    { value: "3", label: "Most Viewed" },
   ],
 
   async popular(o: ListOptions) {
@@ -197,8 +198,10 @@ export const NineHentaiSource: MangaSource = {
   },
 
   async latest(o: ListOptions) {
-    // sort=0 = "Newest"
-    return fetchPage(0, o.page);
+    const sortNum = o.sort !== undefined && NINE_SORTS[o.sort] !== undefined
+      ? NINE_SORTS[o.sort]
+      : 0;
+    return fetchPage(sortNum, o.page);
   },
 
   async search(query: string, o: ListOptions) {

@@ -202,9 +202,10 @@ export default function SourceBrowsePage() {
     setFilterPage(1); setFilterItems([]);
   }, [sourceId]);
 
-  // Reset popular pagination when sort changes.
+  // Reset pagination when sort changes.
   useEffect(() => {
     setPopularPage(1); setPopularItems([]);
+    setLatestPage(1); setLatestItems([]);
   }, [popularSort]);
 
   // Debounce search input.
@@ -260,8 +261,8 @@ export default function SourceBrowsePage() {
   });
 
   const latestQuery = useQuery<ListResponse>({
-    queryKey: ["source-latest", sourceId, latestPage, settings.hideNsfw, settings.posterQuality],
-    queryFn: () => customFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage) })}`),
+    queryKey: ["source-latest", sourceId, latestPage, popularSort, settings.hideNsfw, settings.posterQuality],
+    queryFn: () => customFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
     enabled: !!sourceId && !!source && tab === "latest" && !isFiltering,
     staleTime: 5 * 60 * 1000,
     retry: 1,
@@ -516,8 +517,8 @@ export default function SourceBrowsePage() {
             )}
             </div>{/* end primary tab row */}
 
-            {/* Sort sub-pills — shown under Popular tab when source exposes sort options */}
-            {tab === "popular" && !isFiltering && popularSorts.length > 0 && (
+            {/* Sort sub-pills — shown under Popular and Latest tabs when source exposes sort options */}
+            {(tab === "popular" || tab === "latest") && !isFiltering && popularSorts.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap">
                 {popularSorts.map(opt => (
                   <button
