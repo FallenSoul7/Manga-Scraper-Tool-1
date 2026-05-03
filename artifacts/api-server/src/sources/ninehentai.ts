@@ -343,7 +343,7 @@ export const NineHentaiSource: MangaSource = {
       rating: 0,
       genres: allGenres,
       score: book.total_favorite ? String(book.total_favorite) : "",
-      scorePosition: book.total_favorite ? "left" : "none",
+      scorePosition: book.total_favorite ? "bottom" : "none",
       sourceTags,
     };
   },
