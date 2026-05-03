@@ -10,7 +10,7 @@ import { proxyImage } from "@/lib/utils";
 import { applyActiveSource } from "@/lib/source";
 import {
   Loader2, ArrowLeft, Star, ChevronDown, ChevronUp,
-  BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown,
+  BookmarkPlus, BookOpen, Check, MoreVertical, ArrowDown, ArrowDownToLine,
   ArrowUp, Filter, Play, Sparkles, AlertCircle, X,
   Users, Globe, ExternalLink, Settings, Download,
 } from "lucide-react";
@@ -94,6 +94,7 @@ export default function MangaDetail() {
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [categoryDialogIsNewAdd, setCategoryDialogIsNewAdd] = useState(false);
   const [coverZoomOpen, setCoverZoomOpen] = useState(false);
+  const [downloadTarget, setDownloadTarget] = useState<{ id: number; title: string } | null>(null);
   const [scanlatorSheetOpen, setScanlatorSheetOpen] = useState(false);
 
   const library = useStore(s => s.library);
@@ -629,7 +630,7 @@ export default function MangaDetail() {
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8 kebab-menu shrink-0" onClick={e => e.stopPropagation()}>
-                          <MoreVertical className="h-4 w-4" />
+                          <MoreVertical className="h-4 w-4 text-white/70" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="kebab-menu">
@@ -639,8 +640,8 @@ export default function MangaDetail() {
                         <DropdownMenuItem onClick={e => { e.stopPropagation(); storeActions.markChapterUnread(manga.id, chapter.id); }}>
                           Mark as unread
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={e => { e.stopPropagation(); setLocation("/downloads"); }}>
-                          <Download className="mr-2 h-4 w-4" />
+                        <DropdownMenuItem onClick={e => { e.stopPropagation(); setDownloadTarget({ id: chapter.id, title: `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}` }); }}>
+                          <ArrowDownToLine className="mr-2 h-4 w-4 text-white/80" />
                           Download
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -671,6 +672,27 @@ export default function MangaDetail() {
             className="max-h-[85dvh] max-w-[85vw] rounded-xl shadow-2xl object-contain"
             onClick={e => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {downloadTarget && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setDownloadTarget(null)}>
+          <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-background px-5 pt-4 pb-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted" />
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <ArrowDownToLine className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-lg font-semibold">Download chapter?</div>
+                <div className="text-sm text-muted-foreground truncate">{downloadTarget.title}</div>
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <Button variant="secondary" className="flex-1" onClick={() => setDownloadTarget(null)}>Cancel</Button>
+              <Button className="flex-1" onClick={() => setDownloadTarget(null)}>Download</Button>
+            </div>
+          </div>
         </div>
       )}
 
