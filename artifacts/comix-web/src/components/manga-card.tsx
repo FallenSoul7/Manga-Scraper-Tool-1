@@ -9,9 +9,10 @@ interface MangaCardProps {
   href?: string;
   isSelecting?: boolean;
   isSelected?: boolean;
+  onNavigate?: () => void;
 }
 
-export function MangaCard({ manga, sourceId, href, isSelecting, isSelected }: MangaCardProps) {
+export function MangaCard({ manga, sourceId, href, isSelecting, isSelected, onNavigate }: MangaCardProps) {
   const inner = (
     <div className="group relative flex flex-col gap-2 cursor-pointer select-none">
       <div
@@ -63,5 +64,5 @@ export function MangaCard({ manga, sourceId, href, isSelecting, isSelected }: Ma
 
   if (isSelecting) return inner;
 
-  return <Link href={href ?? `/manga/${manga.id}`}>{inner}</Link>;
+  return <Link href={href ?? `/manga/${manga.id}`} onClick={onNavigate}>{inner}</Link>;
 }
