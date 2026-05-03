@@ -368,6 +368,18 @@ export default function SourceBrowsePage() {
     pageScrollKey,
   ]);
 
+  // Scroll-position persistence — must be declared here (before any early returns)
+  // so React always calls this hook the same number of times regardless of which
+  // branch the render takes.  Moving it below the early returns was the root cause
+  // of the "Rendered fewer hooks than expected" crash.
+  useEffect(() => {
+    const onScroll = () => {
+      sessionStorage.setItem(pageScrollKey, String(window.scrollY));
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [pageScrollKey]);
+
   // While we don't yet know the source (loading from catalog), show a spinner.
   if (!source && !catalogEntry && !!sourceId) {
     return (
@@ -417,14 +429,6 @@ export default function SourceBrowsePage() {
   }
 
   const activeTabValue: ActiveTab = inSearchMode ? "filter" : inFilterMode ? "filter" : tab;
-
-  useEffect(() => {
-    const onScroll = () => {
-      sessionStorage.setItem(pageScrollKey, String(window.scrollY));
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [pageScrollKey]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
