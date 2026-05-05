@@ -1,4 +1,5 @@
-import app from "../artifacts/api-server/src/app";
+// @ts-ignore — app.mjs is pre-built by esbuild (esbuild-plugin-pino handles workers)
+import app from "../artifacts/api-server/dist/app.mjs";
 import { createReadStream, statSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
