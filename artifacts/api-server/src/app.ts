@@ -42,7 +42,7 @@ app.use("/api", router);
 if (process.env.NODE_ENV === "production") {
   const __dir = path.dirname(fileURLToPath(import.meta.url));
   const staticDir = path.resolve(__dir, "../../comix-web/dist/public");
-  app.get("*", (_req, res) => {
+  app.get("/{*path}", (_req, res) => {
     res.sendFile(path.join(staticDir, "index.html"));
   });
 }
