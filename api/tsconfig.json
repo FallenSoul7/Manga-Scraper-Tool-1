@@ -1,17 +1,23 @@
 {
   "compilerOptions": {
     "target": "es2022",
-    "module": "commonjs",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "strict": false,
+    "noImplicitAny": false,
     "baseUrl": "..",
     "paths": {
       "@workspace/api-zod": ["lib/api-zod/src/index.ts"],
       "@workspace/db": ["lib/db/src/index.ts"]
-    }
+    },
+    "typeRoots": ["../node_modules/@types", "../artifacts/api-server/node_modules/@types"]
   },
-  "include": ["."]
+  "include": [
+    ".",
+    "../artifacts/api-server/src"
+  ]
 }
