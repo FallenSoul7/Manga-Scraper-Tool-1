@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm tsc --project api/tsconfig.json --noEmit && PORT=3000 BASE_PATH=/ pnpm --filter @workspace/comix-web run build",
+  "buildCommand": "pnpm run vercel-build",
   "functions": {
     "api/index.ts": {
       "maxDuration": 30,
