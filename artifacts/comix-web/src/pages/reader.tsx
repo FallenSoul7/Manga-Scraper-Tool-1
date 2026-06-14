@@ -8,6 +8,7 @@ import {
   getGetMangaDetailsQueryKey,
 } from "@workspace/api-client-react";
 import { proxyImage } from "@/lib/utils";
+import { applyActiveSource } from "@/lib/source";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
@@ -23,7 +24,13 @@ export default function Reader() {
   const chapterId = parseInt(params?.chapterId || "0");
   const searchString = useSearch();
   const mangaId = new URLSearchParams(searchString).get("mangaId");
+  const sourceId = new URLSearchParams(searchString).get("sourceId");
   const [, setLocation] = useLocation();
+
+  // Apply the source header so chapter-pages API uses the right backend source.
+  useEffect(() => {
+    if (sourceId) applyActiveSource(sourceId);
+  }, [sourceId]);
 
   const readerSettings = useStore(s => s.reader);
   const progressMap = useStore(s => s.progress);
@@ -302,7 +309,7 @@ export default function Reader() {
   }, [currentPage, nextChapter, pagesData, loadingNextChapter, readerSettings.direction]);
 
   const navigateToChapter = (id: string) => {
-    setLocation(`/reader/${id}?mangaId=${mangaId}`);
+    setLocation(`/reader/${id}?mangaId=${mangaId}${sourceId ? `&sourceId=${sourceId}` : ""}`);
   };
 
   const goBack = () => {

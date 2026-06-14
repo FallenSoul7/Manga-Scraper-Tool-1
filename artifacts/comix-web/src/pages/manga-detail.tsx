@@ -524,7 +524,7 @@ export default function MangaDetail() {
           ) : latestProgress ? (
             <Button
               className="w-full h-12 text-base font-semibold rounded-xl"
-              onClick={() => setLocation(`/reader/${latestProgress.chapterId}?mangaId=${manga.id}`)}
+              onClick={() => setLocation(`/reader/${latestProgress.chapterId}?mangaId=${manga.id}${(sourceContext ?? activeSourceId) ? `&sourceId=${sourceContext ?? activeSourceId}` : ""}`)}
             >
               <BookOpen className="mr-2 h-5 w-5" />
               Continue reading · Ch. {latestProgress.chapterNumber}
@@ -532,7 +532,7 @@ export default function MangaDetail() {
           ) : firstChapter ? (
             <Button
               className="w-full h-12 text-base font-semibold rounded-xl"
-              onClick={() => setLocation(`/reader/${firstChapter.id}?mangaId=${manga.id}`)}
+              onClick={() => setLocation(`/reader/${firstChapter.id}?mangaId=${manga.id}${(sourceContext ?? activeSourceId) ? `&sourceId=${sourceContext ?? activeSourceId}` : ""}`)}
             >
               <Play className="mr-2 h-5 w-5" />
               Start reading
@@ -665,7 +665,7 @@ export default function MangaDetail() {
                           totalPages: 0, lastPageRead: 0, isRead: false,
                         });
                       }
-                      setLocation(`/reader/${chapter.id}?mangaId=${manga.id}`);
+                      setLocation(`/reader/${chapter.id}?mangaId=${manga.id}${(sourceContext ?? activeSourceId) ? `&sourceId=${sourceContext ?? activeSourceId}` : ""}`);
                     }}
                     onContextMenu={e => {
                       e.preventDefault();

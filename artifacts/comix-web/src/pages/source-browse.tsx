@@ -393,7 +393,7 @@ export default function SourceBrowsePage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
         <p className="text-muted-foreground">Source not found.</p>
-        <Button variant="outline" onClick={() => window.history.back()}>Go back</Button>
+        <Button variant="outline" onClick={() => setLocation("/sources")}>Go back</Button>
       </div>
     );
   }
@@ -463,7 +463,7 @@ export default function SourceBrowsePage() {
             <Button
               variant="ghost" size="icon" className="h-9 w-9"
               aria-label="Back"
-              onClick={() => window.history.back()}
+              onClick={() => setLocation("/sources")}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
