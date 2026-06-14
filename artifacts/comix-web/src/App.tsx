@@ -85,7 +85,7 @@ function AppContent() {
         </Route>
 
         {/* Everything else: global header + bottom nav */}
-        <Route path="/.*">
+        <Route>
           <Header />
           <div className="flex-1 pb-16 md:pb-0">
             <Switch>
