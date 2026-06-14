@@ -14,18 +14,6 @@ interface Message {
   timestamp: Date;
 }
 
-async function gzipFile(file: File): Promise<Blob> {
-  const stream = file.stream();
-  const compressed = stream.pipeThrough(new CompressionStream("gzip"));
-  const chunks: Uint8Array<ArrayBuffer>[] = [];
-  const reader = compressed.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-  }
-  return new Blob(chunks, { type: "application/gzip" });
-}
 
 const WELCOME: Message = {
   id: "welcome",
@@ -118,22 +106,26 @@ export default function ComiAIPage() {
           return msgId;
         };
 
-        addMsg(`📦 Compressing ${(file.size / 1024 / 1024).toFixed(1)} MB file...`);
-        const compressed = await gzipFile(file);
+        addMsg(`📤 Reading **${file.name}** (${(file.size / 1024 / 1024).toFixed(1)} MB)...`);
 
-        addMsg(`📤 Uploading compressed file (${(compressed.size / 1024 / 1024).toFixed(1)} MB)...`);
-
-        const uploadForm = new FormData();
-        uploadForm.append("file", compressed, file.name.replace(/[^a-zA-Z0-9._-]/g, "_") + ".gz");
-        uploadForm.append("command", command);
+        // Read file as base64 for JSON transport to the backend parser
+        const fileData = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "");
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
 
         const initRes = await fetch("/api/ai/sort", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command, action: "init", fileBlob: await compressed.text().catch(() => null) }),
+          body: JSON.stringify({ command, action: "init", fileData, fileName: file.name }),
         });
 
-        if (!initRes.ok) throw new Error("Initialization failed — check your API keys.");
+        if (!initRes.ok) {
+          const err = await initRes.json().catch(() => ({ error: "Initialization failed" }));
+          throw new Error(err.error || "Initialization failed — check your GROQ_API_KEY.");
+        }
         const { totalManga, sessionKey } = await initRes.json();
 
         const progressId = `prog-${Date.now()}`;
@@ -213,7 +205,7 @@ export default function ComiAIPage() {
   };
 
   return (
-    <main className="container mx-auto px-4 py-6 max-w-3xl h-[calc(100dvh-4rem)] flex flex-col">
+    <main className="container mx-auto px-4 py-6 max-w-3xl h-[100dvh] flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4 shrink-0">
         <Link href="/system" className="text-muted-foreground hover:text-primary transition-colors">
