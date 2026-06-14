@@ -17,7 +17,7 @@ router.get("/sources/catalog", (_req, res) => {
       return {
         ...e,
         supported: supported.has(e.id),
-        iconUrl: e.icon ? `/source-icons/${e.icon}` : null,
+        iconUrl: e.icon ? `/api/sources/icon/${e.icon}` : null,
         popularSorts: src?.popularSorts ?? [],
       };
     }),
