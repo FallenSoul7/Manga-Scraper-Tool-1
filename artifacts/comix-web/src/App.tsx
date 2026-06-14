@@ -79,6 +79,11 @@ function AppContent() {
           <Lazy><SourceBrowsePage /></Lazy>
         </Route>
 
+        {/* Comi AI: own header, no global nav */}
+        <Route path="/comi-ai">
+          <Lazy><ComiAIPage /></Lazy>
+        </Route>
+
         {/* Everything else: global header + bottom nav */}
         <Route path="/.*">
           <Header />
@@ -116,9 +121,6 @@ function AppContent() {
               </Route>
               <Route path="/categories">
                 <Lazy><CategoriesPage /></Lazy>
-              </Route>
-              <Route path="/comi-ai">
-                <Lazy><ComiAIPage /></Lazy>
               </Route>
               <Route component={NotFound} />
             </Switch>
