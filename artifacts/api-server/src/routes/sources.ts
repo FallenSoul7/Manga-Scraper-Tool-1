@@ -1,7 +1,14 @@
 import { Router, type IRouter } from "express";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import { getCatalog, listSupportedIds, getSourceOrNull } from "../sources/registry";
+
+// Anchor icon path to the bundle's own directory so it is deterministic
+// regardless of CWD. The bundle lives at dist/index.mjs; icons are at
+// the sibling public/source-icons/ directory.
+const __bundleDir = path.dirname(fileURLToPath(import.meta.url));
+const ICONS_DIR = path.resolve(__bundleDir, "../public/source-icons");
 
 const router: IRouter = Router();
 
@@ -26,7 +33,7 @@ router.get("/sources/catalog", (_req, res) => {
 
 router.use(
   "/sources/icon",
-  express.static(path.resolve(process.cwd(), "public/source-icons"), {
+  express.static(ICONS_DIR, {
     maxAge: "30d",
     fallthrough: false,
   }),
