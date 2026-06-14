@@ -10,9 +10,32 @@ interface MangaCardProps {
   isSelecting?: boolean;
   isSelected?: boolean;
   onNavigate?: () => void;
+  showSourceBadge?: boolean;
 }
 
-export function MangaCard({ manga, sourceId, href, isSelecting, isSelected, onNavigate }: MangaCardProps) {
+/** Turn "en.comickfan" → "ComicKFan", "all.mangadex" → "MangaDex", etc. */
+function sourceLabel(sourceId: string): string {
+  const known: Record<string, string> = {
+    "en.comix": "Comix",
+    "all.mangadex": "MangaDex",
+    "en.comickfan": "ComicKFan",
+    "en.mangafreak": "MangaFreak",
+    "en.resetscans": "ResetScans",
+    "en.manhuaplus": "ManhuaPlus",
+    "en.utoon": "Utoon",
+    "en.elftoon": "ElfToon",
+    "all.thunderscans": "ThunderScans",
+    "all.comicklive": "Comick",
+    "all.danbooru": "Danbooru",
+    "all.hentaifox": "HentaiFox",
+    "en.ninehentai": "9Hentai",
+  };
+  if (known[sourceId]) return known[sourceId];
+  const slug = sourceId.split(".").pop() ?? sourceId;
+  return slug.charAt(0).toUpperCase() + slug.slice(1);
+}
+
+export function MangaCard({ manga, sourceId, href, isSelecting, isSelected, onNavigate, showSourceBadge }: MangaCardProps) {
   const inner = (
     <div className="group relative flex flex-col gap-2 cursor-pointer select-none">
       <div
@@ -36,6 +59,11 @@ export function MangaCard({ manga, sourceId, href, isSelecting, isSelected, onNa
         {manga.isNsfw && (
           <div className="absolute top-2 right-2 rounded-md bg-destructive/90 px-1.5 py-0.5 text-[10px] font-semibold text-destructive-foreground backdrop-blur-sm">
             18+
+          </div>
+        )}
+        {showSourceBadge && sourceId && sourceId !== "en.comix" && (
+          <div className="absolute bottom-1.5 left-1.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold text-white/90 backdrop-blur-sm leading-tight max-w-[85%] truncate">
+            {sourceLabel(sourceId)}
           </div>
         )}
         {isSelecting && (

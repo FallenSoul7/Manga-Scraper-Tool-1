@@ -286,28 +286,37 @@ export const NineHentaiSource: MangaSource = {
   },
 
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
-    // getBookByID doesn't return tags — enrich with title search after fetching basic info.
+    // getBookByID doesn't return tags — enrich by scanning listing pages based on ID math.
+    // The 9hentai text search is broken (returns newest books regardless of query),
+    // so we estimate which page the book appears on and fetch it directly.
     const data = await apiPost<DetailResponseBody>("/api/getBookByID", { id: Number(id) });
     if (!data.status) throw new Error(`9hentai.so: book ${id} not found`);
     const book = data.results;
 
-    // Now do the tag-enrichment search using the actual title.
     let enrichedBook: NineBook | null = null;
-    if (book.title) {
-      try {
-        const titleSearch = await apiPost<SearchResponseBody>("/api/getBook", {
-          search: {
-            text: book.title.slice(0, 80),
-            page: 0,
-            sort: 0,
-            pages: { range: [0, 2000] },
-            tag: { items: { included: [], excluded: [] } },
-          },
-        });
-        enrichedBook = titleSearch.results?.find(b => b.id === book.id) ?? null;
-      } catch {
-        // tag enrichment failed — fall through with empty tags
+    try {
+      // Fetch page 0 to learn the current max ID (newest book) and check if target is there
+      const page0 = await apiPost<SearchResponseBody>("/api/getBook", buildSearchBody({ page: 0, sort: 0 }));
+      if (page0.status && page0.results?.length) {
+        enrichedBook = page0.results.find(b => b.id === book.id) ?? null;
+        if (!enrichedBook) {
+          // IDs are sequential integers; pages return ~18 books each, newest first.
+          // Estimate which page this book lives on, then check ±1 for off-by-one.
+          const maxId = page0.results[0].id;
+          const gap = maxId - book.id;
+          if (gap > 0) {
+            const estPage = Math.ceil(gap / 18);
+            for (const p of [estPage, estPage + 1, estPage - 1].filter(x => x > 0)) {
+              const pageData = await apiPost<SearchResponseBody>("/api/getBook",
+                buildSearchBody({ page: p, sort: 0 }));
+              enrichedBook = pageData.results?.find(b => b.id === book.id) ?? null;
+              if (enrichedBook) break;
+            }
+          }
+        }
       }
+    } catch {
+      // enrichment failed — fall through with empty tags
     }
 
     const effective = enrichedBook ?? book;

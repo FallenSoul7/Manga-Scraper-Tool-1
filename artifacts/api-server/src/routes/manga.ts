@@ -221,6 +221,10 @@ router.get("/image", async (req, res) => {
     } catch {
       /* ignore */
     }
+    // Domain-based override: some CDNs require a specific Referer regardless
+    // of which source was selected (e.g. reader fetches pages without X-Source).
+    const h = parsed.hostname;
+    if (h.endsWith("cdncmk.com")) referer = "https://comickfan.com/";
     const img = await fetchImage(url, referer);
     res.status(img.status === 200 ? 200 : img.status);
     res.setHeader("Content-Type", img.contentType);

@@ -39,10 +39,10 @@ export default function Reader() {
   const [loadedImgs, setLoadedImgs] = useState<Record<number, boolean>>({});
 
   // Continuous reading: chapters appended below the current one as user scrolls
-  type AppendedChapter = { id: number; number: number; title: string; pages: { index: number; url: string }[] };
+  type AppendedChapter = { id: string; number: number; title: string; pages: { index: number; url: string }[] };
   const [appendedChapters, setAppendedChapters] = useState<AppendedChapter[]>([]);
   const [loadingNextChapter, setLoadingNextChapter] = useState(false);
-  const appendedIdsRef = useRef<Set<number>>(new Set());
+  const appendedIdsRef = useRef<Set<string>>(new Set());
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -301,7 +301,7 @@ export default function Reader() {
       .finally(() => setLoadingNextChapter(false));
   }, [currentPage, nextChapter, pagesData, loadingNextChapter, readerSettings.direction]);
 
-  const navigateToChapter = (id: number) => {
+  const navigateToChapter = (id: string) => {
     setLocation(`/reader/${id}?mangaId=${mangaId}`);
   };
 

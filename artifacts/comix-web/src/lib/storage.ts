@@ -11,7 +11,7 @@ const CategorySchema = z.object({
 export type Category = z.infer<typeof CategorySchema>;
 
 const PendingChapterSchema = z.object({
-  id: z.number(),
+  id: z.union([z.number(), z.string()]),
   number: z.number(),
   title: z.string(),
   date: z.number(),
@@ -37,7 +37,7 @@ export type SavedManga = z.infer<typeof SavedMangaSchema>;
 
 const ChapterProgressSchema = z.object({
   mangaId: z.string(),
-  chapterId: z.number(),
+  chapterId: z.union([z.number(), z.string()]),
   chapterNumber: z.number(),
   chapterTitle: z.string(),
   mangaTitle: z.string(),

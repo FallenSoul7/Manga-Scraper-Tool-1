@@ -93,14 +93,19 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
     // Madara load-more uses POST. We use the standard paginated page URLs which work for most themes.
     const url = `${baseUrl}/${mangaSubString}/${page > 1 ? `page/${page}/` : ""}${path}`;
     const { $ } = await fetchHtml(http, url);
+    // Standard Madara selectors + rs-manga-library custom theme (used by e.g. reset-scans.org)
     const sel =
-      "div.page-item-detail, .manga__item, .c-tabs-item__content";
+      "div.page-item-detail, .manga__item, .c-tabs-item__content, article.rs-manga-library__card";
     const items: MangaSummary[] = [];
     $(sel).each((_i, el) => {
       const s = buildSummary($, el);
       if (s) items.push(s);
     });
-    const hasNext = $(".nav-previous, .wp-pagenavi a.nextpostslink, a.next.page-numbers").length > 0;
+    const hasNext = $(
+      ".nav-previous, .wp-pagenavi a.nextpostslink, a.next.page-numbers, " +
+      "a.rs-manga-library__pagination-next, .rs-manga-library__pagination a[rel='next'], " +
+      ".rs-pagination a.next"
+    ).length > 0;
     return { items, page, hasNextPage: hasNext };
   }
 

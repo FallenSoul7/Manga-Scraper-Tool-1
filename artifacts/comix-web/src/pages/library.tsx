@@ -331,6 +331,7 @@ export default function LibraryPage() {
                 href={`/manga/${manga.id}`}
                 isSelecting={selectionMode}
                 isSelected={selectedIds.has(manga.id)}
+                showSourceBadge
               />
             </SelectableCard>
           ))}
