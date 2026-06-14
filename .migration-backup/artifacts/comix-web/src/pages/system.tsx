@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Settings, Download, BarChart3, Database, Info, FolderOpen } from "lucide-react";
+import { Settings, Download, BarChart3, Database, Info, FolderOpen, Sparkles } from "lucide-react";
 
 interface SystemBlock {
   href?: string;
@@ -7,9 +7,17 @@ interface SystemBlock {
   description: string;
   icon: typeof Settings;
   comingSoon?: boolean;
+  highlight?: boolean;
 }
 
 const blocks: SystemBlock[] = [
+  {
+    href: "/comi-ai",
+    label: "Comi AI",
+    description: "AI chat assistant — sort your Tachimanga library by genre, tags, or any rule.",
+    icon: Sparkles,
+    highlight: true,
+  },
   {
     href: "/settings",
     label: "Settings",
@@ -55,17 +63,24 @@ function Block({ block }: { block: SystemBlock }) {
       className={`relative h-full rounded-2xl border p-5 sm:p-6 transition-all flex flex-col gap-3 ${
         block.comingSoon
           ? "bg-card/50 border-dashed text-muted-foreground"
+          : block.highlight
+          ? "bg-primary/5 border-primary/40 hover:bg-primary/10 hover:border-primary/60 hover:shadow-md cursor-pointer"
           : "bg-card hover:bg-muted hover:border-primary/40 hover:shadow-md cursor-pointer"
       }`}
     >
       <div className={`h-11 w-11 rounded-xl flex items-center justify-center ${
-        block.comingSoon ? "bg-muted" : "bg-primary/10 text-primary"
+        block.comingSoon ? "bg-muted" : block.highlight ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
       }`}>
         <Icon className="h-5 w-5" />
       </div>
       <div className="space-y-1">
         <h3 className="font-serif font-bold text-lg text-foreground flex items-center gap-2">
           {block.label}
+          {block.highlight && (
+            <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+              New
+            </span>
+          )}
           {block.comingSoon && (
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
               Soon

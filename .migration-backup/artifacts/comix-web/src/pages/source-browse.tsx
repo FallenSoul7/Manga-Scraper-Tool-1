@@ -438,6 +438,19 @@ export default function SourceBrowsePage() {
 
         {/* Title row */}
         <div className="flex items-center gap-3 px-4 h-14">
+          {catalogEntry?.iconUrl ? (
+            <img
+              src={catalogEntry.iconUrl}
+              alt=""
+              className="h-8 w-8 rounded-xl shrink-0 object-cover bg-muted border border-border/30"
+            />
+          ) : (
+            <div className="h-8 w-8 rounded-xl shrink-0 bg-primary/10 flex items-center justify-center border border-border/30">
+              <span className="text-[11px] font-bold text-primary">
+                {source.name.slice(0, 2).toUpperCase()}
+              </span>
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <h1 className="font-serif font-bold text-lg sm:text-xl truncate leading-tight">{source.name}</h1>
             <p className="text-[11px] text-muted-foreground leading-none mt-0.5">
@@ -619,7 +632,7 @@ export default function SourceBrowsePage() {
       )}
 
       {/* ── Content ─────────────────────────────────────────────────────── */}
-      <main className="flex-1 container mx-auto px-4 py-6 max-w-7xl">
+      <main className="flex-1 container mx-auto px-4 py-3 max-w-7xl">
         {isSourceError && gridItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
             <AlertTriangle className="h-12 w-12 text-amber-500" />
@@ -667,7 +680,7 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
   }
   return (
     <>
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-5">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3">
         {items.map(m => (
           <MangaCard
             key={m.id}

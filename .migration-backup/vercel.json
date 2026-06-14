@@ -10,5 +10,12 @@
   },
   "rewrites": [
     { "source": "/(.*)", "destination": "/api" }
-  ]
+  ],
+  "env": {
+    "DATABASE_URL": "@database_url",
+    "GROQ_API_KEY": "@groq_api_key",
+    "SUPABASE_URL": "@supabase_url",
+    "SUPABASE_ANON_KEY": "@supabase_anon_key",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase_service_role_key"
+  }
 }
