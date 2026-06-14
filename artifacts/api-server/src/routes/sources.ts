@@ -26,7 +26,7 @@ router.get("/sources/catalog", (_req, res) => {
 
 router.use(
   "/sources/icon",
-  express.static(path.resolve(process.cwd(), "artifacts/comix-web/public/source-icons"), {
+  express.static(path.resolve(process.cwd(), "public/source-icons"), {
     maxAge: "30d",
     fallthrough: false,
   }),

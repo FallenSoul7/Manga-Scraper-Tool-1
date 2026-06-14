@@ -6,9 +6,9 @@ import {
   getGetChapterPagesQueryKey,
   getGetChaptersQueryKey,
   getGetMangaDetailsQueryKey,
+  setExtraHeader,
 } from "@workspace/api-client-react";
 import { proxyImage } from "@/lib/utils";
-import { applyActiveSource } from "@/lib/source";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
@@ -28,8 +28,11 @@ export default function Reader() {
   const [, setLocation] = useLocation();
 
   // Apply the source header so chapter-pages API uses the right backend source.
+  // Using setExtraHeader directly (not applyActiveSource) to avoid invalidating
+  // all cached queries, which would cause a full refetch storm every time
+  // the reader opens.
   useEffect(() => {
-    if (sourceId) applyActiveSource(sourceId);
+    if (sourceId) setExtraHeader("X-Source", sourceId);
   }, [sourceId]);
 
   const readerSettings = useStore(s => s.reader);
