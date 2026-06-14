@@ -21,7 +21,10 @@ import { Button } from "@/components/ui/button";
 
 export default function Reader() {
   const [, params] = useRoute("/reader/:chapterId");
-  const chapterId = parseInt(params?.chapterId || "0");
+  // Keep chapterId as a string — numeric sources (NineHentai) use numeric IDs
+  // while string sources (ComickFan) use compound IDs like "slug|||ch|||hash".
+  // parseInt would convert those to NaN, disabling the pages query.
+  const chapterId = params?.chapterId || "";
   const searchString = useSearch();
   const mangaId = new URLSearchParams(searchString).get("mangaId");
   const sourceId = new URLSearchParams(searchString).get("sourceId");
@@ -58,10 +61,10 @@ export default function Reader() {
   const scrollTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
-  const { data: pagesData, isLoading: pagesLoading } = useGetChapterPages(chapterId.toString(), {
+  const { data: pagesData, isLoading: pagesLoading } = useGetChapterPages(chapterId, {
     query: {
-      enabled: !!chapterId,
-      queryKey: getGetChapterPagesQueryKey(chapterId.toString()),
+      enabled: !!chapterId && chapterId !== "0",
+      queryKey: getGetChapterPagesQueryKey(chapterId),
     },
   });
 
@@ -202,7 +205,7 @@ export default function Reader() {
           // Check if at bottom (90%)
           const docHeight = document.documentElement.scrollHeight;
           if (scrollY + wh >= docHeight * 0.9) {
-             const ch = chaptersData.items.find(c => c.id === chapterId);
+             const ch = chaptersData.items.find(c => String(c.id) === chapterId);
              if (ch) {
                storeActions.markChapterRead(mangaId, ch, mangaData, pagesData.pages.length);
              }
@@ -215,7 +218,7 @@ export default function Reader() {
             newPage = Math.round(scrollX / cw);
             
             if (newPage >= pagesData.pages.length - 1) {
-              const ch = chaptersData.items.find(c => c.id === chapterId);
+              const ch = chaptersData.items.find(c => String(c.id) === chapterId);
                if (ch) {
                  storeActions.markChapterRead(mangaId, ch, mangaData, pagesData.pages.length);
                }
@@ -225,7 +228,7 @@ export default function Reader() {
 
         if (newPage !== currentPage) {
           setCurrentPage(newPage);
-          const ch = chaptersData.items.find(c => c.id === chapterId);
+          const ch = chaptersData.items.find(c => String(c.id) === chapterId);
           if (ch && !currentProgress?.isRead) {
             storeActions.recordProgress({
               mangaId,
@@ -271,7 +274,7 @@ export default function Reader() {
       return Array.from(map.values()).sort((a, b) => b.number - a.number);
     }
     const filtered = chaptersData.items.filter(c => (c.scanlator || "Unknown") === selectedScanlator);
-    if (!filtered.find(c => c.id === chapterId)) {
+    if (!filtered.find(c => String(c.id) === chapterId)) {
       // Reading something outside the chosen source; use all chapters so navigation works
       return chaptersData.items;
     }
@@ -279,7 +282,7 @@ export default function Reader() {
   }, [chaptersData, selectedScanlator, chapterId]);
 
   const chapterIndex = useMemo(() => {
-    return navChapters.findIndex(c => c.id === chapterId);
+    return navChapters.findIndex(c => String(c.id) === chapterId);
   }, [navChapters, chapterId]);
 
   const prevChapter = chapterIndex >= 0 && chapterIndex < navChapters.length - 1 ? navChapters[chapterIndex + 1] : null;
@@ -400,7 +403,7 @@ export default function Reader() {
     }
   };
 
-  const currChapterObj = chaptersData?.items.find(c => c.id === chapterId);
+  const currChapterObj = chaptersData?.items.find(c => String(c.id) === chapterId);
 
   return (
     <div className={`min-h-[100dvh] ${bgClass} relative select-none`} onClick={handlePageClick}>
