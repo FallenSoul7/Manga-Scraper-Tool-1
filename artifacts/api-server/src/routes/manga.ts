@@ -163,27 +163,67 @@ router.get("/chapter/:id/pages", async (req, res) => {
 // SSRF protection — hostname string check + DNS resolution
 // ---------------------------------------------------------------------------
 
-/** Returns true if an IP string (v4 or v6) falls in a private/reserved range. */
+/** Returns true if an IPv4 dotted-decimal string falls in a private/reserved range. */
+function isPrivateIPv4(a: number, b: number): boolean {
+  if (a === 10) return true;                        // 10.0.0.0/8
+  if (a === 127) return true;                       // 127.0.0.0/8 loopback
+  if (a === 169 && b === 254) return true;          // 169.254.0.0/16 link-local
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+  if (a === 192 && b === 168) return true;          // 192.168.0.0/16
+  if (a === 0) return true;                         // 0.0.0.0/8 "this" network
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 benchmarking
+  if (a >= 224) return true;                        // 224+/4 multicast + 240+/4 reserved
+  return false;
+}
+
+/**
+ * Returns true if an IP string (v4 or v6, including IPv6-mapped IPv4) falls
+ * in a private, loopback, link-local, multicast, or otherwise reserved range.
+ * Handles:
+ *  - Plain IPv4 dotted decimal
+ *  - IPv6-mapped IPv4 dotted form  (::ffff:127.0.0.1)
+ *  - IPv6-mapped IPv4 hex form     (::ffff:7f00:0001)
+ *  - IPv6 loopback, ULA, link-local, multicast
+ */
 function isPrivateIP(ip: string): boolean {
   const h = ip.toLowerCase().trim();
-  // Loopback / unspecified / link-local (IPv6 and literal names)
+
+  // Literal names / unspecified
   if (h === "localhost" || h === "0.0.0.0" || h === "::1" || h === "::" || h === "") return true;
-  // IPv4
-  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (m) {
-    const [a, b] = [parseInt(m[1]!, 10), parseInt(m[2]!, 10)];
-    if (a === 10) return true;            // 10.0.0.0/8
-    if (a === 127) return true;           // 127.0.0.0/8
-    if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local
-    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
-    if (a === 192 && b === 168) return true; // 192.168.0.0/16
-    if (a === 0) return true;             // 0.0.0.0/8
-    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
-    if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15
+
+  // IPv6-mapped IPv4: ::ffff:<dotted> or ::ffff:<hex16>:<hex16>
+  if (h.startsWith("::ffff:")) {
+    const rest = h.slice(7); // drop "::ffff:"
+    if (rest.includes(".")) {
+      // dotted decimal form: ::ffff:127.0.0.1
+      const m = rest.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+      if (m) return isPrivateIPv4(parseInt(m[1]!, 10), parseInt(m[2]!, 10));
+    } else {
+      // hex form: ::ffff:7f00:0001  → bytes [0x7f, 0x00, 0x00, 0x01]
+      const parts = rest.split(":");
+      if (parts.length === 2) {
+        const hi = parseInt(parts[0]!, 16);
+        const lo = parseInt(parts[1]!, 16);
+        if (!isNaN(hi) && !isNaN(lo)) {
+          return isPrivateIPv4((hi >> 8) & 0xff, hi & 0xff);
+        }
+      }
+    }
+    // Any ::ffff: form we couldn't parse → reject to be safe
+    return true;
   }
+
+  // Plain IPv4 dotted decimal
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) return isPrivateIPv4(parseInt(m[1]!, 10), parseInt(m[2]!, 10));
+
   // IPv6 private ranges
   if (h.startsWith("fc") || h.startsWith("fd")) return true; // ULA fc00::/7
-  if (h.startsWith("fe80:")) return true; // link-local fe80::/10
+  if (h.startsWith("fe80:")) return true;  // link-local fe80::/10
+  if (h.startsWith("ff")) return true;     // multicast ff00::/8
+
+  // Any other IPv6 — allow (public unicast); DNS lookup already validates IPs
   return false;
 }
 
