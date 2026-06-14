@@ -1,37 +1,20 @@
-modules = ["nodejs-24", "python-3.11"]
+modules = ["nodejs-24"]
 
 [deployment]
 router = "application"
 deploymentTarget = "autoscale"
-run = ["bash", "-c", "NODE_ENV=production node artifacts/api-server/dist/index.mjs"]
-build = ["bash", "-c", "pnpm --filter @workspace/api-server run build && PORT=3000 BASE_PATH=/ pnpm --filter @workspace/comix-web run build"]
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
+runButton = "Project"
 
 [agent]
-stack = "BEST_EFFORT_FALLBACK"
+stack = "PNPM_WORKSPACE"
 expertMode = true
 
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
-
-[[ports]]
-localPort = 8080
-externalPort = 80
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
-localPort = 8082
-externalPort = 3002
-
-[[ports]]
-localPort = 19597
-externalPort = 3000
