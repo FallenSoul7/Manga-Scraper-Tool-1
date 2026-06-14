@@ -318,7 +318,7 @@ export default function MangaDetail() {
           <div className="text-muted-foreground text-sm">Could not load details from source.</div>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => window.history.back()}>Go back</Button>
+          <Button variant="outline" onClick={() => setLocation(sourceContext ? `/sources/${sourceContext}` : "/sources")}>Go back</Button>
           <Button onClick={() => window.location.reload()}>Retry</Button>
         </div>
       </div>
@@ -347,7 +347,7 @@ export default function MangaDetail() {
           {/* Floating back arrow — top-left, over the blurred hero */}
           <button
             type="button"
-            onClick={() => window.history.back()}
+            onClick={() => setLocation(sourceContext ? `/sources/${sourceContext}` : "/sources")}
             className="absolute top-3 left-3 z-20 flex items-center justify-center h-9 w-9 rounded-full bg-black/25 backdrop-blur-sm text-white hover:bg-black/40 active:scale-90 transition-all"
           >
             <ArrowLeft className="h-5 w-5" />
