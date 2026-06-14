@@ -295,28 +295,28 @@ export const NineHentaiSource: MangaSource = {
 
     let enrichedBook: NineBook | null = null;
     try {
-      // Fetch page 0 to learn the current max ID (newest book) and check if target is there
-      const page0 = await apiPost<SearchResponseBody>("/api/getBook", buildSearchBody({ page: 0, sort: 0 }));
-      if (page0.status && page0.results?.length) {
-        enrichedBook = page0.results.find(b => b.id === book.id) ?? null;
-        if (!enrichedBook) {
-          // IDs are sequential integers; pages return ~18 books each, newest first.
-          // Estimate which page this book lives on, then check ±1 for off-by-one.
+      // Wrap all enrichment in a 5-second timeout so it never stalls details loading.
+      await Promise.race([
+        (async () => {
+          // Fetch page 0 to learn the current max ID and check if target is there.
+          const page0 = await apiPost<SearchResponseBody>("/api/getBook", buildSearchBody({ page: 0, sort: 0 }));
+          if (!page0.status || !page0.results?.length) return;
+          enrichedBook = page0.results.find(b => b.id === book.id) ?? null;
+          if (enrichedBook) return;
+          // IDs are sequential; estimate which page holds this book and check it once.
           const maxId = page0.results[0].id;
-          const gap = maxId - book.id;
+          const gap   = maxId - book.id;
           if (gap > 0) {
             const estPage = Math.ceil(gap / 18);
-            for (const p of [estPage, estPage + 1, estPage - 1].filter(x => x > 0)) {
-              const pageData = await apiPost<SearchResponseBody>("/api/getBook",
-                buildSearchBody({ page: p, sort: 0 }));
-              enrichedBook = pageData.results?.find(b => b.id === book.id) ?? null;
-              if (enrichedBook) break;
-            }
+            const pageData = await apiPost<SearchResponseBody>("/api/getBook",
+              buildSearchBody({ page: estPage, sort: 0 }));
+            enrichedBook = pageData.results?.find(b => b.id === book.id) ?? null;
           }
-        }
-      }
+        })(),
+        new Promise<void>((_, reject) => setTimeout(() => reject(new Error("enrichment timeout")), 5000)),
+      ]);
     } catch {
-      // enrichment failed — fall through with empty tags
+      // enrichment failed or timed out — fall through with empty tags
     }
 
     const effective = enrichedBook ?? book;
