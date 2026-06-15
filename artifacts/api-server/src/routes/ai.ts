@@ -254,7 +254,8 @@ INTENT ROUTING LAWS:
     // Clean up markdown code wraps if models fail to omit them
     let cleanRaw = raw.trim();
     if (cleanRaw.startsWith("```")) {
-      const match = cleanRaw.replace(/```json\n?/g, "").replace(/
+      const match = cleanRaw.replace(/```json\n?/g, "").replace(/```/g, "").trim();
+
 ```\n?/g, "").trim().match(/\{[\s\S]*\}/);
       if (match) cleanRaw = match[0];
     }
