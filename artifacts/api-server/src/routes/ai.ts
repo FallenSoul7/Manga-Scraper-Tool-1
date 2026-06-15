@@ -250,8 +250,8 @@ INTENT ROUTING LAWS:
 
     let cleanRaw = raw.trim();
     if (cleanRaw.startsWith("```")) {
-      const match = cleanRaw.replace(/
-```json\n?/g, "").replace(/```/g, "").trim().match(/\{[\s\S]*\}/);
+      const match = cleanRaw.replace(/```json\n?/g, "").replace(/```/g, "").trim().match(/\{[\s\S]*\}/);
+
       if (match) cleanRaw = match[0];
     }
 
