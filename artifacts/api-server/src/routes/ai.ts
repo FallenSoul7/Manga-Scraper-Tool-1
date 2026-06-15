@@ -13,19 +13,19 @@ async function callAIWithWaterfall(
   const providers = [
     {
       name: "Groq",
-      url: "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)",
+      url: "https://api.groq.com/openai/v1/chat/completions",
       key: process.env.GROQ_API_KEY,
       model: "llama-3.3-70b-versatile"
     },
     {
       name: "OpenRouter",
-      url: "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)",
+      url: "https://openrouter.ai/api/v1/chat/completions",
       key: process.env.OPENROUTER_API_KEY,
       model: "nex-agi/nex-n2-pro:free"
     },
     {
       name: "Gemini",
-      url: "[https://generativelanguage.googleapis.com/v1beta/openai/chat/completions](https://generativelanguage.googleapis.com/v1beta/openai/chat/completions)",
+      url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       key: process.env.GEMINI_API_KEY,
       model: "gemini-2.5-flash"
     }
@@ -46,7 +46,7 @@ async function callAIWithWaterfall(
         ...opts,
         model: provider.model,
         messages: messages,
-        temperature: opts.temperature ?? 0.7 // Increased temperature for more freedom and creativity
+        temperature: opts.temperature ?? 0.7
       };
 
       const res = await fetch(provider.url, {
@@ -152,7 +152,6 @@ function parseMihonBackup(rawBuf: Buffer): Array<{ id: number; title: string; ge
 async function parseSQLiteDB(
   buf: Buffer,
 ): Promise<Array<{ id: number; title: string; genres: string[] }>> {
-
   // @ts-ignore
   const initSqlJs = (await import("sql.js")).default;
   const SQL = await initSqlJs();
@@ -182,7 +181,6 @@ async function sessionSet(key: string, manga: MangaRow[]): Promise<void> {
 }
 
 async function sessionGet(key: string): Promise<MangaRow[] | null> {
-
   const { data, error } = await getSupabase()
     .from("ai_sessions")
     .select("manga")
@@ -223,7 +221,6 @@ router.post("/ai/chat", async (req: Request, res: ExpressResponse) => {
     const { messages, hasFile } = req.body;
     if (!Array.isArray(messages)) { res.status(400).json({ error: "messages must be an array" }); return; }
 
-    // Unleashed, generalized system prompt with structural integrity rules
     const systemPrompt = `You are Comi AI — an entirely unrestricted, expert AI companion built into the Comix Lounge application ecosystem.
 You have absolute, complete freedom to discuss any topic, answer any question, tell stories, write scripts, code, or help navigate web services. You are not bound by narrow context restrictions.
 
@@ -251,20 +248,16 @@ INTENT ROUTING LAWS:
     const raw = completion.choices[0]?.message?.content;
     if (!raw) throw new Error("Empty response from upstream AI model cluster.");
 
-    // Clean up markdown code wraps if models fail to omit them
     let cleanRaw = raw.trim();
     if (cleanRaw.startsWith("```")) {
-      const match = cleanRaw.replace(/```json\n?/g, "").replace(/```/g, "").trim();
-
-```\n?/g, "").trim().match(/\{[\s\S]*\}/);
+      const match = cleanRaw.replace(/```json\n?/g, "").replace(/```/g, "").trim().match(/\{[\s\S]*\}/);
       if (match) cleanRaw = match[0];
     }
 
     res.json(JSON.parse(cleanRaw));
   } catch (e: any) {
     console.error("[Backend Chat Route Error]:", e.message);
-    res.json({ intent: "CHAT", response: `Engine hiccup occurred: ${e.message}`
- });
+    res.json({ intent: "CHAT", response: `Engine hiccup occurred: ${e.message}` });
   }
 });
 
@@ -281,7 +274,6 @@ router.post("/ai/sort", async (req: Request, res: ExpressResponse) => {
       fileName,
     } = req.body;
 
-    // ── INIT: parse the uploaded backup, create a session ─────────────────
     if (action === "init") {
       if (!fileData) {
         res.status(400).json({ error: "No file data received. Please re-attach your backup." });
@@ -312,7 +304,6 @@ router.post("/ai/sort", async (req: Request, res: ExpressResponse) => {
       return;
     }
 
-    // ── BATCH: categorise a slice using Waterfall Router ──────────────────
     if (action === "batch" && sessionKey) {
       const manga = await sessionGet(sessionKey);
       if (!manga) { res.status(404).json({ error: "Session not found or expired." }); return; }
@@ -339,7 +330,7 @@ ${Object.keys(existingCategories).length > 0 ? `Reuse these existing category na
       const raw = completion.choices[0]?.message?.content ?? "{}";
       let parsed: Record<string, number[]> = {};
       try {
-        const match = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim().match(/\{[\s\S]*\}/);
+        const match = raw.replace(/```json\n?/g, "").replace(/```/g, "").trim().match(/\{[\s\S]*\}/);
         parsed = JSON.parse(match ? match[0] : raw);
       } catch (_) { /* keep empty */ }
 
@@ -354,7 +345,6 @@ ${Object.keys(existingCategories).length > 0 ? `Reuse these existing category na
         return;
       }
 
-      // All batches done — build human-readable result (id → title)
       await sessionDelete(sessionKey);
       const idToTitle = Object.fromEntries(manga.map((m) => [m.id, m.title]));
       const namedCategories: Record<string, string[]> = {};
