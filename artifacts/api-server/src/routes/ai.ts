@@ -1,6 +1,7 @@
 import { Router } from "express";
-import type { IRouter, Request, Response } from "express";
+import type { IRouter, Request, Response as ExpressResponse } from "express";
 import { gunzipSync } from "zlib";
+
 
 const router: IRouter = Router();
 
@@ -131,8 +132,8 @@ function makeKey() {
 }
 
 // ── POST /api/ai/chat ──────────────────────────────────────────────────────
-router.post("/ai/chat", async (req: Request, res: Response) => {
-  try {
+router.post("/ai/chat", async (req: Request, res: ExpressResponse) => {
+
     const { messages, hasFile } = req.body;
     if (!Array.isArray(messages)) { res.status(400).json({ error: "messages must be an array" }); return; }
 
@@ -167,8 +168,8 @@ INTENT RULES:
 });
 
 // ── POST /api/ai/sort ──────────────────────────────────────────────────────
-router.post("/ai/sort", async (req: Request, res: Response) => {
-  try {
+router.post("/ai/sort", async (req: Request, res: ExpressResponse) => {
+
     const {
       action,
       command,
@@ -281,7 +282,8 @@ ${Object.keys(existingCategories).length > 0 ? `Reuse these existing category na
 });
 
 // ── GET /api/ai/download?file=sorted_xxx.json ──────────────────────────────
-router.get("/ai/download", (req: Request, res: Response) => {
+router.get("/ai/download", (req: Request, res: ExpressResponse) => {
+
   const file = String(req.query.file ?? "");
   const data = downloadResults.get(file);
   if (!data) { res.status(404).json({ error: "Result not found or expired." }); return; }
