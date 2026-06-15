@@ -3,30 +3,78 @@ import type { IRouter, Request, Response as ExpressResponse } from "express";
 import { gunzipSync } from "zlib";
 import { getSupabase } from "@/lib/supabase";
 
-
 const router: IRouter = Router();
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_BASE = "https://api.groq.com/openai/v1/chat/completions";
-
-async function callGroq(
+// ── Server-Side Universal AI Waterfall Engine ──────────────────────────────
+async function callAIWithWaterfall(
   messages: any[],
-  model = "llama-3.3-70b-versatile",
-  opts: Record<string, unknown> = {},
+  opts: Record<string, unknown> = {}
 ): Promise<any> {
-  if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY is not set. Add it in Secrets.");
-  
-  // Notice the "as any" added to the end of the fetch call below!
-  const res = (await fetch(GROQ_BASE, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
-    body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 1000, ...opts }),
-  })) as any;
-  
-  if (!res.ok) throw new Error(`Groq API error: ${await res.text()}`);
-  return res.json() as Promise<any>;
-}
+  const providers = [
+    {
+      name: "Groq",
+      url: "https://api.groq.com/openai/v1/chat/completions",
+      key: process.env.GROQ_API_KEY,
+      model: "llama-3.3-70b-versatile"
+    },
+    {
+      name: "OpenRouter",
+      url: "https://openrouter.ai/api/v1/chat/completions",
+      key: process.env.OPENROUTER_API_KEY,
+      model: "nex-agi/nex-n2-pro:free"
+    },
+    {
+      name: "Gemini",
+      url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      key: process.env.GEMINI_API_KEY,
+      model: "gemini-1.5-flash"
+    }
+  ];
 
+  let lastError = new Error("No AI API keys are configured on the server.");
+
+  for (const provider of providers) {
+    if (!provider.key) {
+      console.warn(`[Backend Waterfall] Skipping ${provider.name}: Key is missing in environment.`);
+      continue;
+    }
+
+    try {
+      console.log(`[Backend Waterfall] Attempting execution with ${provider.name}...`);
+      
+      const bodyPayload = {
+        ...opts,
+        model: provider.model,
+        messages: messages,
+        temperature: opts.temperature ?? 0.1
+      };
+
+      const res = await fetch(provider.url, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json", 
+          Authorization: `Bearer ${provider.key}` 
+        },
+        body: JSON.stringify(bodyPayload),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Status ${res.status}: ${errText}`);
+      }
+
+      const data = await res.json();
+      console.log(`[Backend Waterfall] Success via ${provider.name}!`);
+      return data;
+
+    } catch (error: any) {
+      console.error(`[Backend Waterfall] ❌ ${provider.name} failed:`, error.message);
+      lastError = error;
+    }
+  }
+
+  throw new Error(`All backend AI backup models exhausted. Last error: ${lastError.message}`);
+}
 
 // ── Minimal protobuf varint reader ─────────────────────────────────────────
 function readVarint(buf: Buffer, pos: number): [bigint, number] {
@@ -43,7 +91,6 @@ function readVarint(buf: Buffer, pos: number): [bigint, number] {
 }
 
 // Parse a single BackupManga message.
-// From Mihon source: field 3 = title (string), field 7 = genre (repeated string)
 function parseBackupManga(buf: Buffer): { title: string; genres: string[] } {
   let pos = 0;
   let title = "";
@@ -70,8 +117,6 @@ function parseBackupManga(buf: Buffer): { title: string; genres: string[] } {
 }
 
 // Parse a Mihon .tachibk / .tmb backup.
-// Outer Backup message: field 1 = repeated BackupManga.
-// File may be raw protobuf or gzip-wrapped protobuf (magic bytes 0x1f 0x8b).
 function parseMihonBackup(rawBuf: Buffer): Array<{ id: number; title: string; genres: string[] }> {
   let buf = rawBuf;
   if (buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b) {
@@ -104,12 +149,10 @@ function parseMihonBackup(rawBuf: Buffer): Array<{ id: number; title: string; ge
 }
 
 // Parse a Tachiyomi .db (SQLite) file.
-// Schema from Mihon source: mangas table, favorite=1 rows are library entries.
-// genre column is a comma-separated string.
 async function parseSQLiteDB(
   buf: Buffer,
 ): Promise<Array<{ id: number; title: string; genres: string[] }>> {
-  // @ts-ignore — sql.js ships no .d.ts; types are handled at runtime via any
+  // @ts-ignore
   const initSqlJs = (await import("sql.js")).default;
   const SQL = await initSqlJs();
   const db = new SQL.Database(new Uint8Array(buf));
@@ -197,8 +240,9 @@ INTENT RULES:
     const clean = messages.map((m: any) => ({ role: m.role, content: m.content }));
     clean.unshift({ role: "system", content: systemPrompt });
 
-    const completion = await callGroq(clean, "llama-3.3-70b-versatile", {
+    const completion = await callAIWithWaterfall(clean, {
       response_format: { type: "json_object" },
+      max_tokens: 1000,
     });
     const raw = completion.choices[0].message?.content;
     if (!raw) throw new Error("Empty response from AI");
@@ -217,8 +261,8 @@ router.post("/ai/sort", async (req: Request, res: ExpressResponse) => {
       cursor = 0,
       existingCategories = {},
       sessionKey,
-      fileData,   // base64-encoded raw file bytes sent by the frontend
-      fileName,   // original filename, used to detect format (.db vs .tachibk/.tmb)
+      fileData,
+      fileName,
     } = req.body;
 
     // ── INIT: parse the uploaded backup, create a session ─────────────────
@@ -252,7 +296,7 @@ router.post("/ai/sort", async (req: Request, res: ExpressResponse) => {
       return;
     }
 
-    // ── BATCH: categorise a slice using Groq ──────────────────────────────
+    // ── BATCH: categorise a slice using Waterfall Router ──────────────────
     if (action === "batch" && sessionKey) {
       const manga = await sessionGet(sessionKey);
       if (!manga) { res.status(404).json({ error: "Session not found or expired." }); return; }
@@ -265,7 +309,7 @@ router.post("/ai/sort", async (req: Request, res: ExpressResponse) => {
       const systemPrompt = `You are an expert manga categorisation AI. Return ONLY valid JSON: { "Category Name": [id1, id2, ...] }. Every ID in the batch must appear in exactly one category. No markdown.
 ${Object.keys(existingCategories).length > 0 ? `Reuse these existing category names when appropriate: ${Object.keys(existingCategories).join(", ")}` : ""}`;
 
-      const completion = await callGroq(
+      const completion = await callAIWithWaterfall(
         [
           { role: "system", content: systemPrompt },
           {
@@ -273,8 +317,7 @@ ${Object.keys(existingCategories).length > 0 ? `Reuse these existing category na
             content: `Command: "${command}"\n\nBatch:\n${JSON.stringify(batch, null, 2)}\n\nReturn JSON only.`,
           },
         ],
-        "llama-3.3-70b-versatile",
-        { max_tokens: 4000 },
+        { max_tokens: 4000 }
       );
 
       const raw = completion.choices[0]?.message?.content ?? "{}";
