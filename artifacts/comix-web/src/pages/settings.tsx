@@ -1,5 +1,5 @@
 import { useSettings } from "@/hooks/use-settings";
-import { GetPopularPoster, GetMangaDetailsScore } from "@workspace/api-client-react";
+import { GetPopularPoster, GetMangaDetailsScore } from "@/hooks/use-settings";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";

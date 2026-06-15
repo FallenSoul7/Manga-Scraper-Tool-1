@@ -17,6 +17,19 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+const _extraHeaders: Record<string, string> = {};
+
+/**
+ * Set an extra header that is attached to every customFetch request.
+ * Pass an empty string to remove a previously set header.
+ */
+export function setExtraHeader(name: string, value: string): void {
+  if (value === "") {
+    delete _extraHeaders[name];
+  } else {
+    _extraHeaders[name] = value;
+  }
+}
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -335,7 +348,7 @@ export async function customFetch<T = unknown>(
     throw new TypeError(`customFetch: ${method} requests cannot have a body.`);
   }
 
-  const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
+  const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, _extraHeaders, headersInit);
 
   if (
     typeof init.body === "string" &&
