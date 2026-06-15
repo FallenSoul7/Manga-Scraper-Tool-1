@@ -212,35 +212,57 @@ interface TagListResponseBody {
   total_count?: number;
 }
 
-const TAG_TYPE_MAP: Array<{ type: number; group: string; pages: number }> = [
-  { type: 6, group: "Category", pages: 1 },  // ~7 categories, 1 page is enough
-  { type: 1, group: "Tag", pages: 2 },        // thousands of tags, take 2 pages sorted
+// Expanded mapping to unlock every type group and pull down deeper page thresholds
+const TAG_TYPE_MAP: Array<{ type: number; group: string; maxPages: number }> = [
+  { type: 6, group: "Category", maxPages: 2 },   // Base category tags
+  { type: 1, group: "Tag", maxPages: 35 },        // Captures thousands of standard descriptors
+  { type: 3, group: "Parody", maxPages: 10 },     // Captures series/parody titles
+  { type: 5, group: "Character", maxPages: 15 },  // Captures individual cast filters
+  { type: 4, group: "Artist", maxPages: 20 },     // Captures specific illustrators
+  { type: 2, group: "Group", maxPages: 10 },      // Captures scanlation/publishing circles
 ];
 
 async function fetchTags(): Promise<SourceTag[]> {
   const all: SourceTag[] = [];
-  for (const { type, group, pages } of TAG_TYPE_MAP) {
+  
+  for (const { type, group, maxPages } of TAG_TYPE_MAP) {
     try {
-      for (let page = 0; page < pages; page++) {
+      for (let page = 0; page < maxPages; page++) {
         const data = await apiPost<TagListResponseBody>("/api/getTags", {
           search: { text: "", page, letter: "", sort: 0, uses: 1 },
           type,
         });
-        if (!data.status || !Array.isArray(data.results)) break;
-        for (const t of data.results) {
-          // Encode type into the ID so parseTagIds can reconstruct {id, type}
-          all.push({ id: `${type}:${t.id}`, name: t.name, group, count: t.books_count });
+        
+        if (!data.status || !Array.isArray(data.results) || data.results.length === 0) {
+          break; // Exit group pagination if empty or invalid response
         }
-        if (data.results.length < 50) break; // last page
+
+        for (const t of data.results) {
+          // Reconstruct ID mapping format cleanly for parseTagIds
+          all.push({ 
+            id: `${type}:${t.id}`, 
+            name: t.name, 
+            group, 
+            count: t.books_count 
+          });
+        }
+
+        // Standard optimization: if the page isn't full, it's the end of that specific group
+        if (data.results.length < 30) {
+          break;
+        }
       }
-    } catch {
-      // skip on error
+    } catch (err) {
+      console.error(`[9Hentai Filter Engine] Failed fetching metadata group [${group}]:`, err);
+      // Fallthrough safely to the next metadata group rather than crashing the loop
     }
   }
-  // Sort tags by book count descending so most popular appear first
+
+  // Sort universally by overall popularity descending so items with highest volume surface to the top
   all.sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
   return all;
 }
+
 
 // ────────── Source ──────────
 
