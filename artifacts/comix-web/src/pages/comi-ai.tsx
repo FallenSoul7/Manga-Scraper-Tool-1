@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, Send, Paperclip, Sparkles, X, Loader2, ShieldCheck, ShieldX } from "lucide-react";
+import { ArrowLeft, Send, Paperclip, Sparkles, X, Loader2, ShieldCheck, ShieldX, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -188,7 +188,6 @@ async function callAIWithWaterfall(msgs: GroqMsg[]): Promise<{ content: string |
     },
     {
       name: "Gemini",
-      // Gemini's OpenAI compatibility endpoint!
       url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       key: VITE_GEMINI_KEY,
       model: "gemini-2.5-flash"
@@ -239,13 +238,11 @@ async function callAIWithWaterfall(msgs: GroqMsg[]): Promise<{ content: string |
     } catch (error: any) {
       console.warn(`[Waterfall Router] ❌ ${provider.name} failed or rate-limited:`, error.message);
       lastError = error;
-      // The loop will now naturally continue to the next provider!
     } finally {
       clearTimeout(timer);
     }
   }
 
-  // If the loop finishes and all providers failed:
   throw new Error(`All AI endpoints exhausted. Last error: ${lastError.message}`);
 }
 
@@ -382,7 +379,20 @@ const WELCOME: Message = {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function ComiAIPage() {
-  const [messages, setMessages] = useState<Message[]>([WELCOME]);
+  // Messages state mounts dynamically out of localStorage to persist across tabs
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = localStorage.getItem("comi_lounge_chat");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
+      } catch (_) {
+        return [WELCOME];
+      }
+    }
+    return [WELCOME];
+  });
+
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isWakingUp, setIsWakingUp] = useState(false);
@@ -392,7 +402,9 @@ export default function ComiAIPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const wakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Automatically preserve changes to local client instance cache on modifications
   useEffect(() => {
+    localStorage.setItem("comi_lounge_chat", JSON.stringify(messages));
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
@@ -411,9 +423,15 @@ export default function ComiAIPage() {
   const addMsg = useCallback((content: string, extra: Partial<Message> = {}) => {
     const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const msg: Message = { id, role: "assistant", content, timestamp: new Date(), ...extra };
-    setMessages(prev => [...prev, msg]);
+    // Enforce strict rolling 20-message memory constraint
+    setMessages(prev => [...prev, msg].slice(-20));
     return id;
   }, []);
+
+  const clearChatMemory = () => {
+    localStorage.removeItem("comi_lounge_chat");
+    setMessages([WELCOME]);
+  };
 
   // ── Grant / Deny permission ──────────────────────────────────────────────
 
@@ -444,14 +462,12 @@ export default function ComiAIPage() {
       const reply = await callAIWithWaterfall(msgs);
 
       if (reply.tool_calls?.length) {
-        // Append assistant tool-call message
         msgs.push({
           role: "assistant",
           content: reply.content ?? null,
           tool_calls: reply.tool_calls,
         });
 
-        // Execute each tool call and collect results
         for (const tc of reply.tool_calls) {
           let args: Record<string, any> = {};
           try { args = JSON.parse(tc.function.arguments); } catch { /**/ }
@@ -459,7 +475,6 @@ export default function ComiAIPage() {
           const { result, permissionRequest } = await executeTool(tc.function.name, args);
 
           if (permissionRequest) {
-            // Show permission message in chat and stop the loop
             const content = `🔐 **Permission required**\n\n${permissionRequest.description}\n\nClick **Grant Permission** below to proceed, or **Cancel** to skip.`;
             const id = `perm-${Date.now()}`;
             const permMsg: Message = {
@@ -469,8 +484,9 @@ export default function ComiAIPage() {
               timestamp: new Date(),
               permissionRequest,
             };
-            setMessages(prev => [...prev, permMsg]);
-            return; // Stop loop — user must grant permission
+            // Enforce strict rolling 20-message memory constraint
+            setMessages(prev => [...prev, permMsg].slice(-20));
+            return;
           }
 
           msgs.push({
@@ -479,10 +495,9 @@ export default function ComiAIPage() {
             content: result,
           });
         }
-        continue; // Keep looping
+        continue;
       }
 
-      // No more tool calls — this is the final text response
       if (reply.content) {
         addMsg(reply.content);
       }
@@ -520,10 +535,10 @@ export default function ComiAIPage() {
       file: file ? { name: file.name, size: file.size } : undefined,
       timestamp: new Date(),
     };
-    setMessages(prev => [...prev, userMsg]);
+    // Enforce strict rolling 20-message memory constraint
+    setMessages(prev => [...prev, userMsg].slice(-20));
 
     try {
-      // Check if user wants library organisation via backup file (keep backend flow)
       const isOrganize = file && /\b(sort|organise|organize|categoris|categoriz|group|arrang)\b/i.test(userContent);
 
       if (isOrganize && file) {
@@ -531,7 +546,6 @@ export default function ComiAIPage() {
         return;
       }
 
-      // Normal chat — build AI message history and run tool loop
       const history = messages
         .filter(m => m.id !== "welcome" && !m.permissionRequest)
         .map<GroqMsg>(m => ({ role: m.role, content: m.content }));
@@ -567,7 +581,8 @@ export default function ComiAIPage() {
         if (id && prev.find(m => m.id === id)) {
           return prev.map(m => m.id === id ? { ...m, content } : m);
         }
-        return [...prev, { id: msgId, role: "assistant" as const, content, timestamp: new Date() }];
+        // Enforce strict rolling 20-message memory constraint on appending process items
+        return [...prev, { id: msgId, role: "assistant" as const, content, timestamp: new Date() }].slice(-20);
       });
       return msgId;
     };
@@ -655,14 +670,29 @@ export default function ComiAIPage() {
         <Link href="/system" className="text-muted-foreground hover:text-primary transition-colors">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-            <Sparkles className="h-4 w-4" />
+        <div className="flex items-center justify-between w-full">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div>
+              <h1 className="font-serif font-bold text-lg leading-none">Comi AI</h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Search · Recommend · Library Grid ({messages.length}/20)
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="font-serif font-bold text-lg leading-none">Comi AI</h1>
-            <p className="text-xs text-muted-foreground">Search · Recommend · Manage library</p>
-          </div>
+          {messages.length > 1 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearChatMemory}
+              className="text-xs h-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1 rounded-xl transition-all"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Clear Grid
+            </Button>
+          )}
         </div>
       </div>
 
