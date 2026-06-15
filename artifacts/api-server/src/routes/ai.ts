@@ -151,7 +151,8 @@ function parseMihonBackup(rawBuf: Buffer): Array<{ id: number; title: string; ge
 // Parse a Tachiyomi .db (SQLite) file.
 async function parseSQLiteDB(
   buf: Buffer,
-): Promise<Array<{ genres: id: number; string; string[] title: }>> {
+): Promise<Array<{ id: number; title: string; genres: string[] }>> {
+
   // @ts-ignore
   const initSqlJs = (await import("sql.js")).default;
   const SQL = await initSqlJs();
