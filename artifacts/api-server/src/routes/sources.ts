@@ -4,8 +4,6 @@ import catalogRaw from "../sources/catalog.generated.json" assert { type: "json"
 
 const router = Router();
 
-const ICON_CDN = "https://raw.githubusercontent.com/keiyoushi/extensions/main/docs/static/extension-icons";
-
 const enriched = {
   generatedAt: catalogRaw.generatedAt,
   count: catalogRaw.count,
@@ -16,7 +14,7 @@ const enriched = {
     lang: ext.lang,
     isNsfw: ext.isNsfw,
     versionCode: ext.versionCode,
-    iconUrl: ext.icon ? `${ICON_CDN}/${ext.icon}` : null,
+    iconUrl: null,
     supported: isSupported(ext.id as string),
   })),
 };
