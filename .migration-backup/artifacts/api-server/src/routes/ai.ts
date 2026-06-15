@@ -1,8 +1,9 @@
 import { Router } from "express";
-import type { Request, Response } from "express";
+import type { IRouter, Request, Response as ExpressResponse } from "express";
 import { gunzipSync } from "zlib";
 
-const router = Router();
+
+const router: IRouter = Router();
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_BASE = "https://api.groq.com/openai/v1/chat/completions";
@@ -13,14 +14,18 @@ async function callGroq(
   opts: Record<string, unknown> = {},
 ): Promise<any> {
   if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY is not set. Add it in Secrets.");
-  const res = await fetch(GROQ_BASE, {
+  
+  // Notice the "as any" added to the end of the fetch call below!
+  const res = (await fetch(GROQ_BASE, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
     body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 1000, ...opts }),
-  });
+  })) as any;
+  
   if (!res.ok) throw new Error(`Groq API error: ${await res.text()}`);
   return res.json() as Promise<any>;
 }
+
 
 // ── Minimal protobuf varint reader ─────────────────────────────────────────
 function readVarint(buf: Buffer, pos: number): [bigint, number] {
@@ -131,7 +136,7 @@ function makeKey() {
 }
 
 // ── POST /api/ai/chat ──────────────────────────────────────────────────────
-router.post("/ai/chat", async (req: Request, res: Response) => {
+router.post("/ai/chat", async (req: Request, res: ExpressResponse) => {
   try {
     const { messages, hasFile } = req.body;
     if (!Array.isArray(messages)) { res.status(400).json({ error: "messages must be an array" }); return; }
@@ -167,8 +172,8 @@ INTENT RULES:
 });
 
 // ── POST /api/ai/sort ──────────────────────────────────────────────────────
-router.post("/ai/sort", async (req: Request, res: Response) => {
-  try {
+router.post("/ai/sort", async (req: Request, res: ExpressResponse) => {
+ try {
     const {
       action,
       command,
@@ -281,7 +286,8 @@ ${Object.keys(existingCategories).length > 0 ? `Reuse these existing category na
 });
 
 // ── GET /api/ai/download?file=sorted_xxx.json ──────────────────────────────
-router.get("/ai/download", (req: Request, res: Response) => {
+router.get("/ai/download", (req: Request, res: ExpressResponse) => {
+
   const file = String(req.query.file ?? "");
   const data = downloadResults.get(file);
   if (!data) { res.status(404).json({ error: "Result not found or expired." }); return; }

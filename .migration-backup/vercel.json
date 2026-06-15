@@ -3,7 +3,7 @@
   "installCommand": "pnpm install",
   "buildCommand": "pnpm -w run vercel-build",
   "functions": {
-    "api/index.ts": {
+    "api/index.js": {
       "maxDuration": 30,
       "includeFiles": "artifacts/comix-web/dist/public/**,artifacts/api-server/dist/**"
     }

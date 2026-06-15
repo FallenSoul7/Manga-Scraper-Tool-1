@@ -1,0 +1,271 @@
+Here's a complete, detailed breakdown of every file changed and exactly why — formatted so you or anyone else can apply them manually.
+
+File 1: vercel.json
+Why: The old config routed ALL requests (including /favicon.ico, /, /assets/*) through a Node.js serverless function, which crashed with ERR_UNSUPPORTED_DIR_IMPORT. Vercel should only serve the static Vite build output.
+
+Before:
+
+{
+  "version": 2,
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm -w run vercel-build",
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 30,
+      "includeFiles": "artifacts/comix-web/dist/public/**,artifacts/api-server/dist/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api" }
+  ],
+  "env": {
+    "DATABASE_URL": "@database_url",
+    "GROQ_API_KEY": "@groq_api_key",
+    "SUPABASE_URL": "@supabase_url",
+    "SUPABASE_ANON_KEY": "@supabase_anon_key",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase_service_role_key"
+  }
+}
+After:
+
+{
+  "version": 2,
+  "installCommand": "pnpm install",
+  "buildCommand": "PORT=3000 BASE_PATH=/ pnpm --filter @workspace/comix-web run build",
+  "outputDirectory": "artifacts/comix-web/dist/public",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
+File 2: artifacts/api-server/src/routes/sources.ts
+Why: process.cwd() when the API server runs is artifacts/api-server/. The old path artifacts/comix-web/public/source-icons was being resolved relative to that, producing a path that didn't exist. The icons were copied into artifacts/api-server/public/source-icons, so the correct relative path is just public/source-icons.
+
+Before (line 29):
+
+express.static(path.resolve(process.cwd(), "artifacts/comix-web/public/source-icons"), {
+After (line 29):
+
+express.static(path.resolve(process.cwd(), "public/source-icons"), {
+File 3: artifacts/api-server/build.mjs
+Why: esbuild doesn't automatically know that @ maps to src/. Without the alias, import { getSupabase } from "@/lib/supabase" fails at build time with Could not resolve "@/lib/supabase".
+
+Before (inside the esbuild({...}) call, after logLevel: "info",):
+
+// nothing here
+external: [
+After — add this block right after logLevel: "info",:
+
+alias: {
+  "@": path.resolve(artifactDir, "src"),
+},
+File 4: artifacts/api-server/src/lib/supabase.ts (NEW FILE)
+Why: The AI sort routes used in-memory Map() objects for session and result storage. On Render (a persistent server), maps would work but reset on every deploy. On any serverless platform they'd reset on every request. Supabase replaces them with durable database rows. The client is lazy (only initialised when a route is actually called) so the server starts fine even without env vars set.
+
+Create this file at artifacts/api-server/src/lib/supabase.ts:
+
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+let _client: SupabaseClient | null = null;
+/**
+ * Returns a Supabase client initialised from env vars.
+ * Throws a clear error if SUPABASE_URL / SUPABASE_SERVICE_KEY are not set,
+ * but only when an AI route is actually called — not at server startup.
+ *
+ * Required Supabase tables (run once in the SQL editor):
+ *
+ *   create table if not exists ai_sessions (
+ *     key        text primary key,
+ *     manga      jsonb not null,
+ *     created_at timestamptz default now()
+ *   );
+ *
+ *   create table if not exists ai_results (
+ *     filename   text primary key,
+ *     data       text not null,
+ *     created_at timestamptz default now()
+ *   );
+ */
+export function getSupabase(): SupabaseClient {
+  if (_client) return _client;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error(
+      "SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_SERVICE_ROLE_KEY) must be set in environment variables.",
+    );
+  }
+  _client = createClient(url, key, { auth: { persistSession: false } });
+  return _client;
+}
+File 5: artifacts/api-server/src/routes/ai.ts
+Why: Replaced the two in-memory Map stores (sessions and downloadResults) with Supabase table reads/writes. Every Map.set() → Supabase upsert, every Map.get() → Supabase select, every Map.delete() → Supabase delete. The download route also became async since resultGet() is now async.
+
+Key changes — remove these lines near the top:
+
+// ── In-memory session + result stores ─────────────────────────────────────
+const sessions = new Map<string, Array<{ id: number; title: string; genres: string[] }>>();
+const downloadResults = new Map<string, string>(); // filename → JSON string
+Add this import at the top of the file:
+
+import { getSupabase } from "@/lib/supabase";
+Add these helper functions after makeKey() and before the routes:
+
+type MangaRow = { id: number; title: string; genres: string[] };
+async function sessionSet(key: string, manga: MangaRow[]): Promise<void> {
+  const { error } = await getSupabase()
+    .from("ai_sessions")
+    .upsert({ key, manga }, { onConflict: "key" });
+  if (error) throw new Error(`Supabase sessionSet: ${error.message}`);
+}
+async function sessionGet(key: string): Promise<MangaRow[] | null> {
+  const { data, error } = await getSupabase()
+    .from("ai_sessions")
+    .select("manga")
+    .eq("key", key)
+    .single();
+  if (error || !data) return null;
+  return data.manga as MangaRow[];
+}
+async function sessionDelete(key: string): Promise<void> {
+  await getSupabase().from("ai_sessions").delete().eq("key", key);
+}
+async function resultSet(filename: string, data: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from("ai_results")
+    .upsert({ filename, data }, { onConflict: "filename" });
+  if (error) throw new Error(`Supabase resultSet: ${error.message}`);
+}
+async function resultGet(filename: string): Promise<string | null> {
+  const { data, error } = await getSupabase()
+    .from("ai_results")
+    .select("data")
+    .eq("filename", filename)
+    .single();
+  if (error || !data) return null;
+  return data.data as string;
+}
+In the init action handler, replace:
+
+const key = makeKey();
+sessions.set(key, manga);
+With:
+
+const key = makeKey();
+await sessionSet(key, manga);
+In the batch action handler, replace:
+
+const manga = sessions.get(sessionKey);
+With:
+
+const manga = await sessionGet(sessionKey);
+Where the batch finishes, replace:
+
+sessions.delete(sessionKey);
+// ...
+downloadResults.set(resultFileName, JSON.stringify(namedCategories, null, 2));
+With:
+
+await sessionDelete(sessionKey);
+// ...
+await resultSet(resultFileName, JSON.stringify(namedCategories, null, 2));
+In the download route, replace:
+
+router.get("/ai/download", (req: Request, res: Response) => {
+  const file = String(req.query.file ?? "");
+  const data = downloadResults.get(file);
+With:
+
+router.get("/ai/download", async (req: Request, res: Response) => {
+  const file = String(req.query.file ?? "");
+  const data = await resultGet(file);
+File 6: artifacts/comix-web/src/pages/comi-ai.tsx
+Why 1 (height): The page was wrapped with h-[calc(100dvh-4rem)] which subtracts the global nav height. But Comi AI has no global nav (it was moved to a standalone route). So it had a 64px gap at the top.
+
+Why 2 (file upload): The old upload code called .text() on a gzip-compressed blob, which returns garbled binary. The fix reads the file as a base64 data URL via FileReader, strips the data:...;base64, prefix, and sends just the raw base64 string which the backend decodes with Buffer.from(data, "base64").
+
+Change 1 — page height:
+
+// Before:
+<main className="container mx-auto px-4 py-6 max-w-3xl h-[calc(100dvh-4rem)] flex flex-col">
+// After:
+<main className="container mx-auto px-4 py-6 max-w-3xl h-[100dvh] flex flex-col">
+Change 2 — remove the broken gzipFile function entirely (it used CompressionStream then read binary as text).
+
+Change 3 — replace the upload block:
+
+// Before (broken):
+addMsg(`📦 Compressing ${(file.size / 1024 / 1024).toFixed(1)} MB file...`);
+const compressed = await gzipFile(file);
+addMsg(`📤 Uploading compressed file...`);
+const initRes = await fetch("/api/ai/sort", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ command, action: "init", fileBlob: await compressed.text().catch(() => null) }),
+});
+if (!initRes.ok) throw new Error("Initialization failed — check your API keys.");
+// After (correct):
+addMsg(`📤 Reading **${file.name}** (${(file.size / 1024 / 1024).toFixed(1)} MB)...`);
+const fileData = await new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "");
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
+const initRes = await fetch("/api/ai/sort", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ command, action: "init", fileData, fileName: file.name }),
+});
+if (!initRes.ok) {
+  const err = await initRes.json().catch(() => ({ error: "Initialization failed" }));
+  throw new Error(err.error || "Initialization failed — check your GROQ_API_KEY.");
+}
+File 7: artifacts/comix-web/src/App.tsx
+Why: The Comi AI route was inside the <Route path="/.*"> wrapper that adds the global header/nav tabs to every page. Moving it outside means /comi-ai renders as a completely standalone page with no nav.
+
+Before:
+
+<Route path="/.*">
+  <Header />
+  <Switch>
+    {/* ... all routes ... */}
+    <Route path="/comi-ai" component={ComiAIPage} />
+  </Switch>
+</Route>
+After:
+
+<Route path="/comi-ai" component={ComiAIPage} />  {/* standalone — no header */}
+<Route path="/.*">
+  <Header />
+  <Switch>
+    {/* ... all other routes ... */}
+  </Switch>
+</Route>
+File 8: artifacts/comix-web/src/pages/source-browse.tsx
+Why: The extension icon in the source-browse header was removed and the grid spacing was too large making the cards small.
+
+Change 1 — restore extension icon in header (add before the source name <h1>):
+
+// Add icon/initials display:
+{catalogEntry?.iconUrl ? (
+  <img src={catalogEntry.iconUrl} className="h-8 w-8 rounded" />
+) : (
+  <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-xs font-bold">
+    {sourceId.split(".").pop()?.slice(0, 2).toUpperCase()}
+  </div>
+)}
+Change 2 — reduce grid gap:
+
+// Before:
+className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-5 ..."
+// After:
+className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 ..."
+Change 3 — reduce top padding:
+
+// Before:  py-6
+// After:   py-3
+Dependency to install
+Run this once in the artifacts/api-server directory (or add to its package.json dependencies):
+
+@supabase/supabase-js
+pnpm --filter @workspace/api-server add @supabase/supabase-js
+That's every change, with the exact before/after code and the reason for each one
