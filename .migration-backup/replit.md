@@ -1,11 +1,10 @@
-# Comix Lounge
+# [Project name]
 
-A manga reader web app with a library, browsing sources, reading history, and a multi-source backend scraper.
+_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
-- `pnpm --filter @workspace/comix-web run dev` — run the frontend (port 19597)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -15,8 +14,7 @@ A manga reader web app with a library, browsing sources, reading history, and a 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- Frontend: React + Vite + Tailwind CSS v4 + wouter (routing) + shadcn/ui
-- API: Express 5 with axios + cheerio for scraping
+- API: Express 5
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
@@ -24,28 +22,15 @@ A manga reader web app with a library, browsing sources, reading history, and a 
 
 ## Where things live
 
-- `artifacts/comix-web/` — React + Vite frontend (manga reader UI)
-- `artifacts/api-server/` — Express backend with manga source scrapers
-- `artifacts/api-server/src/sources/` — Manga source scrapers (MangaDex, Comick, Madara, etc.)
-- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contracts)
-- `lib/api-client-react/` — Generated React Query hooks
-- `lib/api-zod/` — Generated Zod schemas
-- `lib/db/` — Drizzle ORM schema + migrations
+_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
 
 ## Architecture decisions
 
-- Contract-first API: OpenAPI spec → codegen → Zod schemas + React Query hooks
-- wouter for lightweight client-side routing (not Next.js)
-- Multi-source manga scraping: each source implements a common interface in `src/sources/`
-- Frontend is fully client-rendered (Vite SPA), no SSR
+_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
 
 ## Product
 
-Comix Lounge is a manga reader app. Users can:
-- Browse and manage a personal manga library organized into shelves
-- Browse multiple manga sources (MangaDex, Comick.fun, Madara-based sites, etc.)
-- Read manga chapters with a built-in reader
-- Track reading history and check for updates
+_Describe the high-level user-facing capabilities of this app once they exist._
 
 ## User preferences
 
@@ -53,9 +38,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-- `axios` and `cheerio` must be installed as direct deps on `@workspace/api-server` — they are not in the workspace catalog
-- Do NOT run `pnpm dev` at workspace root; use `restart_workflow` or filter-specific commands
-- The `.migration-backup/` artifacts have their own (duplicate) workflows registered — ignore those, use only `artifacts/` workflows
+_Populate as you build — sharp edges, "always run X before Y" rules._
 
 ## Pointers
 

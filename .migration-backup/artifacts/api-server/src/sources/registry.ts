@@ -64,6 +64,13 @@ register(createMadaraSource({
 
 // Mangathemesia-themed sources
 register(createMangaThemesiaSource({
+  id: "all.mihentai",
+  name: "MiHentai",
+  baseUrl: "https://mihentai.com",
+  lang: "all",
+  isNsfw: true,
+}));
+register(createMangaThemesiaSource({
   id: "en.elftoon",
   name: "Elf Toon",
   baseUrl: "https://elftoon.com",

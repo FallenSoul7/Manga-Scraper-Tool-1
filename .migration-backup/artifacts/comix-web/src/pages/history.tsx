@@ -137,7 +137,7 @@ export default function HistoryPage() {
               <button
                 type="button"
                 className="shrink-0 p-2 text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => storeActions.removeFromHistory(item.mangaId, item.chapterId)}
+                onClick={() => storeActions.removeFromHistory(item.mangaId, Number(item.chapterId))}
               >
                 <Trash2 className="h-5 w-5" />
               </button>

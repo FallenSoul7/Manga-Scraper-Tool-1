@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "Comix Reader"
+title = "Comix Lounge"
 version = "1.0.0"
 id = "artifacts/comix-web"
 router = "path"

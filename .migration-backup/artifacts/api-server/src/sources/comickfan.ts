@@ -86,7 +86,7 @@ function hasNext($: ReturnType<typeof cheerio.load>): boolean {
 // ---------------------------------------------------------------------------
 function getValue($: ReturnType<typeof cheerio.load>, label: string): string | null {
   let result: string | null = null;
-  $("div.flex-row.gap-4").each((_i, row) => {
+  $("div.flex-row.gap-4").each((_i, row): false | void => {
     const cells = $(row).find("> div");
     const labelText = cells.eq(0).text().trim();
     if (labelText === label) {
@@ -344,12 +344,25 @@ export const ComickFanSource: MangaSource = {
     const pageUrls: string[] = [];
     const seen = new Set<string>();
 
-    $("div.w-full > img[loading=lazy]").each((_i, el) => {
-      const src = $(el).attr("src") ?? "";
-      if (!src || seen.has(src)) return;
-      seen.add(src);
-      pageUrls.push(src);
-    });
+    // Try the primary selector first; fall back to broader selectors if the
+    // site structure has changed.
+    const selectors = [
+      "div.w-full > img[loading=lazy]",
+      ".reading-content img",
+      ".chapter-content img",
+      "img[loading=lazy][src*='cdn']",
+      "img[loading=lazy]",
+    ];
+    for (const sel of selectors) {
+      $(sel).each((_i, el) => {
+        const src = $(el).attr("src") ?? $(el).attr("data-src") ?? "";
+        if (!src || seen.has(src)) return;
+        if (src.startsWith("data:")) return; // skip inline placeholders
+        seen.add(src);
+        pageUrls.push(src);
+      });
+      if (pageUrls.length > 0) break;
+    }
 
     return {
       chapterId,

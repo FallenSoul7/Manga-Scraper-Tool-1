@@ -11,7 +11,7 @@ async function callGroq(
   messages: any[],
   model = "llama-3.3-70b-versatile",
   opts: Record<string, unknown> = {},
-) {
+): Promise<any> {
   if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY is not set. Add it in Secrets.");
   const res = await fetch(GROQ_BASE, {
     method: "POST",
@@ -19,7 +19,7 @@ async function callGroq(
     body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 1000, ...opts }),
   });
   if (!res.ok) throw new Error(`Groq API error: ${await res.text()}`);
-  return res.json();
+  return res.json() as Promise<any>;
 }
 
 // ── Minimal protobuf varint reader ─────────────────────────────────────────
@@ -103,6 +103,7 @@ function parseMihonBackup(rawBuf: Buffer): Array<{ id: number; title: string; ge
 async function parseSQLiteDB(
   buf: Buffer,
 ): Promise<Array<{ id: number; title: string; genres: string[] }>> {
+  // @ts-ignore — sql.js ships no .d.ts; types are handled at runtime via any
   const initSqlJs = (await import("sql.js")).default;
   const SQL = await initSqlJs();
   const db = new SQL.Database(new Uint8Array(buf));
