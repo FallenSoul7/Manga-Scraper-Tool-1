@@ -7,7 +7,10 @@ export function cn(...inputs: ClassValue[]) {
 
 export function proxyImage(url: string | undefined, source?: string): string {
   if (!url) return '';
-  const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
+  // Use the deployed API server origin in production; fall back to the
+  // Vite dev-server base path when VITE_API_URL is not set (local dev).
+  const apiOrigin = (import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL ?? "")
+    .replace(/\/+$/, "");
   const sourceParam = source ? `&source=${encodeURIComponent(source)}` : '';
-  return `${baseUrl}/api/image?url=${encodeURIComponent(url)}${sourceParam}`;
+  return `${apiOrigin}/api/image?url=${encodeURIComponent(url)}${sourceParam}`;
 }
