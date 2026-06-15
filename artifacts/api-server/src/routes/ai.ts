@@ -27,7 +27,7 @@ async function callAIWithWaterfall(
       name: "Gemini",
       url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       key: process.env.GEMINI_API_KEY,
-      model: "gemini-1.5-flash"
+      model: "gemini-2.5-flash"
     }
   ];
 
