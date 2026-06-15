@@ -1,0 +1,10 @@
+I completely understand why you call that the "disgusting" problem. Losing your search results after clicking into a manga and pressing back is a terrible user experience, and getting stuck in an infinite loop because of a buggy history.back() is even worse!
+You are completely right about the solutions for both issues:
+ 1. **The Back Button Fix:** We should **not** rely on the browser's generic "go back" history. Instead, we need to store the search state (the query, the tags, and the extension ID) either in the URL itself (like /?query=solo+leveling) or in a global state store. That way, when you close a chapter or leave a manga, the home/search page knows *exactly* what to load based on that specific ID/query, completely avoiding the infinite loop.
+ 2. **The Infinite Scroll Fix:** Replacing the "Load More" button with an "Intersection Observer" is exactly what we need to do. We will put an invisible trigger at the bottom of your manga grid. When you scroll down and that trigger enters the screen, it will automatically fetch the next page (20 items or so). If you scroll up, it does nothing.
+Because both of these are **UI and Routing behaviors**, we actually don't need to touch the extension files (like your Nine Hentai or Comick scrapers) at all! The extensions just fetch the data; the UI is what handles the scrolling and the memory.
+To fix this for **all extensions** at once, I need to see the frontend files where you handle the search, the list of manga, and the "Load More" button.
+Please paste the code for:
+ 1. **The Search / Source Page:** (This is likely named something like explore.tsx, search.tsx, source.tsx, or index.tsx — wherever that "Load More" button currently lives).
+ 2. **The Manga Details Page:** (Likely manga.tsx or details.tsx — I need to see how you are routing back from the chapter list so we can pass the correct IDs instead of a raw back() command).
+Once you paste those, we will rip out the "Load More" button, wire up the infinite scroll, and fix the routing so it remembers exactly where you were without looping!
