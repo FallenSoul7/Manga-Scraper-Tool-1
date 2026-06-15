@@ -244,19 +244,22 @@ router.post("/ai/chat", async (req: Request, res: ExpressResponse) => {
       max_tokens: 1200,
     });
     
-    const raw = completion.choices[0]?.message?.content;
+        const raw = completion.choices[0]?.message?.content;
     if (!raw) throw new Error("Empty response from upstream AI model cluster.");
 
     let cleanRaw = raw.trim();
-    if (cleanRaw.startsWith("```")) {
-      const match = cleanRaw.replace(/
-```json\n?/g, "").replace(/```/g, "").trim().match(/\{[\s\S]*\}/);
-      if (match) cleanRaw = match[0];
+    if (cleanRaw.includes("{") && cleanRaw.includes("}")) {
+      const firstBrace = cleanRaw.indexOf("{");
+      const lastBrace = cleanRaw.lastIndexOf("}");
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleanRaw = cleanRaw.substring(firstBrace, lastBrace + 1);
+      }
     }
 
     res.json(JSON.parse(cleanRaw));
   } catch (e: any) {
     console.error("[Backend Chat Route Error]:", e.message);
+
     
     const userMessages = req.body.messages || [];
     const lastQuery = userMessages[userMessages.length - 1]?.content?.toLowerCase() || "";
