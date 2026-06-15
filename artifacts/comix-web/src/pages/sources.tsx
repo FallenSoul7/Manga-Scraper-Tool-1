@@ -367,14 +367,14 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
   const allLangs = useMemo(() => {
     if (!catalog) return [] as string[];
     const set = new Set<string>();
-    for (const e of catalog.extensions) set.add(e.lang);
+    for (const e of catalog.extensions ?? []) set.add(e.lang);
     return Array.from(set).sort();
   }, [catalog]);
 
   const filtered = useMemo(() => {
     if (!catalog) return [];
     const q = search.trim().toLowerCase();
-    return catalog.extensions
+    return (catalog.extensions ?? [])
       .filter(e => lang === "all-langs" ? true : e.lang === lang)
       .filter(e => showNsfw ? true : !e.isNsfw)
       .filter(e => supportedOnly ? e.supported : true)
