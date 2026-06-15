@@ -384,7 +384,6 @@ export default function ComiAIPage() {
       history.push({ role: "user", content: userContent });
 
       const aiMsgs: GroqMsg[] = [
-        { role: "system", content: SYSTEM_PROMPT },
         ...history,
       ];
 
