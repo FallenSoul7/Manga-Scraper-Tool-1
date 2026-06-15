@@ -279,12 +279,7 @@ export default function ComiAIPage() {
 
   // ── Render helpers ───────────────────────────────────────────────────────
 
-  const renderContent = (text: string) =>
-    text.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
-      part.startsWith("**") && part.endsWith("**")
-        ? <strong key={i}>{part.slice(2, -2)}</strong>
-        : <span key={i}>{part}</span>
-    );
+
 
   const getModelBadgeDetails = () => {
     switch (modelMode) {
