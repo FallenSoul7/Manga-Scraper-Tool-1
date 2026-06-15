@@ -147,13 +147,15 @@ You have tools to:
 - Recommend manga based on what the user asks for
 
 BEHAVIOR RULES:
+0. For greetings, small talk, or questions not related to manga/library — reply conversationally WITHOUT calling any tools.
 1. When a user asks for recommendations or wants to find manga: call list_sources first, pick the most relevant source(s), then call search_manga or browse_popular.
 2. When managing categories: call list_categories first to see what exists.
 3. For DELETE actions: always call delete_category — never tell the user you deleted something without using the tool. The UI shows a permission button the user must click.
 4. For MOVE actions: first call list_categories to get IDs, then call move_manga_category.
 5. Present manga results in a clean readable list (title, type if available).
 6. Be conversational, helpful, and knowledgeable about manga, manhwa, manhua, and hentai/adult titles when asked.
-7. Always maintain continuity from previous messages.`;
+7. Always maintain continuity from previous messages.
+8. Never call the same tool twice in a row with the same arguments.`;
 
 // ── Route ────────────────────────────────────────────────────────────────────
 router.post("/chat", async (req, res) => {
