@@ -191,7 +191,7 @@ async function callAIWithWaterfall(msgs: GroqMsg[]): Promise<{ content: string |
       // Gemini's OpenAI compatibility endpoint!
       url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       key: VITE_GEMINI_KEY,
-      model: "gemini-1.5-flash"
+      model: "gemini-2.5-flash"
     }
   ];
 
