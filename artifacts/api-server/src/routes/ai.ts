@@ -263,7 +263,8 @@ INTENT ROUTING LAWS:
     res.json(JSON.parse(cleanRaw));
   } catch (e: any) {
     console.error("[Backend Chat Route Error]:", e.message);
-    res.json({ intent: "CHAT", response: `Engine hiccup occurred: ${e.message}` });
+    res.json({ intent: "CHAT", response: `Engine hiccup occurred: ${e.message}`
+ });
   }
 });
 
