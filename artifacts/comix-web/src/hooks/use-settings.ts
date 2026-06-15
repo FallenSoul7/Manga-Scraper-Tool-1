@@ -1,5 +1,16 @@
 import { useState, useEffect } from 'react';
-import { GetPopularPoster, GetMangaDetailsScore } from '@workspace/api-client-react';
+
+export enum GetPopularPoster {
+  small = 'small',
+  medium = 'medium',
+  large = 'large',
+}
+
+export enum GetMangaDetailsScore {
+  top = 'top',
+  bottom = 'bottom',
+  hidden = 'hidden',
+}
 
 export interface Settings {
   hideNsfw: boolean;
