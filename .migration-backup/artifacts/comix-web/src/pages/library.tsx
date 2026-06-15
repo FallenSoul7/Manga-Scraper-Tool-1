@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, memo } from "react";
 import { Link, useSearch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
@@ -30,7 +30,7 @@ interface SelectableProps {
   children: React.ReactNode;
 }
 
-function SelectableCard({
+const SelectableCard = memo(function SelectableCard({
   mangaId, isSelecting, isSelected, selectionModeRef,
   onEnterSelection, onToggleSelect, children,
 }: SelectableProps) {
@@ -75,7 +75,7 @@ function SelectableCard({
       {children}
     </div>
   );
-}
+});
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function LibraryPage() {
@@ -97,19 +97,20 @@ export default function LibraryPage() {
     return sortedCategories[0]?.id ?? FALLBACK_TAB;
   });
 
-  const setActiveTab = (id: string) => {
+  const setActiveTab = useCallback((id: string) => {
     setActiveTabState(id);
     setLocation(id === FALLBACK_TAB ? "/" : `/?cat=${id}`, { replace: true });
-  };
+  }, [setLocation]);
 
   const stripRef = useRef<HTMLDivElement>(null);
   const tabElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
 
   useEffect(() => {
-    if (!sortedCategories.find(c => c.id === activeTab)) {
-      setActiveTab(sortedCategories[0]?.id ?? FALLBACK_TAB);
+    if (sortedCategories.length > 0 && !sortedCategories.find(c => c.id === activeTab)) {
+      setActiveTab(sortedCategories[0].id);
     }
-  }, [sortedCategories, activeTab]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortedCategories]);
 
   useEffect(() => {
     const strip = stripRef.current;

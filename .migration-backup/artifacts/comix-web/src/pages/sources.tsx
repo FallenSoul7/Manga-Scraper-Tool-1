@@ -31,6 +31,15 @@ interface CatalogResponse {
   generatedAt: number; count: number; supportedIds: string[]; extensions: CatalogExtension[];
 }
 
+// Prefix relative /api/... paths with the Render backend origin so that
+// <img> tags (which don't go through customFetch) load from the right host.
+const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+function resolveIconUrl(url: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith("/") && API_ORIGIN) return `${API_ORIGIN}${url}`;
+  return url;
+}
+
 const LANG_LABELS: Record<string, string> = {
   all: "Multi", en: "English", ar: "العربية", bg: "Български", ca: "Català",
   cs: "Čeština", de: "Deutsch", es: "Español", fr: "Français",
@@ -42,10 +51,11 @@ const langLabel = (code: string) => LANG_LABELS[code] ?? code.toUpperCase();
 
 function SourceAvatar({ src, size = 44 }: { src: { name: string; iconUrl: string | null }; size?: number }) {
   const [errored, setErrored] = useState(false);
-  if (src.iconUrl && !errored) {
+  const resolvedIcon = resolveIconUrl(src.iconUrl);
+  if (resolvedIcon && !errored) {
     return (
       <img
-        src={src.iconUrl} alt="" width={size} height={size} loading="lazy"
+        src={resolvedIcon} alt="" width={size} height={size} loading="lazy"
         onError={() => setErrored(true)}
         className="rounded-xl bg-muted shrink-0 object-cover"
         style={{ width: size, height: size }}
@@ -100,8 +110,8 @@ function GlobalSearchResults({ query, results, isSearching, onClear }: {
         {results.map(({ source, items, loading }) => (
           <div key={source.id}>
             <div className="flex items-center gap-2 mb-3">
-              {source.iconUrl
-                ? <img src={source.iconUrl} alt="" className="w-5 h-5 rounded object-cover shrink-0" />
+              {resolveIconUrl(source.iconUrl)
+                ? <img src={resolveIconUrl(source.iconUrl)!} alt="" className="w-5 h-5 rounded object-cover shrink-0" />
                 : <div className="w-5 h-5 rounded bg-muted shrink-0" />}
               <span className="font-semibold text-sm">{source.name}</span>
               {source.isNsfw && <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">18+</span>}
@@ -367,14 +377,14 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
   const allLangs = useMemo(() => {
     if (!catalog) return [] as string[];
     const set = new Set<string>();
-    for (const e of catalog.extensions) set.add(e.lang);
+    for (const e of catalog.extensions ?? []) set.add(e.lang);
     return Array.from(set).sort();
   }, [catalog]);
 
   const filtered = useMemo(() => {
     if (!catalog) return [];
     const q = search.trim().toLowerCase();
-    return catalog.extensions
+    return (catalog.extensions ?? [])
       .filter(e => lang === "all-langs" ? true : e.lang === lang)
       .filter(e => showNsfw ? true : !e.isNsfw)
       .filter(e => supportedOnly ? e.supported : true)

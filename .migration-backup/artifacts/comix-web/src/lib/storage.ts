@@ -307,6 +307,12 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// --- Direct state access (for use outside React hooks) ---
+
+export function getStoreSnapshot(): StoreState {
+  return memoryState;
+}
+
 // --- Hooks ---
 
 export function useStore<T>(selector: (state: StoreState) => T): T {

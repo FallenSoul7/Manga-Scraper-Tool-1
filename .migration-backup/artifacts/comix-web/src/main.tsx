@@ -1,7 +1,11 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import { setExtraHeader } from "@workspace/api-client-react";
+import { setExtraHeader, setBaseUrl } from "@workspace/api-client-react";
+
+// Point every customFetch call at the deployed API server.
+// Falls back to relative URLs in local dev when VITE_API_URL is not set.
+setBaseUrl(import.meta.env.VITE_API_URL ?? "");
 
 // Register the active source header before any data fetching starts so the
 // very first request already carries the correct X-Source value.

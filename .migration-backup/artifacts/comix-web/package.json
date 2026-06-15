@@ -49,7 +49,6 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@workspace/api-client-react": "workspace:*",
-    "axios": "^1.17.0",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "cmdk": "^1.1.1",
@@ -63,7 +62,7 @@
     "react-day-picker": "^9.11.1",
     "react-dom": "catalog:",
     "react-hook-form": "^7.55.0",
-    "react-icons": "^5.4.0",
+    "react-icons": "^5.6.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.2",
     "sonner": "^2.0.7",
@@ -74,5 +73,8 @@
     "vite": "catalog:",
     "wouter": "^3.3.5",
     "zod": "catalog:"
+  },
+  "dependencies": {
+    "axios": "^1.17.0"
   }
 }

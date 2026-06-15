@@ -1,14 +1,9 @@
 {
   "version": 2,
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm -w run vercel-build",
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 30,
-      "includeFiles": "artifacts/comix-web/dist/public/**,artifacts/api-server/dist/**"
-    }
-  },
+  "buildCommand": "PORT=3000 BASE_PATH=/ pnpm --filter @workspace/comix-web run build",
+  "outputDirectory": "artifacts/comix-web/dist/public",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

@@ -17,21 +17,6 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
-const _extraHeaders: Map<string, string> = new Map();
-
-/**
- * Set or clear an extra header that is added to every outgoing request
- * (when the request hasn't already provided that header explicitly).
- *
- * Useful for things like a current selection (e.g. active manga source)
- * that should follow every API call without having to thread it through
- * each call site.  Pass `null` to clear.
- */
-export function setExtraHeader(name: string, value: string | null): void {
-  const key = name.toLowerCase();
-  if (value === null) _extraHeaders.delete(key);
-  else _extraHeaders.set(key, value);
-}
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -362,11 +347,6 @@ export async function customFetch<T = unknown>(
 
   if (responseType === "json" && !headers.has("accept")) {
     headers.set("accept", DEFAULT_JSON_ACCEPT);
-  }
-
-  // Attach module-level extra headers when not already specified.
-  for (const [name, value] of _extraHeaders) {
-    if (!headers.has(name)) headers.set(name, value);
   }
 
   // Attach bearer token when an auth getter is configured and no
