@@ -20,55 +20,89 @@ Output Specification Schema:
   "command": "Populate ONLY if intent matches FULL_DB_SCAN. Otherwise, leave empty."
 }`;
 
-// ── Server-Side Universal AI Waterfall Engine ──────────────────────────────
+interface AIProvider {
+  name: string;
+  type: "groq" | "gemini" | "openrouter";
+  url: string;
+  key: string | undefined;
+  model: string;
+  isUncensored: boolean;
+}
+
+// ── Server-Side Universal Multi-Account Cluster Engine ───────────────────────────
 async function callAIWithWaterfall(
   messages: any[],
-  opts: Record<string, unknown> = {}
+  opts: Record<string, unknown> = {},
+  preferredMode: string = "auto"
 ): Promise<any> {
-  const providers = [
-    {
-      name: "Groq",
-      url: "https://api.groq.com/openai/v1/chat/completions",
-      key: process.env.GROQ_API_KEY,
-      model: "llama-3.3-70b-versatile"
-    },
-    {
-      name: "OpenRouter",
-      url: "https://openrouter.ai/api/v1/chat/completions",
-      key: process.env.OPENROUTER_API_KEY,
-      model: "nex-agi/nex-n2-pro:free"
-    },
-    {
-      name: "Gemini",
-      url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      key: process.env.GEMINI_API_KEY,
-      model: "gemini-2.5-flash"
-    }
+  
+  // 1. Map out the entire multi-account key cluster matrix
+  const allProviders: AIProvider[] = [
+    // --- Groq Cluster ---
+    { name: "Groq (Primary)", type: "groq", url: "https://api.groq.com/openai/v1/chat/completions", key: process.env.GROQ_API_KEY, model: "llama-3.3-70b-versatile", isUncensored: false },
+    { name: "Groq (Account 1)", type: "groq", url: "https://api.groq.com/openai/v1/chat/completions", key: process.env.GROQ_API_KEY_1, model: "llama-3.3-70b-versatile", isUncensored: false },
+    { name: "Groq (Account 2)", type: "groq", url: "https://api.groq.com/openai/v1/chat/completions", key: process.env.GROQ_API_KEY_2, model: "llama-3.3-70b-versatile", isUncensored: false },
+    { name: "Groq (Account 3)", type: "groq", url: "https://api.groq.com/openai/v1/chat/completions", key: process.env.GROQ_API_KEY_3, model: "llama-3.3-70b-versatile", isUncensored: false },
+
+    // --- Gemini Cluster ---
+    { name: "Gemini (Primary)", type: "gemini", url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", key: process.env.GEMINI_API_KEY, model: "gemini-2.5-flash", isUncensored: false },
+    { name: "Gemini (Account 1)", type: "gemini", url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", key: process.env.GEMINI_API_KEY_1, model: "gemini-2.5-flash", isUncensored: false },
+    { name: "Gemini (Account 2)", type: "gemini", url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", key: process.env.GEMINI_API_KEY_2, model: "gemini-2.5-flash", isUncensored: false },
+    { name: "Gemini (Account 3)", type: "gemini", url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", key: process.env.GEMINI_API_KEY_3, model: "gemini-2.5-flash", isUncensored: false },
+
+    // --- OpenRouter Cluster (With Uncensored Models mapped to separate tokens) ---
+    { name: "OpenRouter (Primary Nex)", type: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: process.env.OPENROUTER_API_KEY, model: "nex-agi/nex-n2-pro:free", isUncensored: false },
+    { name: "OpenRouter (Dolphin Uncensored)", type: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: process.env.OPENROUTER_API_KEY_1, model: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", isUncensored: true },
+    { name: "OpenRouter (Hermes Uncensored)", type: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: process.env.OPENROUTER_API_KEY_2, model: "nousresearch/hermes-3-llama-3.1-405b:free", isUncensored: true },
+    { name: "OpenRouter (Auto Pool Uncensored)", type: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: process.env.OPENROUTER_API_KEY_3, model: "openrouter/free", isUncensored: true }
   ];
 
-  let lastError = new Error("No AI API keys are configured on the server.");
+  // 2. Scan content for adult material to enforce auto-routing shifts
+  const fullTextContext = messages.map(m => String(m.content)).join(" ").toLowerCase();
+  const adultKeywords = ["hentia", "hentai", "18+", "nsfw", "xxx", "erotic", "adult", "smut", "lewd", "ecchi"];
+  const isAdultQuery = adultKeywords.some(word => fullTextContext.includes(word));
 
-  for (const provider of providers) {
-    if (!provider.key) {
-      console.warn(`[Backend Waterfall] Skipping ${provider.name}: Key is missing in environment.`);
-      continue;
-    }
+  let activeQueue: AIProvider[] = [];
+
+  // 3. Dynamic Ordering Logic based on user UI selection or content types
+  if (preferredMode === "uncensored" || isAdultQuery) {
+    console.log(`[AI Engine] 🔞 18+ adult content or Uncensored mode flagged. Arranging uncensored endpoints first.`);
+    const uncensored = allProviders.filter(p => p.isUncensored);
+    const normal = allProviders.filter(p => !p.isUncensored);
+    activeQueue = [...uncensored, ...normal];
+  } else if (preferredMode !== "auto") {
+    // User picked a specific channel toggle (e.g., "gemini", "groq", "openrouter")
+    const specialized = allProviders.filter(p => p.type === preferredMode);
+    const remainders = allProviders.filter(p => p.type !== preferredMode);
+    activeQueue = [...specialized, ...remainders];
+  } else {
+    // Normal balanced distribution queue
+    activeQueue = [...allProviders];
+  }
+
+  let lastError = new Error("All configured cluster keys are exhausted or unavailable.");
+
+  // 4. Execution Loop through the constructed multi-account grid
+  for (const provider of activeQueue) {
+    if (!provider.key) continue;
 
     try {
-      console.log(`[Backend Waterfall] Attempting execution with ${provider.name}...`);
+      console.log(`[AI Cluster Matrix] Routing request to -> ${provider.name} (${provider.model})...`);
       
       const bodyPayload = {
         ...opts,
         model: provider.model,
         messages: messages,
-        temperature: opts.temperature ?? 0.3 // Dropped to reduce non-JSON variance
+        temperature: opts.temperature ?? (provider.isUncensored ? 0.6 : 0.2)
       };
 
       const res = await fetch(provider.url, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json", 
-          Authorization: `Bearer ${provider.key}` 
+          Authorization: `Bearer ${provider.key}`,
+          "HTTP-Referer": "https://tachimanga-reader.local",
+          "X-Title": "Tachimanga Web Reader"
         },
         body: JSON.stringify(bodyPayload),
       });
@@ -79,16 +113,23 @@ async function callAIWithWaterfall(
       }
 
       const data = await res.json();
-      console.log(`[Backend Waterfall] Success via ${provider.name}!`);
+      const contentOutput = data.choices?.[0]?.message?.content;
+
+      // Handle soft safety exclusions (where endpoint responds but gives empty text or standard refusal headers)
+      if (!contentOutput || contentOutput.trim().length === 0 || contentOutput.includes("I cannot assist with") || contentOutput.includes("I am unable to provide")) {
+        throw new Error("Content blocked by alignment or returned empty structure.");
+      }
+
+      console.log(`[AI Cluster Matrix] ✅ Handshake completed via ${provider.name}!`);
       return data;
 
     } catch (error: any) {
-      console.error(`[Backend Waterfall] ❌ ${provider.name} failed:`, error.message);
+      console.warn(`[AI Cluster Matrix] ⚠️ ${provider.name} skipped/failed: ${error.message}`);
       lastError = error;
     }
   }
 
-  throw new Error(`All backend AI backup models exhausted. Last error: ${lastError.message}`);
+  throw new Error(`All fallback layers exhausted in pool sequence. Deepest error: ${lastError.message}`);
 }
 
 // ── Minimal protobuf varint reader ─────────────────────────────────────────
@@ -233,7 +274,7 @@ function makeKey() {
 // ── POST /api/ai/chat ──────────────────────────────────────────────────────
 router.post("/ai/chat", async (req: Request, res: ExpressResponse) => {
   try {
-    const { messages } = req.body;
+    const { messages, modelMode = "auto" } = req.body;
     if (!Array.isArray(messages)) { res.status(400).json({ error: "messages must be an array" }); return; }
 
     const clean = messages.map((m: any) => ({ role: m.role, content: m.content }));
@@ -242,9 +283,9 @@ router.post("/ai/chat", async (req: Request, res: ExpressResponse) => {
     const completion = await callAIWithWaterfall(clean, {
       response_format: { type: "json_object" },
       max_tokens: 1200,
-    });
+    }, modelMode);
     
-        const raw = completion.choices[0]?.message?.content;
+    const raw = completion.choices[0]?.message?.content;
     if (!raw) throw new Error("Empty response from upstream AI model cluster.");
 
     let cleanRaw = raw.trim();
@@ -260,7 +301,6 @@ router.post("/ai/chat", async (req: Request, res: ExpressResponse) => {
   } catch (e: any) {
     console.error("[Backend Chat Route Error]:", e.message);
 
-    
     const userMessages = req.body.messages || [];
     const lastQuery = userMessages[userMessages.length - 1]?.content?.toLowerCase() || "";
     
@@ -289,6 +329,7 @@ router.post("/ai/sort", async (req: Request, res: ExpressResponse) => {
       sessionKey,
       fileData,
       fileName,
+      modelMode = "auto"
     } = req.body;
 
     if (action === "init") {
@@ -330,7 +371,6 @@ router.post("/ai/sort", async (req: Request, res: ExpressResponse) => {
       const nextCursor = cursor + BATCH;
       const isDone = nextCursor >= manga.length;
 
-      // Construct specific execution sorting prompt payload
       const sortPayloadPrompt = [
         { role: "system", content: SYSTEM_PROMPT },
         { 
@@ -344,18 +384,23 @@ router.post("/ai/sort", async (req: Request, res: ExpressResponse) => {
         }
       ];
 
-      // Execute AI Waterfall engine call for the running batch segment
       const completion = await callAIWithWaterfall(sortPayloadPrompt, {
         response_format: { type: "json_object" },
         max_tokens: 1500,
-      });
+      }, modelMode);
 
       const raw = completion.choices[0]?.message?.content ?? "{}";
       let parsed: Record<string, number[]> = {};
       try {
-        // Single line regex cleanup to ensure compile-safety on Vercel/Render
-        const match = raw.replace(/```json\n?/g, "").replace(/```/g, "").trim().match(/\{[\s\S]*\}/);
-        parsed = JSON.parse(match ? match[0] : raw);
+        let cleanSortRaw = raw.trim();
+        if (cleanSortRaw.includes("{") && cleanSortRaw.includes("}")) {
+          const firstBrace = cleanSortRaw.indexOf("{");
+          const lastBrace = cleanSortRaw.lastIndexOf("}");
+          if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            cleanSortRaw = cleanSortRaw.substring(firstBrace, lastBrace + 1);
+          }
+        }
+        parsed = JSON.parse(cleanSortRaw);
       } catch (_) { /* Fallback to safety empty structure */ }
 
       const merged: Record<string, number[]> = { ...existingCategories };
