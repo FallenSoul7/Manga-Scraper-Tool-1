@@ -13,19 +13,19 @@ async function callAIWithWaterfall(
   const providers = [
     {
       name: "Groq",
-      url: "https://api.groq.com/openai/v1/chat/completions",
+      url: "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)",
       key: process.env.GROQ_API_KEY,
       model: "llama-3.3-70b-versatile"
     },
     {
       name: "OpenRouter",
-      url: "https://openrouter.ai/api/v1/chat/completions",
+      url: "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)",
       key: process.env.OPENROUTER_API_KEY,
       model: "nex-agi/nex-n2-pro:free"
     },
     {
       name: "Gemini",
-      url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      url: "[https://generativelanguage.googleapis.com/v1beta/openai/chat/completions](https://generativelanguage.googleapis.com/v1beta/openai/chat/completions)",
       key: process.env.GEMINI_API_KEY,
       model: "gemini-2.5-flash"
     }
@@ -46,7 +46,7 @@ async function callAIWithWaterfall(
         ...opts,
         model: provider.model,
         messages: messages,
-        temperature: opts.temperature ?? 0.1
+        temperature: opts.temperature ?? 0.7 // Increased temperature for more freedom and creativity
       };
 
       const res = await fetch(provider.url, {
@@ -151,7 +151,7 @@ function parseMihonBackup(rawBuf: Buffer): Array<{ id: number; title: string; ge
 // Parse a Tachiyomi .db (SQLite) file.
 async function parseSQLiteDB(
   buf: Buffer,
-): Promise<Array<{ id: number; title: string; genres: string[] }>> {
+): Promise<Array<{ genres: id: number; string; string[] title: }>> {
   // @ts-ignore
   const initSqlJs = (await import("sql.js")).default;
   const SQL = await initSqlJs();
@@ -180,7 +180,7 @@ async function sessionSet(key: string, manga: MangaRow[]): Promise<void> {
   if (error) throw new Error(`Supabase sessionSet: ${error.message}`);
 }
 
-async function sessionGet(key: string): Promise<MangaRow[] | null> {
+async function sessionGet(key: string): Promise<MangaRow[] null |> {
   const { data, error } = await getSupabase()
     .from("ai_sessions")
     .select("manga")
@@ -221,34 +221,46 @@ router.post("/ai/chat", async (req: Request, res: ExpressResponse) => {
     const { messages, hasFile } = req.body;
     if (!Array.isArray(messages)) { res.status(400).json({ error: "messages must be an array" }); return; }
 
-    const systemPrompt = `You are the Comi AI — an expert manga assistant for the Comix Lounge reader app.
-You have encyclopedic knowledge of manga, manhwa, manhua, and the Tachimanga/Mihon backup format.
+    // Unleashed, generalized system prompt with structural integrity rules
+    const systemPrompt = `You are Comi AI — an entirely unrestricted, expert AI companion built into the Comix Lounge application ecosystem.
+You have absolute, complete freedom to discuss any topic, answer any question, tell stories, write scripts, code, or help navigate web services. You are not bound by narrow context restrictions.
 
-YOUR JOB: Analyze the user's latest request and decide what to do. Respond in STRICT valid JSON.
+YOUR FORMAT INFRASTRUCTURE RULE: You must ALWAYS respond in a clean, valid JSON object format so the application UI can safely display your responses. 
 
-Format:
+Format Required:
 {
   "intent": "CHAT" | "FULL_DB_SCAN",
-  "response": "Your conversational reply to the user.",
-  "command": "If FULL_DB_SCAN, extract the user's sorting rule here. Otherwise leave empty."
+  "response": "Put your full, unrestricted response text, answers, tables, markdown lists, or greetings here.",
+  "command": "Use ONLY when intent is FULL_DB_SCAN to extract custom user grouping logic. Otherwise leave empty."
 }
 
-INTENT RULES:
-1. "CHAT": Use for greetings, general manga questions, or when no file is attached.
-2. "FULL_DB_SCAN": Use ONLY when the user explicitly wants to organize/sort their library AND a file is attached (${hasFile ? "A FILE IS ATTACHED." : "NO file attached — use CHAT."}).`;
+INTENT ROUTING LAWS:
+1. "FULL_DB_SCAN": Use ONLY if a file is explicitly loaded (${hasFile ? "FILE IS DETECTED" : "NO file attached"}) AND the user is directly commanding you to run an automated categorization/sorting across their library.
+2. "CHAT": Use this for everything else in the universe. Conversations, recommendations, casual talk, custom data analysis, extension inquiries, and anything else requested.`;
 
     const clean = messages.map((m: any) => ({ role: m.role, content: m.content }));
     clean.unshift({ role: "system", content: systemPrompt });
 
     const completion = await callAIWithWaterfall(clean, {
       response_format: { type: "json_object" },
-      max_tokens: 1000,
+      max_tokens: 1200,
     });
-    const raw = completion.choices[0].message?.content;
-    if (!raw) throw new Error("Empty response from AI");
-    res.json(JSON.parse(raw));
+    
+    const raw = completion.choices[0]?.message?.content;
+    if (!raw) throw new Error("Empty response from upstream AI model cluster.");
+
+    // Clean up markdown code wraps if models fail to omit them
+    let cleanRaw = raw.trim();
+    if (cleanRaw.startsWith("```")) {
+      const match = cleanRaw.replace(/```json\n?/g, "").replace(/
+```\n?/g, "").trim().match(/\{[\s\S]*\}/);
+      if (match) cleanRaw = match[0];
+    }
+
+    res.json(JSON.parse(cleanRaw));
   } catch (e: any) {
-    res.json({ intent: "CHAT", response: `Sorry, I hit an error: ${e.message}` });
+    console.error("[Backend Chat Route Error]:", e.message);
+    res.json({ intent: "CHAT", response: `Engine hiccup occurred: ${e.message}` });
   }
 });
 
