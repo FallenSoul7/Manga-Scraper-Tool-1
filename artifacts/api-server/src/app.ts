@@ -11,16 +11,20 @@ const app: Express = express();
 const allowedOrigins = [
   process.env.ALLOWED_ORIGIN,
   process.env.FRONTEND_URL,
-].filter(Boolean) as string[];
+]
+  .filter(Boolean)
+  .map((u) => u!.replace(/\/+$/, "")) as string[]; // strip trailing slashes
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     const localhostRe = /^https?:\/\/localhost(:\d+)?$/;
     const replitRe = /\.replit\.dev$/;
+    const vercelRe = /\.vercel\.app$/;
     if (
       localhostRe.test(origin) ||
       replitRe.test(origin) ||
+      vercelRe.test(origin) ||
       allowedOrigins.includes(origin)
     ) {
       return callback(null, true);
