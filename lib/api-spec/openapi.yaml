@@ -3,21 +3,20 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: Comix manga browsing API
+  description: API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
-  - name: manga
-    description: Manga browsing operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
+      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -25,185 +24,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
-  /popular:
-    get:
-      operationId: getPopular
-      tags: [manga]
-      summary: Get popular manga
-      parameters:
-        - { name: page, in: query, schema: { type: integer, default: 1 } }
-        - { name: nsfw, in: query, schema: { type: boolean, default: false } }
-        - { name: poster, in: query, schema: { type: string, enum: [small, medium, large], default: large } }
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MangaListResponse"
-  /latest:
-    get:
-      operationId: getLatest
-      tags: [manga]
-      summary: Get latest updated manga
-      parameters:
-        - { name: page, in: query, schema: { type: integer, default: 1 } }
-        - { name: nsfw, in: query, schema: { type: boolean, default: false } }
-        - { name: poster, in: query, schema: { type: string, enum: [small, medium, large], default: large } }
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MangaListResponse"
-  /search:
-    get:
-      operationId: searchManga
-      tags: [manga]
-      summary: Search manga by keyword or comix.to URL
-      parameters:
-        - { name: query, in: query, required: true, schema: { type: string } }
-        - { name: page, in: query, schema: { type: integer, default: 1 } }
-        - { name: nsfw, in: query, schema: { type: boolean, default: false } }
-        - { name: poster, in: query, schema: { type: string, enum: [small, medium, large], default: large } }
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MangaListResponse"
-  /manga/{id}:
-    get:
-      operationId: getMangaDetails
-      tags: [manga]
-      summary: Get manga details
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-        - { name: poster, in: query, schema: { type: string, enum: [small, medium, large], default: large } }
-        - { name: alt, in: query, schema: { type: boolean, default: true } }
-        - { name: score, in: query, schema: { type: string, enum: [top, bottom, none], default: top } }
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MangaDetail"
-  /manga/{id}/chapters:
-    get:
-      operationId: getChapters
-      tags: [manga]
-      summary: Get chapter list for a manga
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-        - { name: dedupe, in: query, schema: { type: boolean, default: true } }
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ChapterList"
-  /chapter/{id}/pages:
-    get:
-      operationId: getChapterPages
-      tags: [manga]
-      summary: Get pages (image URLs) for a chapter
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PageList"
 components:
   schemas:
     HealthStatus:
       type: object
       properties:
-        status: { type: string }
-      required: [status]
-    MangaSummary:
-      type: object
-      properties:
-        id: { type: string }
-        title: { type: string }
-        thumbnail: { type: string }
-        type: { type: string }
-        isNsfw: { type: boolean }
-      required: [id, title, thumbnail]
-    MangaListResponse:
-      type: object
-      properties:
-        items:
-          type: array
-          items: { $ref: "#/components/schemas/MangaSummary" }
-        hasNextPage: { type: boolean }
-        page: { type: integer }
-      required: [items, hasNextPage, page]
-    MangaDetail:
-      type: object
-      properties:
-        id: { type: string }
-        title: { type: string }
-        author: { type: string }
-        artist: { type: string }
-        synopsis: { type: string }
-        altTitles:
-          type: array
-          items: { type: string }
-        status: { type: string }
-        type: { type: string }
-        isNsfw: { type: boolean }
-        rating: { type: number }
-        thumbnail: { type: string }
-        genres:
-          type: array
-          items: { type: string }
-        score: { type: string }
-        scorePosition: { type: string }
-        sourceTags:
-          type: array
-          items:
-            type: object
-            properties:
-              id: { type: string }
-              name: { type: string }
-              group: { type: string }
-            required: [id, name]
-      required: [id, title, status, thumbnail, genres]
-    Chapter:
-      type: object
-      properties:
-        id: { type: integer }
-        number: { type: number }
-        title: { type: string }
-        scanlator: { type: string }
-        date: { type: integer }
-        votes: { type: integer }
-        isOfficial: { type: boolean }
-      required: [id, number, title, scanlator, date]
-    ChapterList:
-      type: object
-      properties:
-        items:
-          type: array
-          items: { $ref: "#/components/schemas/Chapter" }
-      required: [items]
-    PageList:
-      type: object
-      properties:
-        chapterId: { type: integer }
-        pages:
-          type: array
-          items:
-            type: object
-            properties:
-              index: { type: integer }
-              url: { type: string }
-            required: [index, url]
-      required: [chapterId, pages]
+        status:
+          type: string
+      required:
+        - status
+

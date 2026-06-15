@@ -20,11 +20,6 @@ import { storeActions, getStoreSnapshot } from "@/lib/storage";
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const FETCH_TIMEOUT_MS = 60_000;
 
-// API Keys from Vercel/Vite
-const VITE_GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY ?? "";
-const VITE_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_API_KEY ?? "";
-const VITE_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? "";
-
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface PermissionRequest {
@@ -57,214 +52,31 @@ interface GroqToolCall {
   function: { name: string; arguments: string };
 }
 
-// ── Tool definitions ───────────────────────────────────────────────────────
 
-const TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "list_sources",
-      description: "List all available manga sources/extensions that can be browsed (even if not installed by the user).",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "browse_popular",
-      description: "Browse popular/trending manga from a specific source.",
-      parameters: {
-        type: "object",
-        properties: {
-          sourceId: { type: "string", description: "Source ID from list_sources" },
-        },
-        required: ["sourceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "search_manga",
-      description: "Search for manga by title or keyword in a specific source.",
-      parameters: {
-        type: "object",
-        properties: {
-          sourceId: { type: "string", description: "Source ID from list_sources" },
-          query: { type: "string", description: "Search query" },
-        },
-        required: ["sourceId", "query"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "list_categories",
-      description: "List the user's library categories and manga counts.",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "list_library",
-      description: "List manga in the user's library, optionally filtered by category.",
-      parameters: {
-        type: "object",
-        properties: {
-          categoryId: { type: "string", description: "Category ID to filter by (optional)" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "create_category",
-      description: "Create a new category in the user's library.",
-      parameters: {
-        type: "object",
-        properties: {
-          name: { type: "string", description: "Name for the new category" },
-        },
-        required: ["name"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "delete_category",
-      description: "Delete a user category. DESTRUCTIVE — requires user permission. Always use this tool; never skip it. The UI will show a permission button that the user must click before deletion proceeds.",
-      parameters: {
-        type: "object",
-        properties: {
-          categoryId: { type: "string", description: "Category ID to delete" },
-          categoryName: { type: "string", description: "Category name for display" },
-        },
-        required: ["categoryId", "categoryName"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "move_manga_category",
-      description: "Move a manga from its current category to a different category.",
-      parameters: {
-        type: "object",
-        properties: {
-          mangaId: { type: "string", description: "Manga ID" },
-          targetCategoryId: { type: "string", description: "Target category ID" },
-        },
-        required: ["mangaId", "targetCategoryId"],
-      },
-    },
-  },
-];
-
-const SYSTEM_PROMPT = `You are Comi AI — the smart assistant built into Comix Lounge, a manga reader app.
-
-You have tools to:
-- List, browse, and search all available manga sources (even ones the user hasn't installed)
-- Manage the user's library categories (create, delete, move manga between categories)
-- Recommend manga based on what the user asks for
-
-BEHAVIOR RULES:
-1. When a user asks for recommendations or wants to find manga: call list_sources first, pick the most relevant source(s), then call search_manga or browse_popular.
-2. When managing categories: call list_categories first to see what exists.
-3. For DELETE actions: always call delete_category — never tell the user you deleted something without using the tool. The UI shows a permission button the user must click.
-4. For MOVE actions: first call list_categories to get IDs, then call move_manga_category.
-5. Present manga results in a clean readable list (title, type if available).
-6. Be conversational, helpful, and knowledgeable about manga, manhwa, manhua.
-7. Always maintain continuity from previous messages.`;
-
-// ── Universal AI Waterfall Router (Frontend Tool Enabled) ──────────────────
+// ── Secure AI call — routes through the backend so API keys stay server-side ─
 
 async function callAIWithWaterfall(
-  msgs: GroqMsg[], 
+  msgs: GroqMsg[],
   modelMode: string
 ): Promise<{ content: string | null; tool_calls?: GroqToolCall[] }> {
-  
-  const allProviders = [
-    { name: "Groq", type: "groq", url: "https://api.groq.com/openai/v1/chat/completions", key: VITE_GROQ_KEY, model: "llama-3.3-70b-versatile", isUncensored: false },
-    { name: "OpenRouter Nex", type: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: VITE_OPENROUTER_KEY, model: "nex-agi/nex-n2-pro:free", isUncensored: false },
-    { name: "Gemini", type: "gemini", url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", key: VITE_GEMINI_KEY, model: "gemini-2.5-flash", isUncensored: false },
-    { name: "OpenRouter Uncensored", type: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: VITE_OPENROUTER_KEY, model: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", isUncensored: true }
-  ];
-
-  // Check history for 18+ keywords for auto-routing
-  const fullTextContext = msgs.map(m => String(m.content)).join(" ").toLowerCase();
-  const adultKeywords = ["hentia", "hentai", "18+", "nsfw", "xxx", "erotic", "adult", "smut", "lewd", "ecchi"];
-  const isAdultQuery = adultKeywords.some(word => fullTextContext.includes(word));
-
-  let activeQueue = [];
-
-  if (modelMode === "uncensored" || (modelMode === "auto" && isAdultQuery)) {
-    const uncensored = allProviders.filter(p => p.isUncensored);
-    const normal = allProviders.filter(p => !p.isUncensored);
-    activeQueue = [...uncensored, ...normal];
-  } else if (modelMode !== "auto") {
-    const specialized = allProviders.filter(p => p.type === modelMode);
-    const remainders = allProviders.filter(p => p.type !== modelMode);
-    activeQueue = [...specialized, ...remainders];
-  } else {
-    activeQueue = [...allProviders.filter(p => !p.isUncensored), ...allProviders.filter(p => p.isUncensored)];
-  }
-
-  let lastError = new Error("No API keys are configured.");
-
-  for (const provider of activeQueue) {
-    if (!provider.key) continue;
-
-    console.log(`[Waterfall Router] Attempting ${provider.name} (${provider.model})...`);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-    try {
-      const res = await fetch(provider.url, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json", 
-          "Authorization": `Bearer ${provider.key}` 
-        },
-        body: JSON.stringify({
-          model: provider.model,
-          messages: msgs,
-          tools: provider.isUncensored ? undefined : TOOLS, // Disable tools for simple uncensored chat bypass
-          tool_choice: provider.isUncensored ? undefined : "auto",
-          temperature: provider.isUncensored ? 0.6 : 0.3,
-          max_tokens: 1500,
-        }),
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`${res.status} - ${errText}`);
-      }
-
-      const data = await res.json() as any;
-      const choice = data.choices?.[0];
-      
-      const contentOutput = choice?.message?.content;
-      if (contentOutput && (contentOutput.includes("I cannot assist with") || contentOutput.includes("I am unable to provide"))) {
-        throw new Error("Content blocked by alignment.");
-      }
-
-      console.log(`[Waterfall Router] Success via ${provider.name}!`);
-      return { content: contentOutput ?? null, tool_calls: choice?.message?.tool_calls };
-      
-    } catch (error: any) {
-      console.warn(`[Waterfall Router] ❌ ${provider.name} failed:`, error.message);
-      lastError = error;
-    } finally {
-      clearTimeout(timer);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE}/api/ai/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: msgs, modelMode }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText })) as any;
+      throw new Error(body.error ?? `HTTP ${res.status}`);
     }
+    const data = await res.json() as any;
+    return { content: data.content ?? null, tool_calls: data.tool_calls ?? undefined };
+  } finally {
+    clearTimeout(timer);
   }
-
-  throw new Error(`All AI endpoints exhausted. Last error: ${lastError.message}`);
 }
 
 // ── API fetcher ────────────────────────────────────────────────────────────

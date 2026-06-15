@@ -168,33 +168,59 @@ export default function SourceBrowsePage() {
   const popularSorts: PopularSortOption[] = catalogEntry?.popularSorts ?? [];
 
   // ---- Active tab & search state ----
-  const [tab, setTab] = useState<ActiveTab>(() => urlTagId ? "filter" : "popular");
-  const [popularSort, setPopularSort] = useState<string | null>(null);
-  const [searchOpen, setSearchOpen] = useState(!!urlQ);
-  const [searchInput, setSearchInput] = useState(urlQ);
-  const [searchQuery, setSearchQuery] = useState(urlQ);
+  const pageStateKey = `source-state:${sourceId}`;
   const pageScrollKey = `source-scroll:${sourceId}`;
 
+  // Read a stored snapshot — only trust it if it was saved for this exact sourceId
+  // and there are no URL params overriding it (URL params come from cross-page navigation).
+  const storedSnapshot = useMemo<PageSnapshot | null>(() => {
+    if (urlQ || urlTagId) return null; // URL params take priority
+    try {
+      const raw = sessionStorage.getItem(pageStateKey);
+      if (!raw) return null;
+      return JSON.parse(raw) as PageSnapshot;
+    } catch {
+      return null;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // only run once on mount
+
+  const [tab, setTab] = useState<ActiveTab>(() =>
+    storedSnapshot ? storedSnapshot.tab : urlTagId ? "filter" : "popular"
+  );
+  const [popularSort, setPopularSort] = useState<string | null>(
+    () => storedSnapshot?.popularSort ?? null
+  );
+  const [searchOpen, setSearchOpen] = useState(
+    () => storedSnapshot ? storedSnapshot.searchOpen : !!urlQ
+  );
+  const [searchInput, setSearchInput] = useState(
+    () => storedSnapshot?.searchInput ?? urlQ
+  );
+  const [searchQuery, setSearchQuery] = useState(
+    () => storedSnapshot?.searchQuery ?? urlQ
+  );
+
   // Track whether this is the initial mount so the source-change reset effect
-  // doesn't clear a query that arrived via ?q= URL param.
+  // doesn't clear a query that arrived via ?q= URL param or restored snapshot.
   const isFirstMountRef = useRef(true);
 
   // Applied filter state (only changes when "Apply" is pressed in the popover).
-  // Pre-populated from ?tagId= URL param when navigating from a manga detail page.
+  // Pre-populated from ?tagId= URL param or restored snapshot.
   const [appliedTagState, setAppliedTagState] = useState<Record<string, TagTriState>>(
-    () => urlTagId ? { [urlTagId]: "include" } : {},
+    () => storedSnapshot?.appliedTagState ?? (urlTagId ? { [urlTagId]: "include" } : {}),
   );
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const scrollRestoreRef = useRef<number | null>(null);
+  const scrollRestoreRef = useRef<number | null>(storedSnapshot?.scrollY ?? null);
 
   // ---- Pagination ----
-  const [popularPage, setPopularPage] = useState(1);
-  const [popularItems, setPopularItems] = useState<MangaSummary[]>([]);
-  const [latestPage, setLatestPage] = useState(1);
-  const [latestItems, setLatestItems] = useState<MangaSummary[]>([]);
-  const [filterPage, setFilterPage] = useState(1);
-  const [filterItems, setFilterItems] = useState<MangaSummary[]>([]);
+  const [popularPage, setPopularPage] = useState(() => storedSnapshot?.popularPage ?? 1);
+  const [popularItems, setPopularItems] = useState<MangaSummary[]>(() => storedSnapshot?.popularItems ?? []);
+  const [latestPage, setLatestPage] = useState(() => storedSnapshot?.latestPage ?? 1);
+  const [latestItems, setLatestItems] = useState<MangaSummary[]>(() => storedSnapshot?.latestItems ?? []);
+  const [filterPage, setFilterPage] = useState(() => storedSnapshot?.filterPage ?? 1);
+  const [filterItems, setFilterItems] = useState<MangaSummary[]>(() => storedSnapshot?.filterItems ?? []);
 
   // Always set source header — even for non-installed (catalog) sources —
   // so the manga detail page uses the correct backend source.
@@ -348,6 +374,7 @@ export default function SourceBrowsePage() {
   const isSourceError = activeQuery.isError;
   const coversAvailable = !isSourceError && (popularItems.length > 0 || popularQuery.isSuccess);
 
+  // Save full page state snapshot so the back button can restore it.
   useEffect(() => {
     const snapshot: PageSnapshot = {
       tab,
@@ -364,15 +391,27 @@ export default function SourceBrowsePage() {
       filterItems,
       scrollY: window.scrollY,
     };
+    try { sessionStorage.setItem(pageStateKey, JSON.stringify(snapshot)); } catch { /* quota */ }
     sessionStorage.setItem(pageScrollKey, String(window.scrollY));
   }, [
-    pageScrollKey,
+    pageStateKey, pageScrollKey,
+    tab, popularSort, searchOpen, searchInput, searchQuery, appliedTagState,
+    popularPage, latestPage, filterPage, popularItems, latestItems, filterItems,
   ]);
 
-  // Scroll-position persistence — must be declared here (before any early returns)
-  // so React always calls this hook the same number of times regardless of which
-  // branch the render takes.  Moving it below the early returns was the root cause
-  // of the "Rendered fewer hooks than expected" crash.
+  // Restore scroll position when returning from a manga detail page.
+  useEffect(() => {
+    const y = scrollRestoreRef.current;
+    if (y != null && y > 0) {
+      const id = window.setTimeout(() => window.scrollTo({ top: y, behavior: "instant" }), 80);
+      scrollRestoreRef.current = null;
+      return () => window.clearTimeout(id);
+    }
+  }, []); // run once on mount
+
+  // Keep scroll position up-to-date in the snapshot.
+  // Must be declared here (before any early returns) so React always calls this
+  // hook the same number of times regardless of which branch the render takes.
   useEffect(() => {
     const onScroll = () => {
       sessionStorage.setItem(pageScrollKey, String(window.scrollY));
@@ -673,6 +712,20 @@ interface GridProps {
 }
 
 function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridProps) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Infinite scroll: fire onLoadMore when the sentinel enters the viewport.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting && hasNext && !fetching) onLoadMore(); },
+      { rootMargin: "300px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNext, fetching, onLoadMore]);
+
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -691,11 +744,11 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
           />
         ))}
       </div>
-      {hasNext && (
-        <div className="flex justify-center mt-8">
-          <Button variant="outline" size="lg" className="rounded-full px-8" disabled={fetching} onClick={onLoadMore}>
-            {fetching ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Loading…</> : "Load more"}
-          </Button>
+      {/* Invisible sentinel — IntersectionObserver triggers next-page fetch when it enters view */}
+      <div ref={sentinelRef} className="h-1 w-full mt-4" aria-hidden />
+      {fetching && (
+        <div className="flex justify-center py-6">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
       )}
     </>
