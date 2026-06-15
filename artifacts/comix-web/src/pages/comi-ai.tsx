@@ -8,9 +8,12 @@ import { cn } from "@/lib/utils";
 import { storeActions, getStoreSnapshot } from "@/lib/storage";
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-const VITE_GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY ?? "";
-const GROQ_BASE = "https://api.groq.com/openai/v1/chat/completions";
 const FETCH_TIMEOUT_MS = 60_000;
+
+// API Keys from Vercel
+const VITE_GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY ?? "";
+const VITE_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_API_KEY ?? "";
+const VITE_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? "";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -165,35 +168,85 @@ BEHAVIOR RULES:
 4. For MOVE actions: first call list_categories to get IDs, then call move_manga_category.
 5. Present manga results in a clean readable list (title, type if available).
 6. Be conversational, helpful, and knowledgeable about manga, manhwa, manhua.
-7. If no VITE_GROQ_API_KEY is set, you can't function — tell the user.`;
+7. Always maintain continuity from previous messages.`;
 
-// ── Groq caller (direct from browser — bypasses Render IP block) ───────────
+// ── Universal AI Waterfall Router ──────────────────────────────────────────
 
-async function callGroqWithTools(msgs: GroqMsg[]): Promise<{ content: string | null; tool_calls?: GroqToolCall[] }> {
-  if (!VITE_GROQ_KEY) throw new Error("VITE_GROQ_API_KEY is not set. Add it to Vercel environment variables.");
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(GROQ_BASE, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${VITE_GROQ_KEY}` },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: msgs,
-        tools: TOOLS,
-        tool_choice: "auto",
-        temperature: 0.3,
-        max_tokens: 1500,
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`Groq error: ${await res.text()}`);
-    const data = await res.json() as any;
-    const choice = data.choices?.[0];
-    return { content: choice?.message?.content ?? null, tool_calls: choice?.message?.tool_calls };
-  } finally {
-    clearTimeout(timer);
+async function callAIWithWaterfall(msgs: GroqMsg[]): Promise<{ content: string | null; tool_calls?: GroqToolCall[] }> {
+  const providers = [
+    {
+      name: "Groq",
+      url: "https://api.groq.com/openai/v1/chat/completions",
+      key: VITE_GROQ_KEY,
+      model: "llama-3.3-70b-versatile"
+    },
+    {
+      name: "OpenRouter",
+      url: "https://openrouter.ai/api/v1/chat/completions",
+      key: VITE_OPENROUTER_KEY,
+      model: "nex-agi/nex-n2-pro:free"
+    },
+    {
+      name: "Gemini",
+      // Gemini's OpenAI compatibility endpoint!
+      url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      key: VITE_GEMINI_KEY,
+      model: "gemini-1.5-flash"
+    }
+  ];
+
+  let lastError = new Error("No API keys are configured.");
+
+  for (const provider of providers) {
+    if (!provider.key) {
+      console.warn(`Skipping ${provider.name}: API key is missing.`);
+      continue;
+    }
+
+    console.log(`[Waterfall Router] Attempting ${provider.name}...`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(provider.url, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json", 
+          "Authorization": `Bearer ${provider.key}` 
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          messages: msgs,
+          tools: TOOLS,
+          tool_choice: "auto",
+          temperature: 0.3,
+          max_tokens: 1500,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`${res.status} - ${errText}`);
+      }
+
+      const data = await res.json() as any;
+      const choice = data.choices?.[0];
+      
+      console.log(`[Waterfall Router] Success via ${provider.name}!`);
+      return { content: choice?.message?.content ?? null, tool_calls: choice?.message?.tool_calls };
+      
+    } catch (error: any) {
+      console.warn(`[Waterfall Router] ❌ ${provider.name} failed or rate-limited:`, error.message);
+      lastError = error;
+      // The loop will now naturally continue to the next provider!
+    } finally {
+      clearTimeout(timer);
+    }
   }
+
+  // If the loop finishes and all providers failed:
+  throw new Error(`All AI endpoints exhausted. Last error: ${lastError.message}`);
 }
 
 // ── API fetcher ────────────────────────────────────────────────────────────
@@ -388,7 +441,7 @@ export default function ComiAIPage() {
 
     while (round < MAX_ROUNDS) {
       round++;
-      const reply = await callGroqWithTools(msgs);
+      const reply = await callAIWithWaterfall(msgs);
 
       if (reply.tool_calls?.length) {
         // Append assistant tool-call message
@@ -478,19 +531,19 @@ export default function ComiAIPage() {
         return;
       }
 
-      // Normal chat — build Groq message history and run tool loop
+      // Normal chat — build AI message history and run tool loop
       const history = messages
         .filter(m => m.id !== "welcome" && !m.permissionRequest)
         .map<GroqMsg>(m => ({ role: m.role, content: m.content }));
       history.push({ role: "user", content: userContent });
 
-      const groqMsgs: GroqMsg[] = [
+      const aiMsgs: GroqMsg[] = [
         { role: "system", content: SYSTEM_PROMPT },
         ...history,
       ];
 
       startWakeTimer();
-      await runToolLoop(groqMsgs);
+      await runToolLoop(aiMsgs);
       stopWakeTimer();
     } catch (e: any) {
       stopWakeTimer();
