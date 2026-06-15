@@ -7,7 +7,9 @@
     "outDir": "dist",
     "rootDir": "src",
     "types": ["node"],
-    "noEmit": true
+    "noEmit": false,
+    "emitDeclarationOnly": false,
+    "composite": false
   },
   "include": ["src/**/*.ts", "src/**/*.json"],
   "references": [
