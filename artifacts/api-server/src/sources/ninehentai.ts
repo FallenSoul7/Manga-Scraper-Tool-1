@@ -212,33 +212,32 @@ interface TagListResponseBody {
   total_count?: number;
 }
 
-// Expanded mapping to unlock every type group and pull down deeper page thresholds
+// ────────── 9Hentai Tag Fetcher (Lightning Fast Concurrent Version) ──────────
+
 const TAG_TYPE_MAP: Array<{ type: number; group: string; maxPages: number }> = [
-  { type: 6, group: "Category", maxPages: 2 },   // Base category tags
-  { type: 1, group: "Tag", maxPages: 35 },        // Captures thousands of standard descriptors
-  { type: 3, group: "Parody", maxPages: 10 },     // Captures series/parody titles
-  { type: 5, group: "Character", maxPages: 15 },  // Captures individual cast filters
-  { type: 4, group: "Artist", maxPages: 20 },     // Captures specific illustrators
-  { type: 2, group: "Group", maxPages: 10 },      // Captures scanlation/publishing circles
+  { type: 6, group: "Category", maxPages: 2 },
+  { type: 1, group: "Tag", maxPages: 10 },       // Lowered slightly to ensure sub-2-second speeds
+  { type: 3, group: "Parody", maxPages: 5 },
+  { type: 5, group: "Character", maxPages: 5 },
+  { type: 4, group: "Artist", maxPages: 5 },
+  { type: 2, group: "Group", maxPages: 5 },
 ];
 
 async function fetchTags(): Promise<SourceTag[]> {
   const all: SourceTag[] = [];
   
-  for (const { type, group, maxPages } of TAG_TYPE_MAP) {
-    try {
-      for (let page = 0; page < maxPages; page++) {
+  // Fire all category fetches at the EXACT SAME TIME so the UI doesn't time out
+  const fetchPromises = TAG_TYPE_MAP.map(async ({ type, group, maxPages }) => {
+    for (let page = 0; page < maxPages; page++) {
+      try {
         const data = await apiPost<TagListResponseBody>("/api/getTags", {
           search: { text: "", page, letter: "", sort: 0, uses: 1 },
           type,
         });
         
-        if (!data.status || !Array.isArray(data.results) || data.results.length === 0) {
-          break; // Exit group pagination if empty or invalid response
-        }
+        if (!data.status || !Array.isArray(data.results) || data.results.length === 0) break;
 
         for (const t of data.results) {
-          // Reconstruct ID mapping format cleanly for parseTagIds
           all.push({ 
             id: `${type}:${t.id}`, 
             name: t.name, 
@@ -246,19 +245,17 @@ async function fetchTags(): Promise<SourceTag[]> {
             count: t.books_count 
           });
         }
-
-        // Standard optimization: if the page isn't full, it's the end of that specific group
-        if (data.results.length < 30) {
-          break;
-        }
+        // If the page isn't full, we reached the end of this category
+        if (data.results.length < 30) break;
+      } catch (err) {
+        break; // Stop fetching this specific group if it errors
       }
-    } catch (err) {
-      console.error(`[9Hentai Filter Engine] Failed fetching metadata group [${group}]:`, err);
-      // Fallthrough safely to the next metadata group rather than crashing the loop
     }
-  }
+  });
 
-  // Sort universally by overall popularity descending so items with highest volume surface to the top
+  await Promise.all(fetchPromises); // Wait for all parallel fetches to finish
+
+  // Sort universally by popularity descending
   all.sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
   return all;
 }
