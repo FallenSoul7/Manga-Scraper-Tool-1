@@ -1,0 +1,25 @@
+**Context:**
+We have a full-stack TypeScript monorepo. The Vite/React frontend (`@workspace/comix-web`) is deployed on Vercel, and the Express backend (`@workspace/api-server`) is deployed on Render. We recently migrated backend state to Supabase.
+
+I need you to debug and optimize several critical performance issues and bugs in the frontend and backend. Please review the codebase and provide the necessary refactoring for the following tasks:
+
+**Task 1: Fix AI Connection Failure & Render Cold Starts**
+The frontend chat component throws a "Failed to connect to AI" error immediately. 
+- Ensure that all AI chat fetch calls on the frontend are strictly using `import.meta.env.VITE_API_URL` as the base URL.
+- **Cold Start Handling:** Render's free tier spins down after inactivity. Implement a longer timeout in the frontend fetch requests (e.g., 60 seconds). Add a friendly "Waking up server..." loading UI state to the chat rather than failing instantly.
+- **Backend CORS:** Ensure the Express backend `cors` middleware explicitly allows the Vercel frontend URL, handles preflight `OPTIONS` requests properly, and allows the necessary headers.
+
+**Task 2: Fix Blank/Dark Page Crashes on Extensions/Sources Tab**
+When clicking on a scraper extension, the page crashes to an empty dark screen. This is caused by an unhandled JavaScript exception breaking the React render tree.
+- **Action:** Create and implement a React `ErrorBoundary` component. Wrap the main routes and tab contents so that if a component fails, it catches the error and shows a localized fallback UI instead of crashing the entire app.
+- Check the scraper extension UI components for unhandled async errors, missing data, or undefined array `.map()` calls. Ensure all data mapping has optional chaining (e.g., `data?.map`).
+
+**Task 3: Resolve Extreme Lag and Excessive Tab Re-rendering**
+Switching between tabs takes a very long time, and the app refreshes excessively. 
+- **Action:** Optimize React rendering across the frontend.
+  1. Wrap heavy components (like Manga list grids, cards, and library views) in `React.memo` to prevent unnecessary re-renders.
+  2. Inspect `useEffect` hooks inside the tab components. Fix missing or overly broad dependency arrays to prevent infinite re-fetching loops.
+  3. Stop unmounting tab contents on every click. Implement a system to persist state (e.g., hiding inactive tabs with CSS `display: none`, or caching the fetched API data in local state/React Context so it doesn't require a heavy network request on every mount).
+  4. Debounce any search inputs to prevent firing a request on every keystroke.
+
+Please provide the exact file paths and the specific code changes needed to apply these fixes. Prioritize application stability and reducing UI lag.

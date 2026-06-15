@@ -4,6 +4,7 @@ import { useEffect, lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Header } from "@/components/header";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { Loader2 } from "lucide-react";
 import NotFound from "@/pages/not-found";
 
@@ -44,7 +45,11 @@ function PageLoader() {
 }
 
 function Lazy({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={<PageLoader />}>{children}</Suspense>;
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoader />}>{children}</Suspense>
+    </ErrorBoundary>
+  );
 }
 
 function ActiveSourceSync() {

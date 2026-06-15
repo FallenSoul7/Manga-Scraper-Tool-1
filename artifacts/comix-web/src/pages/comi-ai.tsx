@@ -1,10 +1,13 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, Send, Paperclip, Sparkles, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const FETCH_TIMEOUT_MS = 60_000;
 
 interface Message {
   id: string;
@@ -14,7 +17,6 @@ interface Message {
   timestamp: Date;
 }
 
-
 const WELCOME: Message = {
   id: "welcome",
   role: "assistant",
@@ -23,18 +25,45 @@ const WELCOME: Message = {
   timestamp: new Date(),
 };
 
+function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  return fetch(`${API_BASE}${path}`, {
+    ...init,
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timer));
+}
+
 export default function ComiAIPage() {
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isWakingUp, setIsWakingUp] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const wakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      if (wakeTimerRef.current) clearTimeout(wakeTimerRef.current);
+    };
+  }, []);
+
+  const startWakeTimer = useCallback(() => {
+    if (wakeTimerRef.current) clearTimeout(wakeTimerRef.current);
+    wakeTimerRef.current = setTimeout(() => setIsWakingUp(true), 3000);
+  }, []);
+
+  const stopWakeTimer = useCallback(() => {
+    if (wakeTimerRef.current) { clearTimeout(wakeTimerRef.current); wakeTimerRef.current = null; }
+    setIsWakingUp(false);
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -69,15 +98,18 @@ export default function ComiAIPage() {
     setInput("");
     setIsLoading(true);
     setError("");
+    startWakeTimer();
 
     try {
       const msgsForApi = allMsgs.slice(-50);
 
-      const routerRes = await fetch("/api/ai/chat", {
+      const routerRes = await apiFetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: msgsForApi, hasFile: !!file }),
       });
+
+      stopWakeTimer();
 
       if (!routerRes.ok) throw new Error("Failed to connect to AI.");
       const routerData = await routerRes.json();
@@ -108,7 +140,6 @@ export default function ComiAIPage() {
 
         addMsg(`📤 Reading **${file.name}** (${(file.size / 1024 / 1024).toFixed(1)} MB)...`);
 
-        // Read file as base64 for JSON transport to the backend parser
         const fileData = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "");
@@ -116,11 +147,13 @@ export default function ComiAIPage() {
           reader.readAsDataURL(file);
         });
 
-        const initRes = await fetch("/api/ai/sort", {
+        startWakeTimer();
+        const initRes = await apiFetch("/api/ai/sort", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ command, action: "init", fileData, fileName: file.name }),
         });
+        stopWakeTimer();
 
         if (!initRes.ok) {
           const err = await initRes.json().catch(() => ({ error: "Initialization failed" }));
@@ -137,7 +170,7 @@ export default function ComiAIPage() {
         let resultFile = "";
 
         while (!done) {
-          const batchRes = await fetch("/api/ai/sort", {
+          const batchRes = await apiFetch("/api/ai/sort", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ command, action: "batch", cursor, existingCategories: categories, sessionKey, fileName: file.name }),
@@ -159,7 +192,7 @@ export default function ComiAIPage() {
 
         addMsg("📥 Downloading your sorted backup...");
 
-        const dlRes = await fetch(`/api/ai/download?file=${encodeURIComponent(resultFile)}`);
+        const dlRes = await apiFetch(`/api/ai/download?file=${encodeURIComponent(resultFile)}`);
         if (!dlRes.ok) throw new Error("Download failed.");
         const blob = await dlRes.blob();
 
@@ -184,7 +217,11 @@ export default function ComiAIPage() {
         setFile(null);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
+      stopWakeTimer();
+      const isTimeout = e instanceof DOMException && e.name === "AbortError";
+      const msg = isTimeout
+        ? "Request timed out (60s). The server may be sleeping — please try again in a moment."
+        : e instanceof Error ? e.message : "Unknown error";
       setError(msg);
       setMessages(prev => [
         ...prev,
@@ -251,8 +288,13 @@ export default function ComiAIPage() {
 
           {isLoading && (
             <div className="flex justify-start">
-              <div className="bg-muted border border-border rounded-2xl rounded-bl-sm px-4 py-3">
+              <div className="bg-muted border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                {isWakingUp && (
+                  <span className="text-xs text-muted-foreground animate-pulse">
+                    Waking up server…
+                  </span>
+                )}
               </div>
             </div>
           )}

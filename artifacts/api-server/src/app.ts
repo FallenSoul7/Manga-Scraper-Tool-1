@@ -8,6 +8,33 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+const allowedOrigins = [
+  process.env.ALLOWED_ORIGIN,
+  process.env.FRONTEND_URL,
+].filter(Boolean) as string[];
+
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const localhostRe = /^https?:\/\/localhost(:\d+)?$/;
+    const replitRe = /\.replit\.dev$/;
+    if (
+      localhostRe.test(origin) ||
+      replitRe.test(origin) ||
+      allowedOrigins.includes(origin)
+    ) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS: origin '${origin}' not allowed`));
+  },
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization", "X-Source"],
+  exposedHeaders: ["Content-Disposition"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
+
 app.use(
   pinoHttp({
     logger,
@@ -27,7 +54,9 @@ app.use(
     },
   }),
 );
-app.use(cors());
+
+app.options("*", cors(corsOptions));
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
 

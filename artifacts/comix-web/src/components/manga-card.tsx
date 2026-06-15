@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Link } from "wouter";
 import { proxyImage } from "@/lib/utils";
 import { Check } from "lucide-react";
@@ -35,7 +36,15 @@ function sourceLabel(sourceId: string): string {
   return slug.charAt(0).toUpperCase() + slug.slice(1);
 }
 
-export function MangaCard({ manga, sourceId, href, isSelecting, isSelected, onNavigate, showSourceBadge }: MangaCardProps) {
+export const MangaCard = memo(function MangaCard({
+  manga,
+  sourceId,
+  href,
+  isSelecting,
+  isSelected,
+  onNavigate,
+  showSourceBadge,
+}: MangaCardProps) {
   const inner = (
     <div className="group relative flex flex-col gap-2 cursor-pointer select-none">
       <div
@@ -93,4 +102,4 @@ export function MangaCard({ manga, sourceId, href, isSelecting, isSelected, onNa
   if (isSelecting) return inner;
 
   return <Link href={href ?? `/manga/${manga.id}`} onClick={onNavigate}>{inner}</Link>;
-}
+});
