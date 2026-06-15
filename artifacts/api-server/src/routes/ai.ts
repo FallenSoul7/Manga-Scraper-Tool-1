@@ -181,7 +181,8 @@ async function sessionSet(key: string, manga: MangaRow[]): Promise<void> {
   if (error) throw new Error(`Supabase sessionSet: ${error.message}`);
 }
 
-async function sessionGet(key: string): Promise<MangaRow[] null |> {
+async function sessionGet(key: string): Promise<MangaRow[] | null> {
+
   const { data, error } = await getSupabase()
     .from("ai_sessions")
     .select("manga")
