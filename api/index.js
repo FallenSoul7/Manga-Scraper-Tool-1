@@ -19,7 +19,7 @@ if (process.env.VERCEL) {
   );
 
   // SPA fallback: serve index.html for any path not handled above.
-  app.use((_req: any, res: any) => {
+  app.use((_req, res) => {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.sendFile(path.join(staticDir, "index.html"));
   });
