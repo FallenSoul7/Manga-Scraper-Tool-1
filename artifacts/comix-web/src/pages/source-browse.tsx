@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { useRoute, useSearch } from "wouter";
+import { useRoute, useSearch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
@@ -133,6 +133,7 @@ function VpnBanner({
 // Main page
 // ---------------------------------------------------------------------------
 export default function SourceBrowsePage() {
+  const [, setLocation] = useLocation();
   const [, params] = useRoute("/sources/:id");
   const sourceId = params?.id || "";
   const searchString = useSearch();
