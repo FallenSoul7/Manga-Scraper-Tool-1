@@ -286,39 +286,41 @@ export const NineHentaiSource: MangaSource = {
   },
 
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
-    // getBookByID doesn't return tags — enrich by scanning listing pages based on ID math.
-    // The 9hentai text search is broken (returns newest books regardless of query),
-    // so we estimate which page the book appears on and fetch it directly.
+    // 1. Get the base book details first (this is fast but lacks tags)
     const data = await apiPost<DetailResponseBody>("/api/getBookByID", { id: Number(id) });
     if (!data.status) throw new Error(`9hentai.so: book ${id} not found`);
     const book = data.results;
 
     let enrichedBook: NineBook | null = null;
+
     try {
-      // Wrap all enrichment in a 5-second timeout so it never stalls details loading.
+      // 2. Perform a direct search using the book's title to fetch the fully populated object
+      // Wrap it in a timeout so it never blocks the UI indefinitely if the search fails
       await Promise.race([
         (async () => {
-          // Fetch page 0 to learn the current max ID and check if target is there.
-          const page0 = await apiPost<SearchResponseBody>("/api/getBook", buildSearchBody({ page: 0, sort: 0 }));
-          if (!page0.status || !page0.results?.length) return;
-          enrichedBook = page0.results.find(b => b.id === book.id) ?? null;
-          if (enrichedBook) return;
-          // IDs are sequential; estimate which page holds this book and check it once.
-          const maxId = page0.results[0].id;
-          const gap   = maxId - book.id;
-          if (gap > 0) {
-            const estPage = Math.ceil(gap / 18);
-            const pageData = await apiPost<SearchResponseBody>("/api/getBook",
-              buildSearchBody({ page: estPage, sort: 0 }));
-            enrichedBook = pageData.results?.find(b => b.id === book.id) ?? null;
+          // If the book title has special characters, strip them to ensure the search hits
+          const cleanTitle = book.title.replace(/[^a-zA-Z0-9\s]/g, '').trim().split(" ").slice(0, 4).join(" ");
+          
+          if (!cleanTitle) return;
+
+          const searchData = await apiPost<SearchResponseBody>("/api/getBook", buildSearchBody({ 
+            text: cleanTitle, 
+            page: 0, 
+            sort: 0 
+          }));
+
+          if (searchData.status && searchData.results?.length > 0) {
+            // Find the exact match in the search results
+            enrichedBook = searchData.results.find(b => b.id === book.id) ?? null;
           }
         })(),
-        new Promise<void>((_, reject) => setTimeout(() => reject(new Error("enrichment timeout")), 5000)),
+        new Promise<void>((_, reject) => setTimeout(() => reject(new Error("tag enrichment timeout")), 4000)),
       ]);
     } catch {
-      // enrichment failed or timed out — fall through with empty tags
+      // If the targeted search fails, fall back to the basic book data silently
     }
 
+    // Merge the data: prefer the enriched book (with tags) if we found it, otherwise fallback
     const effective = enrichedBook ?? book;
 
     const artists = tagsOf(effective, 4);
@@ -337,7 +339,6 @@ export const NineHentaiSource: MangaSource = {
       .filter(t => GROUP_NAMES[t.type])
       .map(t => ({ id: `${t.type}:${t.id}`, name: t.name, group: GROUP_NAMES[t.type] }));
 
-    // Use basic book data (always available) for non-tag fields.
     return {
       id,
       title: book.title || `Gallery ${id}`,
@@ -350,7 +351,7 @@ export const NineHentaiSource: MangaSource = {
       type: "Doujinshi",
       isNsfw: true,
       rating: 0,
-      genres: allGenres,
+      genres: allGenres, // Tags will now successfully populate here!
       score: book.total_favorite ? String(book.total_favorite) : "",
       scorePosition: book.total_favorite ? "bottom" : "none",
       sourceTags,
