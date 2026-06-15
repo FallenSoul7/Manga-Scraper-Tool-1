@@ -133,7 +133,7 @@ function makeKey() {
 
 // ── POST /api/ai/chat ──────────────────────────────────────────────────────
 router.post("/ai/chat", async (req: Request, res: ExpressResponse) => {
-
+  try {
     const { messages, hasFile } = req.body;
     if (!Array.isArray(messages)) { res.status(400).json({ error: "messages must be an array" }); return; }
 
@@ -169,7 +169,7 @@ INTENT RULES:
 
 // ── POST /api/ai/sort ──────────────────────────────────────────────────────
 router.post("/ai/sort", async (req: Request, res: ExpressResponse) => {
-
+ try {
     const {
       action,
       command,
