@@ -1,16 +1,26 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, Send, Paperclip, Sparkles, X, Loader2, ShieldCheck, ShieldX, Trash2 } from "lucide-react";
+import { 
+  ArrowLeft, Send, Paperclip, Sparkles, X, Loader2, 
+  ShieldCheck, ShieldX, Trash2, Cpu, Brain, Zap, Layers 
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { storeActions, getStoreSnapshot } from "@/lib/storage";
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const FETCH_TIMEOUT_MS = 60_000;
 
-// API Keys from Vercel
+// API Keys from Vercel/Vite
 const VITE_GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY ?? "";
 const VITE_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_API_KEY ?? "";
 const VITE_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? "";
@@ -170,39 +180,45 @@ BEHAVIOR RULES:
 6. Be conversational, helpful, and knowledgeable about manga, manhwa, manhua.
 7. Always maintain continuity from previous messages.`;
 
-// ── Universal AI Waterfall Router ──────────────────────────────────────────
+// ── Universal AI Waterfall Router (Frontend Tool Enabled) ──────────────────
 
-async function callAIWithWaterfall(msgs: GroqMsg[]): Promise<{ content: string | null; tool_calls?: GroqToolCall[] }> {
-  const providers = [
-    {
-      name: "Groq",
-      url: "https://api.groq.com/openai/v1/chat/completions",
-      key: VITE_GROQ_KEY,
-      model: "llama-3.3-70b-versatile"
-    },
-    {
-      name: "OpenRouter",
-      url: "https://openrouter.ai/api/v1/chat/completions",
-      key: VITE_OPENROUTER_KEY,
-      model: "nex-agi/nex-n2-pro:free"
-    },
-    {
-      name: "Gemini",
-      url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      key: VITE_GEMINI_KEY,
-      model: "gemini-2.5-flash"
-    }
+async function callAIWithWaterfall(
+  msgs: GroqMsg[], 
+  modelMode: string
+): Promise<{ content: string | null; tool_calls?: GroqToolCall[] }> {
+  
+  const allProviders = [
+    { name: "Groq", type: "groq", url: "https://api.groq.com/openai/v1/chat/completions", key: VITE_GROQ_KEY, model: "llama-3.3-70b-versatile", isUncensored: false },
+    { name: "OpenRouter Nex", type: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: VITE_OPENROUTER_KEY, model: "nex-agi/nex-n2-pro:free", isUncensored: false },
+    { name: "Gemini", type: "gemini", url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", key: VITE_GEMINI_KEY, model: "gemini-2.5-flash", isUncensored: false },
+    { name: "OpenRouter Uncensored", type: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: VITE_OPENROUTER_KEY, model: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", isUncensored: true }
   ];
+
+  // Check history for 18+ keywords for auto-routing
+  const fullTextContext = msgs.map(m => String(m.content)).join(" ").toLowerCase();
+  const adultKeywords = ["hentia", "hentai", "18+", "nsfw", "xxx", "erotic", "adult", "smut", "lewd", "ecchi"];
+  const isAdultQuery = adultKeywords.some(word => fullTextContext.includes(word));
+
+  let activeQueue = [];
+
+  if (modelMode === "uncensored" || (modelMode === "auto" && isAdultQuery)) {
+    const uncensored = allProviders.filter(p => p.isUncensored);
+    const normal = allProviders.filter(p => !p.isUncensored);
+    activeQueue = [...uncensored, ...normal];
+  } else if (modelMode !== "auto") {
+    const specialized = allProviders.filter(p => p.type === modelMode);
+    const remainders = allProviders.filter(p => p.type !== modelMode);
+    activeQueue = [...specialized, ...remainders];
+  } else {
+    activeQueue = [...allProviders.filter(p => !p.isUncensored), ...allProviders.filter(p => p.isUncensored)];
+  }
 
   let lastError = new Error("No API keys are configured.");
 
-  for (const provider of providers) {
-    if (!provider.key) {
-      console.warn(`Skipping ${provider.name}: API key is missing.`);
-      continue;
-    }
+  for (const provider of activeQueue) {
+    if (!provider.key) continue;
 
-    console.log(`[Waterfall Router] Attempting ${provider.name}...`);
+    console.log(`[Waterfall Router] Attempting ${provider.name} (${provider.model})...`);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -216,9 +232,9 @@ async function callAIWithWaterfall(msgs: GroqMsg[]): Promise<{ content: string |
         body: JSON.stringify({
           model: provider.model,
           messages: msgs,
-          tools: TOOLS,
-          tool_choice: "auto",
-          temperature: 0.3,
+          tools: provider.isUncensored ? undefined : TOOLS, // Disable tools for simple uncensored chat bypass
+          tool_choice: provider.isUncensored ? undefined : "auto",
+          temperature: provider.isUncensored ? 0.6 : 0.3,
           max_tokens: 1500,
         }),
         signal: controller.signal,
@@ -232,11 +248,16 @@ async function callAIWithWaterfall(msgs: GroqMsg[]): Promise<{ content: string |
       const data = await res.json() as any;
       const choice = data.choices?.[0];
       
+      const contentOutput = choice?.message?.content;
+      if (contentOutput && (contentOutput.includes("I cannot assist with") || contentOutput.includes("I am unable to provide"))) {
+        throw new Error("Content blocked by alignment.");
+      }
+
       console.log(`[Waterfall Router] Success via ${provider.name}!`);
-      return { content: choice?.message?.content ?? null, tool_calls: choice?.message?.tool_calls };
+      return { content: contentOutput ?? null, tool_calls: choice?.message?.tool_calls };
       
     } catch (error: any) {
-      console.warn(`[Waterfall Router] ❌ ${provider.name} failed or rate-limited:`, error.message);
+      console.warn(`[Waterfall Router] ❌ ${provider.name} failed:`, error.message);
       lastError = error;
     } finally {
       clearTimeout(timer);
@@ -379,7 +400,6 @@ const WELCOME: Message = {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function ComiAIPage() {
-  // Messages state mounts dynamically out of localStorage to persist across tabs
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = localStorage.getItem("comi_lounge_chat");
     if (saved) {
@@ -398,11 +418,14 @@ export default function ComiAIPage() {
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
+  
+  // Model Select State
+  const [modelMode, setModelMode] = useState<string>("auto");
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const wakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Automatically preserve changes to local client instance cache on modifications
   useEffect(() => {
     localStorage.setItem("comi_lounge_chat", JSON.stringify(messages));
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -423,7 +446,6 @@ export default function ComiAIPage() {
   const addMsg = useCallback((content: string, extra: Partial<Message> = {}) => {
     const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const msg: Message = { id, role: "assistant", content, timestamp: new Date(), ...extra };
-    // Enforce strict rolling 20-message memory constraint
     setMessages(prev => [...prev, msg].slice(-20));
     return id;
   }, []);
@@ -459,7 +481,7 @@ export default function ComiAIPage() {
 
     while (round < MAX_ROUNDS) {
       round++;
-      const reply = await callAIWithWaterfall(msgs);
+      const reply = await callAIWithWaterfall(msgs, modelMode);
 
       if (reply.tool_calls?.length) {
         msgs.push({
@@ -484,7 +506,6 @@ export default function ComiAIPage() {
               timestamp: new Date(),
               permissionRequest,
             };
-            // Enforce strict rolling 20-message memory constraint
             setMessages(prev => [...prev, permMsg].slice(-20));
             return;
           }
@@ -505,7 +526,7 @@ export default function ComiAIPage() {
     }
 
     addMsg("(Reached maximum tool rounds — please try a simpler request.)");
-  }, [addMsg]);
+  }, [addMsg, modelMode]);
 
   // ── File select ──────────────────────────────────────────────────────────
 
@@ -535,7 +556,6 @@ export default function ComiAIPage() {
       file: file ? { name: file.name, size: file.size } : undefined,
       timestamp: new Date(),
     };
-    // Enforce strict rolling 20-message memory constraint
     setMessages(prev => [...prev, userMsg].slice(-20));
 
     try {
@@ -581,7 +601,6 @@ export default function ComiAIPage() {
         if (id && prev.find(m => m.id === id)) {
           return prev.map(m => m.id === id ? { ...m, content } : m);
         }
-        // Enforce strict rolling 20-message memory constraint on appending process items
         return [...prev, { id: msgId, role: "assistant" as const, content, timestamp: new Date() }].slice(-20);
       });
       return msgId;
@@ -662,6 +681,16 @@ export default function ComiAIPage() {
         ? <strong key={i}>{part.slice(2, -2)}</strong>
         : <span key={i}>{part}</span>
     );
+
+  const getModelBadgeDetails = () => {
+    switch (modelMode) {
+      case "gemini": return { name: "Gemini", icon: <Brain className="h-3.5 w-3.5 text-blue-400" /> };
+      case "groq": return { name: "Groq", icon: <Zap className="h-3.5 w-3.5 text-orange-400" /> };
+      case "openrouter": return { name: "OpenRouter", icon: <Layers className="h-3.5 w-3.5 text-purple-400" /> };
+      case "uncensored": return { name: "🔞 18+ Uncensored", icon: <Cpu className="h-3.5 w-3.5 text-red-400" /> };
+      default: return { name: "✨ All Auto", icon: <Sparkles className="h-3.5 w-3.5 text-green-400" /> };
+    }
+  };
 
   return (
     <main className="container mx-auto px-4 py-6 max-w-3xl h-[100dvh] flex flex-col">
@@ -758,7 +787,9 @@ export default function ComiAIPage() {
               <div className="bg-muted border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 {isWakingUp && (
-                  <span className="text-xs text-muted-foreground animate-pulse">Working…</span>
+                  <span className="text-xs text-muted-foreground animate-pulse">
+                    Routing to {getModelBadgeDetails().name}…
+                  </span>
                 )}
               </div>
             </div>
@@ -790,8 +821,72 @@ export default function ComiAIPage() {
         </div>
       )}
 
-      {/* Input */}
+      {/* Input controls with Integrated Box Engine Selector */}
       <div className="flex gap-2 items-end shrink-0">
+        
+        {/* Soft-Edged Model Selection Box Engine */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 rounded-xl border border-border bg-card/60 hover:bg-accent transition-all"
+              disabled={isLoading}
+              title="Change active cluster provider"
+            >
+              {getModelBadgeDetails().icon}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56 rounded-xl border border-border p-1 bg-popover/95 backdrop-blur-md shadow-xl">
+            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+              Select AI Engine Strategy
+            </div>
+            <DropdownMenuSeparator />
+            
+            <DropdownMenuItem 
+              onClick={() => setModelMode("auto")}
+              className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "auto" && "bg-primary/10 font-bold text-primary")}
+            >
+              <Sparkles className="h-3.5 w-3.5 text-green-400" />
+              <span>✨ All Auto</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem 
+              onClick={() => setModelMode("gemini")}
+              className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "gemini" && "bg-primary/10 font-bold text-primary")}
+            >
+              <Brain className="h-3.5 w-3.5 text-blue-400" />
+              <span>♊ Gemini</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem 
+              onClick={() => setModelMode("groq")}
+              className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "groq" && "bg-primary/10 font-bold text-primary")}
+            >
+              <Zap className="h-3.5 w-3.5 text-orange-400" />
+              <span>⚡ Groq</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem 
+              onClick={() => setModelMode("openrouter")}
+              className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "openrouter" && "bg-primary/10 font-bold text-primary")}
+            >
+              <Layers className="h-3.5 w-3.5 text-purple-400" />
+              <span>🌐 OpenRouter</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+            
+            <DropdownMenuItem 
+              onClick={() => setModelMode("uncensored")}
+              className={cn("rounded-lg text-xs gap-2 font-medium text-red-400 focus:text-red-500 cursor-pointer", modelMode === "uncensored" && "bg-red-500/10 font-bold")}
+            >
+              <Cpu className="h-3.5 w-3.5 animate-pulse text-red-500" />
+              <span>🔞 18+ Uncensored</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <Button
           variant="outline"
           size="icon"
@@ -819,10 +914,10 @@ export default function ComiAIPage() {
           placeholder={
             file
               ? "Describe how to sort your library…"
-              : "Search manga, manage categories, or just chat…"
+              : `Chat via ${getModelBadgeDetails().name}…`
           }
           disabled={isLoading}
-          className="min-h-[44px] max-h-[120px] rounded-xl resize-none"
+          className="min-h-[44px] max-h-[120px] rounded-xl resize-none border border-border bg-card/40 focus-visible:ring-1"
           rows={1}
         />
 
