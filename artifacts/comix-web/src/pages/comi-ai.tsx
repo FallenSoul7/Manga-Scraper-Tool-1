@@ -88,9 +88,6 @@ function apiFetch(path: string, init?: RequestInit): Promise<Response> {
 }
 
 // ── Tool execution ─────────────────────────────────────────────────────────
-
-type ExecResult = { result: string; permissionRequest?: PermissionRequest };
-
 async function executeTool(name: string, args: Record<string, any>): Promise<ExecResult> {
   const state = getStoreSnapshot();
 
@@ -109,9 +106,9 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
   }
 
   if (name === "browse_popular") {
-    const { sourceId } = args;
+    const { sourceId, page = 1 } = args;
     try {
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/popular?page=1`);
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/popular?page=${page}`);
       if (!res.ok) return { result: `Could not browse ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
@@ -123,81 +120,6 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
     }
   }
 
-  if (name === "search_manga") {
-    const { sourceId, query } = args;
-    try {
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/search?q=${encodeURIComponent(query)}&page=1`);
-      if (!res.ok) return { result: `Search failed in ${sourceId}.` };
-      const data = await res.json() as any;
-      const items: any[] = data.items ?? data.results ?? [];
-      if (!items.length) return { result: `No results for "${query}" in ${sourceId}.` };
-      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
-      return { result: `Search results for "${query}" in ${sourceId}:\n${list}` };
-    } catch {
-      return { result: `Could not search ${sourceId}.` };
-    }
-  }
-
-  if (name === "list_categories") {
-    const cats = state.categories.sort((a, b) => a.order - b.order);
-    const lib = state.library;
-    const lines = cats.map(c => {
-      const count = Object.values(lib).filter(m => m.categoryIds.includes(c.id)).length;
-      return `• ${c.name} (ID: ${c.id}, ${count} manga)`;
-    });
-    return { result: `User categories:\n${lines.join("\n")}` };
-  }
-
-  if (name === "list_library") {
-    const { categoryId } = args;
-    const lib = Object.values(state.library);
-    const filtered = categoryId ? lib.filter(m => m.categoryIds.includes(categoryId)) : lib;
-    if (!filtered.length) return { result: "Library is empty (or no manga in that category)." };
-    const lines = filtered.slice(0, 30).map(m => `• ${m.title} (ID: ${m.id}${m.categoryIds.length ? `, cats: ${m.categoryIds.join(",")}` : ""})`);
-    const extra = filtered.length > 30 ? `\n…and ${filtered.length - 30} more.` : "";
-    return { result: `Library (${filtered.length} manga):\n${lines.join("\n")}${extra}` };
-  }
-
-  if (name === "create_category") {
-    const { name: catName } = args;
-    if (!catName?.trim()) return { result: "Category name cannot be empty." };
-    const existing = state.categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
-    if (existing) return { result: `Category "${catName}" already exists (ID: ${existing.id}).` };
-    const cat = storeActions.addCategory(catName.trim());
-    return { result: `Created category "${cat.name}" (ID: ${cat.id}).` };
-  }
-
-  if (name === "delete_category") {
-    const { categoryId, categoryName } = args;
-    if (categoryId === "default") return { result: "Cannot delete the Default category." };
-    const cat = state.categories.find(c => c.id === categoryId);
-    if (!cat) return { result: `Category "${categoryName}" not found.` };
-    const count = Object.values(state.library).filter(m => m.categoryIds.includes(categoryId)).length;
-    const desc = `Delete category **"${cat.name}"**${count > 0 ? ` — ${count} manga will be moved to Default` : " (empty category)"}.`;
-    return {
-      result: `PERMISSION_REQUIRED to delete "${cat.name}". Waiting for user confirmation.`,
-      permissionRequest: {
-        description: desc,
-        execute: () => {
-          storeActions.removeCategory(categoryId);
-          return `Deleted category "${cat.name}".${count > 0 ? ` ${count} manga moved to Default.` : ""}`;
-        },
-      },
-    };
-  }
-
-  if (name === "move_manga_category") {
-    const { mangaId, targetCategoryId } = args;
-    const manga = state.library[mangaId];
-    if (!manga) return { result: `Manga ID "${mangaId}" not found in library.` };
-    const cat = state.categories.find(c => c.id === targetCategoryId);
-    if (!cat) return { result: `Category ID "${targetCategoryId}" not found.` };
-    storeActions.setMangaCategories(mangaId, [targetCategoryId]);
-    return { result: `Moved "${manga.title}" to category "${cat.name}".` };
-  }
-
-  return { result: `Unknown tool: ${name}` };
-}
   if (name === "browse_latest") {
     const { sourceId, page = 1 } = args;
     try {
@@ -213,6 +135,21 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
     }
   }
 
+  if (name === "search_manga") {
+    const { sourceId, query, page = 1 } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/search?q=${encodeURIComponent(query)}&page=${page}`);
+      if (!res.ok) return { result: `Search failed in ${sourceId}.` };
+      const data = await res.json() as any;
+      const items: any[] = data.items ?? data.results ?? [];
+      if (!items.length) return { result: `No results for "${query}" in ${sourceId}.` };
+      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
+      return { result: `Search results for "${query}" in ${sourceId}:\n${list}` };
+    } catch {
+      return { result: `Could not search ${sourceId}.` };
+    }
+  }
+
   if (name === "global_search") {
     const { query } = args;
     try {
@@ -221,7 +158,9 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
       if (!items.length) return { result: `No results found for "${query}" across all sources.` };
-      const list = items.slice(0, 15).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}${m.source ? ` (${m.source})` : ""}`).join("\n");
+      const list = items.slice(0, 15).map((m: any) =>
+        `• ${m.title}${m.type ? ` [${m.type}]` : ""}${m.source ? ` (${m.source})` : ""}`
+      ).join("\n");
       return { result: `Global search results for "${query}":\n${list}` };
     } catch {
       return { result: `Global search failed for "${query}".` };
@@ -272,12 +211,36 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       const data = await res.json() as any;
       const chapters: any[] = data.chapters ?? data.items ?? [];
       if (!chapters.length) return { result: "No chapters found." };
-      const preview = chapters.slice(0, 10).map((c: any) => `• Ch.${c.number ?? "?"} — ${c.title ?? "Untitled"}${c.uploadDate ? ` (${c.uploadDate})` : ""}`).join("\n");
+      const preview = chapters.slice(0, 10).map((c: any) =>
+        `• Ch.${c.number ?? "?"} — ${c.title ?? "Untitled"}${c.uploadDate ? ` (${c.uploadDate})` : ""}`
+      ).join("\n");
       const extra = chapters.length > 10 ? `\n…and ${chapters.length - 10} more chapters.` : "";
       return { result: `Chapters (${chapters.length} total):\n${preview}${extra}` };
     } catch {
       return { result: `Could not fetch chapters for manga ${mangaId}.` };
     }
+  }
+
+  if (name === "list_categories") {
+    const cats = state.categories.sort((a, b) => a.order - b.order);
+    const lib = state.library;
+    const lines = cats.map(c => {
+      const count = Object.values(lib).filter(m => m.categoryIds.includes(c.id)).length;
+      return `• ${c.name} (ID: ${c.id}, ${count} manga)`;
+    });
+    return { result: `User categories:\n${lines.join("\n")}` };
+  }
+
+  if (name === "list_library") {
+    const { categoryId } = args;
+    const lib = Object.values(state.library);
+    const filtered = categoryId ? lib.filter(m => m.categoryIds.includes(categoryId)) : lib;
+    if (!filtered.length) return { result: "Library is empty (or no manga in that category)." };
+    const lines = filtered.slice(0, 30).map(m =>
+      `• ${m.title} (ID: ${m.id}${m.categoryIds.length ? `, cats: ${m.categoryIds.join(",")}` : ""})`
+    );
+    const extra = filtered.length > 30 ? `\n…and ${filtered.length - 30} more.` : "";
+    return { result: `Library (${filtered.length} manga):\n${lines.join("\n")}${extra}` };
   }
 
   if (name === "add_to_library") {
@@ -295,6 +258,47 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       return { result: `Could not add manga to library.` };
     }
   }
+
+  if (name === "create_category") {
+    const { name: catName } = args;
+    if (!catName?.trim()) return { result: "Category name cannot be empty." };
+    const existing = state.categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+    if (existing) return { result: `Category "${catName}" already exists (ID: ${existing.id}).` };
+    const cat = storeActions.addCategory(catName.trim());
+    return { result: `Created category "${cat.name}" (ID: ${cat.id}).` };
+  }
+
+  if (name === "delete_category") {
+    const { categoryId, categoryName } = args;
+    if (categoryId === "default") return { result: "Cannot delete the Default category." };
+    const cat = state.categories.find(c => c.id === categoryId);
+    if (!cat) return { result: `Category "${categoryName}" not found.` };
+    const count = Object.values(state.library).filter(m => m.categoryIds.includes(categoryId)).length;
+    const desc = `Delete category **"${cat.name}"**${count > 0 ? ` — ${count} manga will be moved to Default` : " (empty category)"}.`;
+    return {
+      result: `PERMISSION_REQUIRED to delete "${cat.name}". Waiting for user confirmation.`,
+      permissionRequest: {
+        description: desc,
+        execute: () => {
+          storeActions.removeCategory(categoryId);
+          return `Deleted category "${cat.name}".${count > 0 ? ` ${count} manga moved to Default.` : ""}`;
+        },
+      },
+    };
+  }
+
+  if (name === "move_manga_category") {
+    const { mangaId, targetCategoryId } = args;
+    const manga = state.library[mangaId];
+    if (!manga) return { result: `Manga ID "${mangaId}" not found in library.` };
+    const cat = state.categories.find(c => c.id === targetCategoryId);
+    if (!cat) return { result: `Category ID "${targetCategoryId}" not found.` };
+    storeActions.setMangaCategories(mangaId, [targetCategoryId]);
+    return { result: `Moved "${manga.title}" to category "${cat.name}".` };
+  }
+
+  return { result: `Unknown tool: ${name}` };
+}
 
 
 // ── Welcome message ────────────────────────────────────────────────────────
