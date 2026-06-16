@@ -4,7 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import http from "http";
-import path from "path";  // 👈 add this
+import path from "path";  
 
 const app: Express = express();
 
@@ -34,8 +34,13 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 👇 Add this block – serve static files from comix-web/public
-// The path is relative to the compiled output (dist). Adjust if needed.
+// 👇 THE FIX: Direct route to the double-nested folder
+// This intercepts requests for "/public/source-icons/..." 
+// and serves them directly from the messy folder, bypassing the proxy.
+const iconPath = path.join(__dirname, "../../comix-web/public/public/source-icons");
+app.use("/public/source-icons", express.static(iconPath));
+
+// Fallback for any other standard public files
 const publicPath = path.join(__dirname, "../../comix-web/public");
 app.use("/public", express.static(publicPath));
 
