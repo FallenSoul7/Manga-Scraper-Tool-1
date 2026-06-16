@@ -9,6 +9,9 @@ const app: Express = express();
 app.use(
   pinoHttp({
     logger,
+    autoLogging: {
+      ignore: (req) => req.url?.startsWith("/api/image") ?? false,
+    },
     serializers: {
       req(req) {
         return {
@@ -30,5 +33,20 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+
+// In development, proxy all non-API requests to the Vite dev server so that
+// port 8080 (the external-facing port) serves the full React app.
+if (process.env.NODE_ENV === "development") {
+  const { createProxyMiddleware } = await import("http-proxy-middleware");
+  app.use(
+    "/",
+    createProxyMiddleware({
+      target: "http://localhost:19597",
+      changeOrigin: true,
+      ws: true,
+      logger: console,
+    }),
+  );
+}
 
 export default app;

@@ -1,0 +1,1 @@
+- [Comix Lounge port routing](comix-port-routing.md) — API server owns port 8080 (external 80); must proxy non-API reqs to Vite (19597) in dev.
