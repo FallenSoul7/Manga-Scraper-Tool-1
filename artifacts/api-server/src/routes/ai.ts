@@ -35,7 +35,7 @@ function buildProviders() {
   // Normal censored providers — tried in key rotation order
   for (let i = 0; i < groqKeys.length; i++) {
     providers.push({
-      name: `Groq${i > 0 ? ` (key ${i + 1})` : ""}`,
+      name: `Groq${i > 0 ? \` (key \${i + 1})\` : ""}`,
       url: "https://api.groq.com/openai/v1/chat/completions",
       key: groqKeys[i],
       model: "llama-3.3-70b-versatile",
@@ -44,7 +44,7 @@ function buildProviders() {
   }
   for (let i = 0; i < geminiKeys.length; i++) {
     providers.push({
-      name: `Gemini${i > 0 ? ` (key ${i + 1})` : ""}`,
+      name: `Gemini${i > 0 ? \` (key \${i + 1})\` : ""}`,
       url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       key: geminiKeys[i],
       model: "gemini-2.5-flash",
@@ -54,7 +54,7 @@ function buildProviders() {
   // One normal OpenRouter model (Nex) — rotate all keys
   for (let i = 0; i < openrouterKeys.length; i++) {
     providers.push({
-      name: `OpenRouter Nex${i > 0 ? ` (key ${i + 1})` : ""}`,
+      name: `OpenRouter Nex${i > 0 ? \` (key \${i + 1})\` : ""}`,
       url: "https://openrouter.ai/api/v1/chat/completions",
       key: openrouterKeys[i],
       model: "nex-agi/nex-n2-pro:free",
@@ -67,7 +67,7 @@ function buildProviders() {
     const shortName = model.split("/")[1]?.split(":")[0] ?? model;
     for (let i = 0; i < openrouterKeys.length; i++) {
       providers.push({
-        name: `OpenRouter 18+ ${shortName}${i > 0 ? ` (key ${i + 1})` : ""}`,
+        name: `OpenRouter 18+ ${shortName}${i > 0 ? \` (key \${i + 1})\` : ""}`,
         url: "https://openrouter.ai/api/v1/chat/completions",
         key: openrouterKeys[i],
         model,
@@ -192,8 +192,9 @@ router.post("/chat", async (req, res) => {
         body: JSON.stringify({
           model: provider.model,
           messages: apiMessages,
-          tools: provider.isUncensored ? undefined : TOOLS,
-          tool_choice: provider.isUncensored ? undefined : "auto",
+          // 👇 THE FIX IS HERE: TOOLS are now provided to every model, even uncensored ones!
+          tools: TOOLS,
+          tool_choice: "auto",
           temperature: provider.isUncensored ? 0.7 : 0.3,
           max_tokens: 1500,
         }),
