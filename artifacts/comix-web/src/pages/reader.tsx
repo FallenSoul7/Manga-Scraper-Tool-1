@@ -300,7 +300,9 @@ export default function Reader() {
     const nc = nextChapter;
     appendedIdsRef.current.add(nc.id);
     setLoadingNextChapter(true);
-    fetch(`/api/chapter/${nc.id}/pages`)
+    fetch(`/api/chapter/${nc.id}/pages`, {
+      headers: sourceId ? { "X-Source": sourceId } : {},
+    })
       .then(r => r.json())
       .then((data: { pages: { index: number; url: string }[] }) => {
         setAppendedChapters(prev => [...prev, {
@@ -530,7 +532,7 @@ export default function Reader() {
                 <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
               )}
               <img
-                src={proxyImage(page.url)}
+                src={proxyImage(page.url, sourceId ?? undefined)}
                 alt={`Page ${page.index}`}
                 className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
                 loading={isVerticalLike ? 'eager' : (idx < 3 ? 'eager' : 'lazy')}
@@ -570,7 +572,7 @@ export default function Reader() {
                   }`}
                 >
                   <img
-                    src={proxyImage(page.url)}
+                    src={proxyImage(page.url, sourceId ?? undefined)}
                     alt={`Ch${ch.number} Page ${page.index}`}
                     loading="lazy"
                     decoding="async"

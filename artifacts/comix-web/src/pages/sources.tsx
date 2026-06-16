@@ -249,7 +249,7 @@ export default function SourcesPage() {
           </div>
 
           <TabsContent value="sources" className="mt-0 animate-in fade-in duration-300">
-            <SourcesTab installed={installed} activeId={activeId} />
+            <SourcesTab installed={installed} activeId={activeId} catalog={catalog ?? null} />
           </TabsContent>
 
           <TabsContent value="extensions" className="mt-0 animate-in fade-in duration-300">
@@ -262,13 +262,26 @@ export default function SourcesPage() {
 }
 
 // ─── Sources tab (Tachiyomi-style) ───────────────────────────────────────────
-function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; activeId: string }) {
+function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const pinnedSources = installed.filter(s => s.isPinned).sort((a, b) => a.name.localeCompare(b.name));
-  const lastUsed      = installed.find(s => s.id === activeId && !s.isPinned);
-  const rest          = installed.filter(s => !s.isPinned && s.id !== activeId).sort((a, b) => a.name.localeCompare(b.name));
+  const catalogIconMap = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const ext of catalog?.extensions ?? []) {
+      map[ext.id] = ext.iconUrl;
+    }
+    return map;
+  }, [catalog]);
+
+  const withIcon = useMemo(
+    () => installed.map(s => ({ ...s, iconUrl: s.iconUrl ?? catalogIconMap[s.id] ?? null })),
+    [installed, catalogIconMap],
+  );
+
+  const pinnedSources = withIcon.filter(s => s.isPinned).sort((a, b) => a.name.localeCompare(b.name));
+  const lastUsed      = withIcon.find(s => s.id === activeId && !s.isPinned);
+  const rest          = withIcon.filter(s => !s.isPinned && s.id !== activeId).sort((a, b) => a.name.localeCompare(b.name));
 
   function SourceRow({ src }: { src: InstalledSource }) {
     const isPinned = !!src.isPinned;

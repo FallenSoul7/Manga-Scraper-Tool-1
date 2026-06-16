@@ -14,7 +14,7 @@ const enriched = {
     lang: ext.lang,
     isNsfw: ext.isNsfw,
     versionCode: ext.versionCode,
-    iconUrl: null,
+    iconUrl: ext.icon ? `/public/source-icons/${ext.icon as string}` : null,
     supported: isSupported(ext.id as string),
   })),
 };
