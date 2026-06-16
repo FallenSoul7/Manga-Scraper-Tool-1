@@ -93,8 +93,12 @@ function buildQueue(modelMode: string, fullText: string) {
   const uncensored = all.filter(p =>  p.isUncensored);
   const adult = isAdultContext(fullText);
 
-  if (modelMode === "uncensored" || (modelMode === "auto" && adult)) {
-    // Uncensored first, then normal as last-resort fallback
+  // Locked to uncensored — ONLY uncensored providers, no fallback to normal
+  if (modelMode === "uncensored") {
+    return [...uncensored];
+  }
+  // Auto mode + adult context detected — uncensored first, normal as last-resort fallback
+  if (modelMode === "auto" && adult) {
     return [...uncensored, ...normal];
   }
   if (modelMode === "groq") {
@@ -106,9 +110,10 @@ function buildQueue(modelMode: string, fullText: string) {
   if (modelMode === "openrouter") {
     return [...all.filter(p => p.name.startsWith("OpenRouter")), ...all.filter(p => !p.name.startsWith("OpenRouter"))];
   }
-  // auto — normal providers first, uncensored as final fallback
+  // auto (no adult context) — normal providers first, uncensored as final fallback
   return [...normal, ...uncensored];
 }
+
 
 // ── Content-blocked phrases that trigger waterfall to next provider ───────────
 const BLOCK_PHRASES = [
