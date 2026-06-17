@@ -88,9 +88,6 @@ function apiFetch(path: string, init?: RequestInit): Promise<Response> {
 }
 
 // ── Tool execution ─────────────────────────────────────────────────────────
-
-type ExecResult = { result: string; permissionRequest?: PermissionRequest };
-
 async function executeTool(name: string, args: Record<string, any>): Promise<ExecResult> {
   const state = getStoreSnapshot();
 
@@ -109,9 +106,9 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
   }
 
   if (name === "browse_popular") {
-    const { sourceId } = args;
+    const { sourceId, page = 1 } = args;
     try {
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/popular?page=1`);
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/popular?page=${page}`);
       if (!res.ok) return { result: `Could not browse ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
@@ -123,10 +120,25 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
     }
   }
 
-  if (name === "search_manga") {
-    const { sourceId, query } = args;
+  if (name === "browse_latest") {
+    const { sourceId, page = 1 } = args;
     try {
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/search?q=${encodeURIComponent(query)}&page=1`);
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/latest?page=${page}`);
+      if (!res.ok) return { result: `Could not browse latest from ${sourceId}.` };
+      const data = await res.json() as any;
+      const items: any[] = data.items ?? data.results ?? [];
+      if (!items.length) return { result: "No results found." };
+      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
+      return { result: `Latest in ${sourceId}:\n${list}` };
+    } catch {
+      return { result: `Could not browse latest from ${sourceId}.` };
+    }
+  }
+
+  if (name === "search_manga") {
+    const { sourceId, query, page = 1 } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/search?q=${encodeURIComponent(query)}&page=${page}`);
       if (!res.ok) return { result: `Search failed in ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
@@ -135,6 +147,77 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       return { result: `Search results for "${query}" in ${sourceId}:\n${list}` };
     } catch {
       return { result: `Could not search ${sourceId}.` };
+    }
+  }
+
+  if (name === "global_search") {
+    const { query } = args;
+    try {
+      const res = await apiFetch(`/api/sources/search/global?q=${encodeURIComponent(query)}`);
+      if (!res.ok) return { result: `Global search failed for "${query}".` };
+      const data = await res.json() as any;
+      const items: any[] = data.items ?? data.results ?? [];
+      if (!items.length) return { result: `No results found for "${query}" across all sources.` };
+      const list = items.slice(0, 15).map((m: any) =>
+        `• ${m.title}${m.type ? ` [${m.type}]` : ""}${m.source ? ` (${m.source})` : ""}`
+      ).join("\n");
+      return { result: `Global search results for "${query}":\n${list}` };
+    } catch {
+      return { result: `Global search failed for "${query}".` };
+    }
+  }
+
+  if (name === "browse_by_tag") {
+    const { sourceId, tag, page = 1 } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tag/${encodeURIComponent(tag)}?page=${page}`);
+      if (!res.ok) return { result: `Could not browse tag "${tag}" in ${sourceId}.` };
+      const data = await res.json() as any;
+      const items: any[] = data.items ?? data.results ?? [];
+      if (!items.length) return { result: `No results for tag "${tag}" in ${sourceId}.` };
+      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
+      return { result: `Results for tag "${tag}" in ${sourceId}:\n${list}` };
+    } catch {
+      return { result: `Could not browse tag "${tag}" in ${sourceId}.` };
+    }
+  }
+
+  if (name === "get_manga_details") {
+    const { sourceId, mangaId } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/manga/${encodeURIComponent(mangaId)}`);
+      if (!res.ok) return { result: `Could not fetch details for manga ${mangaId}.` };
+      const m = await res.json() as any;
+      const genres = m.genres?.join(", ") ?? "N/A";
+      const detail = [
+        `**${m.title}**`,
+        m.description ? `${m.description.slice(0, 300)}${m.description.length > 300 ? "…" : ""}` : "",
+        `Author: ${m.author ?? "Unknown"}`,
+        `Status: ${m.status ?? "Unknown"}`,
+        `Genres: ${genres}`,
+        m.chapterCount != null ? `Chapters: ${m.chapterCount}` : "",
+      ].filter(Boolean).join("\n");
+      return { result: detail };
+    } catch {
+      return { result: `Could not fetch details for manga ${mangaId}.` };
+    }
+  }
+
+  if (name === "get_chapters") {
+    const { sourceId, mangaId } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/manga/${encodeURIComponent(mangaId)}/chapters`);
+      if (!res.ok) return { result: `Could not fetch chapters for manga ${mangaId}.` };
+      const data = await res.json() as any;
+      const chapters: any[] = data.chapters ?? data.items ?? [];
+      if (!chapters.length) return { result: "No chapters found." };
+      const preview = chapters.slice(0, 10).map((c: any) =>
+        `• Ch.${c.number ?? "?"} — ${c.title ?? "Untitled"}${c.uploadDate ? ` (${c.uploadDate})` : ""}`
+      ).join("\n");
+      const extra = chapters.length > 10 ? `\n…and ${chapters.length - 10} more chapters.` : "";
+      return { result: `Chapters (${chapters.length} total):\n${preview}${extra}` };
+    } catch {
+      return { result: `Could not fetch chapters for manga ${mangaId}.` };
     }
   }
 
@@ -153,9 +236,27 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
     const lib = Object.values(state.library);
     const filtered = categoryId ? lib.filter(m => m.categoryIds.includes(categoryId)) : lib;
     if (!filtered.length) return { result: "Library is empty (or no manga in that category)." };
-    const lines = filtered.slice(0, 30).map(m => `• ${m.title} (ID: ${m.id}${m.categoryIds.length ? `, cats: ${m.categoryIds.join(",")}` : ""})`);
+    const lines = filtered.slice(0, 30).map(m =>
+      `• ${m.title} (ID: ${m.id}${m.categoryIds.length ? `, cats: ${m.categoryIds.join(",")}` : ""})`
+    );
     const extra = filtered.length > 30 ? `\n…and ${filtered.length - 30} more.` : "";
     return { result: `Library (${filtered.length} manga):\n${lines.join("\n")}${extra}` };
+  }
+
+  if (name === "add_to_library") {
+    const { sourceId, mangaId, categoryId } = args;
+    try {
+      const res = await apiFetch("/api/library/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceId, mangaId, categoryId }),
+      });
+      if (!res.ok) return { result: `Failed to add manga to library.` };
+      const data = await res.json() as any;
+      return { result: `Added "${data.title ?? mangaId}" to library${categoryId ? ` in category ${categoryId}` : ""}.` };
+    } catch {
+      return { result: `Could not add manga to library.` };
+    }
   }
 
   if (name === "create_category") {
@@ -198,6 +299,7 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
   return { result: `Unknown tool: ${name}` };
 }
+
 
 // ── Welcome message ────────────────────────────────────────────────────────
 
