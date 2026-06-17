@@ -364,37 +364,49 @@ export const NineHentaiSource: MangaSource = {
     return tagCache;
   },
 
-  // ── Details (unchanged – returns genres / sourceTags) ─────────────
+  // ════════════════════  UPDATED DETAILS (tag enrichment)  ═══════════════
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
     const data = await apiPost<DetailResponseBody>("/api/getBookByID", { id: Number(id) });
     if (!data.status) throw new Error(`9hentai.so: book ${id} not found`);
     const book = data.results;
 
+    // ── Helper: try to get enriched book data from search ──────────────
+    const tryEnrich = async (): Promise<NineBook | null> => {
+      const cleanTitle = book.title
+        .replace(/[^a-zA-Z0-9\s]/g, "")
+        .trim()
+        .split(" ")
+        .slice(0, 4)
+        .join(" ");
+      if (!cleanTitle) return null;
+      const searchData = await apiPost<SearchResponseBody>(
+        "/api/getBook",
+        buildSearchBody({ text: cleanTitle, page: 0, sort: 0 })
+      );
+      if (searchData.status && searchData.results?.length > 0) {
+        return searchData.results.find(b => b.id === book.id) ?? null;
+      }
+      return null;
+    };
+
     let enrichedBook: NineBook | null = null;
+
+    // First attempt – 6 seconds
     try {
       await Promise.race([
-        (async () => {
-          const cleanTitle = book.title
-            .replace(/[^a-zA-Z0-9\s]/g, "")
-            .trim()
-            .split(" ")
-            .slice(0, 4)
-            .join(" ");
-          if (!cleanTitle) return;
-          const searchData = await apiPost<SearchResponseBody>(
-            "/api/getBook",
-            buildSearchBody({ text: cleanTitle, page: 0, sort: 0 })
-          );
-          if (searchData.status && searchData.results?.length > 0) {
-            enrichedBook = searchData.results.find(b => b.id === book.id) ?? null;
-          }
-        })(),
-        new Promise<void>((_, reject) =>
-          setTimeout(() => reject(new Error("tag enrichment timeout")), 4000)
-        ),
+        (async () => { enrichedBook = await tryEnrich(); })(),
+        new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), 6000)),
       ]);
     } catch {
-      // fall through
+      // Second attempt – another 6 seconds
+      try {
+        await Promise.race([
+          (async () => { enrichedBook = await tryEnrich(); })(),
+          new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), 6000)),
+        ]);
+      } catch {
+        // fall through – will use basic book data
+      }
     }
 
     const effective = enrichedBook ?? book;
@@ -406,6 +418,11 @@ export const NineHentaiSource: MangaSource = {
     const characters = tagsOf(effective, 5);
     const categories = tagsOf(effective, 6);
     const allGenres  = [...tags, ...parodies, ...characters, ...categories];
+
+    // Warn if tags are still empty after all attempts
+    if (allGenres.length === 0) {
+      console.warn(`[9Hentai] No tags for book ${id} – enrichment may have failed`);
+    }
 
     const GROUP_NAMES: Record<number, string> = {
       1: "Tag", 3: "Parody", 5: "Character", 6: "Category",
