@@ -10,270 +10,260 @@ import type {
   MangaSummary,
   SourceTag,
 } from "./types";
-import { absUrl } from "./scraper-utils";
-import axios, { type AxiosInstance } from "axios";
+import { absUrl, fetchHtml, makeHttp, fetchJson } from "./scraper-utils";
 
-const BASE = "https://danbooru.donmai.us";
+const BASE_URL = "https://hentaifox.com";
+const http = makeHttp(BASE_URL);
 
-// ── Proxy helper ──────────────────────────────────────────────────────
-function parseProxy(proxyUrl?: string): { host: string; port: number; auth?: { username: string; password: string } } | false {
-  if (!proxyUrl) return false;
-  try {
-    const url = new URL(proxyUrl);
-    const host = url.hostname;
-    const port = parseInt(url.port, 10) || 80;
-    const auth = url.username
-      ? { username: decodeURIComponent(url.username), password: decodeURIComponent(url.password) }
-      : undefined;
-    return { host, port, auth };
-  } catch {
-    return false;
-  }
+let cachedTags: SourceTag[] | null = null;
+
+// ---------------------------------------------------------------------------
+// Title extraction (Updated Selectors)
+// ---------------------------------------------------------------------------
+function extractTitle($: cheerio.CheerioAPI, $el: cheerio.Cheerio<any>): string {
+  const title = $el.find(".caption h2, .caption h3, .inner h2").first().text().trim();
+  if (title && !/^\d+$/.test(title)) return title;
+
+  const aTitle = $el.find("a").first().attr("title")?.trim();
+  if (aTitle && !/^\d+$/.test(aTitle)) return aTitle;
+
+  return "";
 }
 
-function createClient(): AxiosInstance {
-  const proxyStr = process.env.DANBOORU_PROXY;
-  const proxy = parseProxy(proxyStr);
-
-  return axios.create({
-    baseURL: BASE,
-    timeout: 30000,
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-      Referer: `${BASE}/`,
-    },
-    proxy: proxy ? {
-      protocol: "http",
-      host: proxy.host,
-      port: proxy.port,
-      auth: proxy.auth,
-    } : false,
-  });
-}
-
-async function fetchPage(path: string) {
-  const client = createClient();
-  console.log(`[Danbooru] Fetching: ${path}`);
+function buildSummary($: cheerio.CheerioAPI, el: any): MangaSummary | null {
+  const $el = $(el);
+  const a = $el.find("a").first();
+  const href = a.attr("href") || "";
+  if (!href) return null;
   
+  const idMatch = href.match(/\/gallery\/(\d+)/);
+  if (!idMatch) return null;
+  const id = idMatch[1];
+  
+  const title = extractTitle($, $el) || `Gallery ${id}`;
+  const img = $el.find("img");
+  const thumb = img.attr("data-src") || img.attr("src") || "";
+  
+  return {
+    id,
+    title,
+    thumbnail: absUrl(BASE_URL, thumb),
+    type: "Doujinshi",
+    isNsfw: true,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Listing (Fixed to use Homepage for Latest/Popular)
+// ---------------------------------------------------------------------------
+async function fetchStandardList(page: number): Promise<MangaListResponse> {
+  const url = page === 1 ? BASE_URL : `${BASE_URL}/pag/${page}/`;
+  console.log(`[HentaiFox] Fetching list: ${url}`);
+  
+  const { $ } = await fetchHtml(http, url);
+  const items: MangaSummary[] = [];
+  
+  $(".col-6, .gallery, .g-wrap, .item").each((_i, el) => {
+    const s = buildSummary($, el);
+    if (s) items.push(s);
+  });
+  
+  const hasNext = $(".pagination .next, .pagination a:contains('Next')").length > 0;
+  return { items, page, hasNextPage: hasNext };
+}
+
+async function fetchSearchResults(params: Record<string, string>, page: number): Promise<MangaListResponse> {
+  const query = new URLSearchParams(params);
+  query.set("page", String(page));
+  const url = `${BASE_URL}/search/?${query.toString()}`;
+  console.log(`[HentaiFox] Fetching search: ${url}`);
+  const { $ } = await fetchHtml(http, url);
+  const items: MangaSummary[] = [];
+  
+  $(".col-6, .gallery, .g-wrap, .search-results .item").each((_i, el) => {
+    const s = buildSummary($, el);
+    if (s) items.push(s);
+  });
+  
+  const hasNext = $("a.next, .next a, [rel='next']").length > 0;
+  return { items, page, hasNextPage: hasNext };
+}
+
+// ---------------------------------------------------------------------------
+// Brace‑counting JSON extractor
+// ---------------------------------------------------------------------------
+function extractJsonFromScript(html: string, varName: string): any | null {
+  const idx = html.indexOf(varName);
+  if (idx === -1) return null;
+  const start = html.indexOf("{", idx);
+  const bracket = html.indexOf("[", idx);
+  let realStart = start;
+  if (bracket !== -1 && (start === -1 || bracket < start)) realStart = bracket;
+  if (realStart === -1) return null;
+  const char = html[realStart];
+  const close = char === "{" ? "}" : "]";
+  let depth = 0;
+  let end = -1;
+  for (let i = realStart; i < html.length; i++) {
+    if (html[i] === char) depth++;
+    else if (html[i] === close) {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end === -1) return null;
   try {
-    const res = await client.get(path);
-    const html = res.data as string;
-    
-    // If it succeeds, let's peek at the first 500 characters to make sure it's actually Danbooru 
-    // and not a proxy provider login page or Cloudflare splash screen.
-    console.log(`[Danbooru] SUCCESS fetching ${path}`);
-    console.log(`[Danbooru] HTML snippet (first 500 chars):`, html.slice(0, 500));
-    
-    if (html.includes("cloudflare") || html.includes("Just a moment...")) {
-       console.warn("[Danbooru] WARNING: We bypassed 403 but hit a Cloudflare challenge!");
-    }
-    
-    return cheerio.load(html);
-  } catch (err: any) {
-    console.error(`[Danbooru] FETCH FAILED for ${path} - ${err.message}`);
-    
-    // This is the golden ticket. If the server rejects us, it usually sends back an HTML page 
-    // explaining *why*. We need to see that page.
-    if (err.response) {
-      console.error(`[Danbooru] ERROR STATUS:`, err.response.status);
-      console.error(`[Danbooru] ERROR HEADERS:`, JSON.stringify(err.response.headers, null, 2));
-      
-      const errHtml = typeof err.response.data === 'string' 
-        ? err.response.data 
-        : JSON.stringify(err.response.data);
-        
-      console.error(`[Danbooru] ERROR HTML (first 1000 chars):`, errHtml.slice(0, 1000));
-    }
-    throw err;
+    return JSON.parse(html.slice(realStart, end + 1));
+  } catch {
+    return null;
   }
 }
 
-// ── Correct pool list scraper (matching Tachiyomi selectors) ──────────
-async function scrapePoolList(page: number, searchQuery?: string) {
-  const params = new URLSearchParams();
-  params.set("page", String(page));
-  if (searchQuery) params.set("search[name_matches]", `*${searchQuery}*`);
-  const $ = await fetchPage(`/pools?${params.toString()}`);
-
-  const pools: { id: number; name: string; thumb: string }[] = [];
-
-  // Original extension uses: table.striped tbody tr
-  $("table.striped tbody tr").each((_i, el) => {
-    const $row = $(el);
-    // Pool name is inside a.pool-name
-    const nameLink = $row.find("a.pool-name").first();
-    const href = nameLink.attr("href") || "";
-    const idMatch = href.match(/\/pools\/(\d+)/);
-    if (!idMatch) return;
-    const id = parseInt(idMatch[1], 10);
-    const name = nameLink.text().trim();
-
-    // Thumbnail: first img in the row
-    const img = $row.find("img").first();
-    const thumb = img.attr("src") || img.attr("data-src") || "";
-
-    if (id && name) {
-      pools.push({ id, name, thumb });
-    }
-  });
-
-  // Pagination: a.next_page or a.next
-  const hasNext = $("a.next_page, a.next").length > 0;
-  console.log(`[Danbooru] Found ${pools.length} pools, hasNext: ${hasNext}`);
-  return { pools, hasNext };
-}
-
-// ── Pool images (correct selectors from original extension) ───────────
-async function scrapePoolImages(poolId: number): Promise<string[]> {
-  const $ = await fetchPage(`/pools/${poolId}`);
-  const urls: string[] = [];
-
-  // Original: div.pool > a (the direct link to the post)
-  $("div.pool > a").each((_i, el) => {
-    const href = $(el).attr("href");
-    // The post ID is extracted from the href (e.g., /posts/123456)
-    if (href && href.includes("/posts/")) {
-      const postId = href.split("/posts/")[1]?.split("?")[0];
-      if (postId) {
-        // Build full image URL: /posts/{postId}.{ext} – but we need to get the actual image URL.
-        // The extension fetches each post JSON to get the file_url. We'll do the same.
-        urls.push(`${BASE}/posts/${postId}`); // We'll later replace with actual image URL.
-      }
-    }
-  });
-
-  // Actually, the original extension does an extra API call per post.
-  // But we can shortcut: the pool page often includes img tags with data-file-url.
-  // Let's use a simpler method: look for img tags inside div.pool > a, and use data-file-url or src.
-  $("div.pool > a img").each((_i, el) => {
-    const src = $(el).attr("src") || $(el).attr("data-file-url") || "";
-    if (src && !src.includes("blank.gif")) {
-      const full = src.replace(/\/\d+x\d+\/__/, "/original/");
-      urls.push(full);
-    }
-  });
-
-  console.log(`[Danbooru] Extracted ${urls.length} images from pool`);
-  return urls;
-}
-
-function normalizePoolName(s: string): string {
-  return s.replace(/_/g, " ").trim() || "(untitled)";
-}
-
-// ── Source definition (unchanged, just uses corrected functions) ──────
-export const DanbooruSource: MangaSource = {
-  id: "all.danbooru",
-  name: "Danbooru",
+// ---------------------------------------------------------------------------
+// Source object
+// ---------------------------------------------------------------------------
+export const HentaiFoxSource: MangaSource = {
+  id: "all.hentaifox",
+  name: "HentaiFox",
   lang: "all",
   isNsfw: true,
-  imageReferer: `${BASE}/`,
+  imageReferer: `${BASE_URL}/`,
 
-  async popular(o: ListOptions): Promise<MangaListResponse> {
-    try {
-      const { pools, hasNext } = await scrapePoolList(o.page);
-      const items: MangaSummary[] = pools.map((p) => ({
-        id: `pool:${p.id}`,
-        title: normalizePoolName(p.name),
-        thumbnail: p.thumb,
-        type: "Collection",
-        isNsfw: true,
-      }));
-      return { items, page: o.page, hasNextPage: hasNext };
-    } catch (e: any) {
-      console.error(`[Danbooru] Popular failed: ${e.message}`);
-      return { items: [], page: o.page, hasNextPage: false };
-    }
+  async popular(o: ListOptions) {
+    return fetchStandardList(o.page);
   },
 
-  async latest(o: ListOptions): Promise<MangaListResponse> {
-    return this.popular(o);
+  async latest(o: ListOptions) {
+    return fetchStandardList(o.page);
   },
 
-  async search(query: string, o: ListOptions): Promise<MangaListResponse> {
-    try {
-      const { pools, hasNext } = await scrapePoolList(o.page, query);
-      const items: MangaSummary[] = pools.map((p) => ({
-        id: `pool:${p.id}`,
-        title: normalizePoolName(p.name),
-        thumbnail: p.thumb,
-        type: "Collection",
-        isNsfw: true,
-      }));
-      return { items, page: o.page, hasNextPage: hasNext };
-    } catch (e: any) {
-      console.error(`[Danbooru] Search failed: ${e.message}`);
-      return { items: [], page: o.page, hasNextPage: false };
+  async search(query: string, o: ListOptions) {
+    const params: Record<string, string> = {};
+    if (query) params.q = query;
+    if (o.tagIds?.length) {
+      params.tags = o.tagIds.filter(t => !t.startsWith("-")).join(",");
     }
+    return fetchSearchResults(params, o.page);
   },
 
   async tags(): Promise<SourceTag[]> {
-    return [];
+    if (cachedTags) return cachedTags;
+    const tags: SourceTag[] = [];
+    const seen = new Set<string>();
+    try {
+      const { $ } = await fetchHtml(http, `${BASE_URL}/tags/`);
+      $("a[href*='/tag/']").each((_i, el) => {
+        const $el = $(el);
+        const href = $el.attr("href") || "";
+        const m = href.match(/\/tag\/([^/]+)\/?$/);
+        if (!m) return;
+        const slug = m[1];
+        const name = $el.text().trim().replace(/\s*\d+$/, "").trim();
+        if (name && slug && !seen.has(slug)) {
+          seen.add(slug);
+          tags.push({ id: slug, name, group: "Tag" });
+        }
+      });
+    } catch (e) {
+      console.warn("[HentaiFox] /tags/ fetch failed.");
+    }
+    cachedTags = tags;
+    return tags;
   },
 
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
-    const poolId = Number(id.replace(/^pool:/, ""));
-    const $ = await fetchPage(`/pools/${poolId}`);
-    const name =
-      $("#pool-name, .pool-name, h1").first().text().trim() ||
-      `Pool ${poolId}`;
-    const description = $(
-      "#pool-description, .pool-description, .description"
-    ).text().trim();
-    const thumbImg = $(".pool-cover img, .pool-thumb img").first();
-    const thumb = thumbImg.attr("src") || thumbImg.attr("data-src") || "";
-
+    const url = `${BASE_URL}/gallery/${id}/`;
+    const { $ } = await fetchHtml(http, url);
+    const title = $("h1, .info h1, .caption h1").first().text().trim()
+      || $("title").text().replace(/\s*[-|].*$/, "").trim();
+    const thumb = $(".cover img, .preview_thumb img").first();
+    const thumbnail = absUrl(BASE_URL, thumb.attr("data-src") || thumb.attr("src") || "");
+    const genres: string[] = [];
+    $("a[href*='/tag/'], a[href*='/category/']").each((_i, el) => {
+      const t = $(el).text().trim().replace(/\s*\d+$/, "").trim();
+      if (t) genres.push(t);
+    });
+    const pageCount = parseInt($(".pages, .info li:contains('Pages')").text().replace(/\D/g, "")) || 0;
     return {
       id,
-      title: normalizePoolName(name),
-      author: "",
+      title: title || `Gallery ${id}`,
+      author: $("a[href*='/artist/']").first().text().trim(),
       artist: "",
-      synopsis: description,
+      synopsis: `${pageCount > 0 ? `${pageCount} pages. ` : ""}${genres.slice(0, 8).join(", ")}`,
       altTitles: [],
       status: "Completed",
-      type: "Collection",
+      type: "Doujinshi",
       isNsfw: true,
       rating: 0,
-      thumbnail: thumb,
-      genres: [],
+      thumbnail,
+      genres,
       score: "",
       scorePosition: "none",
     };
   },
 
-  async chapters(
-    mangaId: string,
-    _dedupe: boolean
-  ): Promise<ChapterListResponse> {
-    const poolId = Number(mangaId.replace(/^pool:/, ""));
-    const $ = await fetchPage(`/pools/${poolId}`);
-    const name =
-      $("#pool-name, .pool-name, h1").first().text().trim() ||
-      `Pool ${poolId}`;
-
+  async chapters(mangaId: string): Promise<ChapterListResponse> {
+    const url = `${BASE_URL}/gallery/${mangaId}/`;
+    const { $ } = await fetchHtml(http, url);
+    const title = $("h1, .info h1").first().text().trim() || `Gallery ${mangaId}`;
     return {
-      items: [
-        {
-          id: `pool:${poolId}`,
-          number: 1,
-          title: normalizePoolName(name),
-          scanlator: "Danbooru",
-          date: Math.floor(Date.now() / 1000),
-        },
-      ],
+      items: [{
+        id: mangaId,
+        number: 1,
+        title,
+        scanlator: "HentaiFox",
+        date: Math.floor(Date.now() / 1000),
+      }],
     };
   },
 
   async pages(chapterId: string): Promise<PageListResponse> {
-    const poolId = Number(chapterId.replace(/^pool:/, ""));
-    const images = await scrapePoolImages(poolId);
-    return {
-      chapterId,
-      pages: images.map((url, i) => ({ index: i, url })),
-    };
+    const galleryUrl = `${BASE_URL}/gallery/${chapterId}/`;
+    try {
+      const apiData = await fetchJson<any>(http, `/api/gallery/${chapterId}`, {
+        headers: { Referer: galleryUrl, "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (apiData && Array.isArray(apiData.images)) {
+        return {
+          chapterId,
+          pages: apiData.images.map((img: string, i: number) => ({ index: i, url: img })),
+        };
+      }
+    } catch (e: any) {}
+
+    const { $, html } = await fetchHtml(http, galleryUrl);
+    for (const varName of ["pages", "rff_imageList", "gallery", "images"]) {
+      const data = extractJsonFromScript(html, varName);
+      if (data && Array.isArray(data) && data.length > 0) {
+        const urls = data.map((item: any) => (typeof item === "string" ? item : item.url || item.src || ""));
+        if (urls[0]) {
+          return { chapterId, pages: urls.map((u: string, i: number) => ({ index: i, url: u })) };
+        }
+      }
+    }
+
+    const cdnRegex = /https?:\/\/[^"'\\\s]*hentaifox\.com\/[^"'\\\s]*\.(?:jpg|png|webp)/gi;
+    const matches = [...html.matchAll(cdnRegex)];
+    if (matches.length > 0) {
+      return { chapterId, pages: matches.map((m, i) => ({ index: i, url: m[0] })) };
+    }
+
+    const coverSrc = $(".cover img").attr("src") || $(".cover img").attr("data-src") || "";
+    if (coverSrc) {
+      const coverBase = coverSrc.replace(/\/cover\.jpg$/, "");
+      const pageCountText = $(".pages, .info li:contains('Pages')").text();
+      const pageCount = parseInt(pageCountText.replace(/\D/g, ""), 10) || 0;
+      if (pageCount > 0) {
+        return {
+          chapterId,
+          pages: Array.from({ length: pageCount }, (_, i) => ({
+            index: i,
+            url: `${coverBase}/${i + 1}.jpg`,
+          })),
+        };
+      }
+    }
+
+    return { chapterId, pages: [] };
   },
 };
