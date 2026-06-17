@@ -24,6 +24,8 @@ const DownloadsPage        = lazy(() => import("@/pages/downloads"));
 const DownloadsLibraryPage = lazy(() => import("@/pages/downloads-library"));
 const ComiAIPage           = lazy(() => import("@/pages/comi-ai"));
 const VpnPage              = lazy(() => import("@/pages/vpn"));
+const CachePage            = lazy(() => import("@/pages/cache"));
+const InstallPage          = lazy(() => import("@/pages/install"));
 
 import { useActiveSourceId, applyActiveSource, registerQueryClient } from "@/lib/source";
 
@@ -132,6 +134,12 @@ function AppContent() {
               </Route>
               <Route path="/categories">
                 <Lazy><CategoriesPage /></Lazy>
+              </Route>
+              <Route path="/cache">
+                <Lazy><CachePage /></Lazy>
+              </Route>
+              <Route path="/install">
+                <Lazy><InstallPage /></Lazy>
               </Route>
               <Route component={NotFound} />
             </Switch>

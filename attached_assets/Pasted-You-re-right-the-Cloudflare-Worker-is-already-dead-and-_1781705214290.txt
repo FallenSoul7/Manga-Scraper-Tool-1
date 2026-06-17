@@ -1,0 +1,110 @@
+You're right — the Cloudflare Worker is already dead, and we're past that. Let me re‑write the plan from scratch, without any Cloudflare fluff, exactly as you want it.
+
+---
+
+ULTIMATE PLAN — ComiHub v2 (no Cloudflare, pure PWA + offline power)
+
+Phase 0 — Already done ✅
+
+· Worker deleted.
+· Vercel VITE_API_URL = https://comihub-backend.onrender.com.
+· App works normally.
+
+---
+
+Phase 1 — PWA + Install + Smart Caching
+
+1.1 — manifest.json
+
+· File: public/manifest.json
+· Content: app name (ComiHub), short name, icons (192×192 and 512×512 PNGs), "display": "standalone", background color #121212, theme color #ff6b6b.
+· Place two placeholder icons in public/ (we'll replace later).
+
+1.2 — Service Worker (public/sw.js)
+
+· Caches:
+  · Static assets (JS, CSS, fonts) → cache on first visit, serve from cache when offline.
+  · API responses (/api/popular, /api/latest, /api/search, /api/tags, /api/details, /api/chapters, /api/pages) → cache for 1 hour.
+  · Images (/api/image, direct image URLs) → cache for 30 days.
+· Strategy: Cache First, then network update in background (stale-while-revalidate for API, cache-first for images).
+· On fetch, check cache → return cached response if exists, else fetch from network and store in cache.
+
+1.3 — Register the Service Worker
+
+· In index.html, add <script> that registers /sw.js after window load.
+· Also add <link rel="manifest" href="/manifest.json"> and <meta name="theme-color" content="#ff6b6b">.
+
+1.4 — Install Button (Android & iOS)
+
+· Android: capture beforeinstallprompt event, store it, show a dedicated "Install ComiHub" button inside the System page (or a small banner at the top). On tap, call prompt() and hide button after install.
+· iOS: detect Safari / iOS, show a "Install" button that opens a full‑screen guide (animated or static images) showing:
+  1. Tap Share icon
+  2. Tap "Add to Home Screen"
+  3. Tap "Add"
+· After the app is launched from home screen (window.navigator.standalone === true), hide all install prompts.
+
+1.5 — Settings → Storage UI (EXACTLY WHAT YOU ASKED)
+
+Add a new "Storage" section inside the Settings page (or a dedicated tab in System page) that shows:
+
+· Cache size: total MB used by the Service Worker cache (calculated by reading all cached entries' sizes). Displayed as Cache: 12.4 MB.
+· Downloads size: if any chapters are downloaded (stored as blobs in IndexedDB or a separate cache), display total size as Downloads: 0 MB (or the actual size).
+· Clear cache button: when tapped, clears all Service Worker caches (API, images, static) and shows a brief "Cache cleared" toast. Also resets cache size display.
+
+How we calculate sizes:
+
+· Use caches.open() to get each cache, iterate over all entries, sum up response.clone().blob().size (or use Content-Length header) in a background function.
+· Store the result in localStorage and update on every cache change (or on demand when the Storage section is opened).
+
+---
+
+Phase 2 — Google Login (optional sync)
+
+2.1 — Backend (Render)
+
+· New route: GET /api/auth/google → redirect to Google OAuth.
+· Callback: GET /api/auth/google/callback → exchange code for tokens, get user info, create JWT, redirect to frontend.
+· Store user data in a simple JSON file or SQLite.
+
+2.2 — Frontend
+
+· First‑visit screen: logo, "Sign in with Google" button, "Skip" link.
+· Auth page (/auth?token=...) extracts JWT, stores it, redirects home.
+· System page → "Login" section: shows Google button if logged out, avatar/name + "Logout" if logged in.
+· All API requests automatically attach Authorization: Bearer <token> header when available.
+
+---
+
+Phase 3 — IndexedDB for Offline Library & Downloads
+
+· Replace localStorage with IndexedDB (Dexie.js).
+· Tables: manga, category, mangaCategory, progress, settings, downloads (with image blobs).
+· Migrate existing data from localStorage once.
+· All app state (library, progress, settings) becomes offline‑first.
+
+---
+
+Phase 4 — Performance & Polish
+
+· Reader preloading: fetch next chapter's images when user reaches last 3 pages.
+· Blur‑up placeholders for images (tiny base64 thumbnail while full image loads).
+· Auto‑retry on network failure (with exponential backoff).
+· Volume keys page turning (Android).
+· Long‑press to zoom image.
+
+---
+
+🗓️ Execution Order (exactly what we'll do next, one step at a time)
+
+1. Create manifest.json + icons (I'll provide exact content).
+2. Create sw.js (caching logic).
+3. Register SW in index.html + manifest link.
+4. Add Install button logic inside System/Settings.
+5. Add Storage section in Settings (cache size, downloads size, clear cache).
+6. Test on Android and iOS.
+
+After that, we move to Google Login, then IndexedDB.
+
+---
+
+Everything is laid out. Ready to start Phase 1? I'll give you the exact files to create and modify, one by one. No Cloudflare, no nonsense. Just a clean, fast, offline‑first app.

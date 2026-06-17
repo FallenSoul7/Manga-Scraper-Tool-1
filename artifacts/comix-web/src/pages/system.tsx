@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Settings, Download, BarChart3, Database, Info, FolderOpen, Sparkles, Shield } from "lucide-react";
+import { Settings, Download, BarChart3, Database, Info, FolderOpen, Sparkles, Shield, Trash2, AppWindow } from "lucide-react";
 
 interface SystemBlock {
   href?: string;
@@ -49,10 +49,16 @@ const blocks: SystemBlock[] = [
     icon: BarChart3,
   },
   {
-    label: "Storage",
-    description: "Cache size, clear images, manage data.",
-    icon: Database,
-    comingSoon: true,
+    href: "/cache",
+    label: "Cache",
+    description: "View cache size and clear stored data.",
+    icon: Trash2,
+  },
+  {
+    href: "/install",
+    label: "Install",
+    description: "Add ComiHub to your home screen for offline use.",
+    icon: AppWindow,
   },
   {
     label: "About",
