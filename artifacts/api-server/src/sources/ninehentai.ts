@@ -18,6 +18,7 @@ const http = makeHttp(BASE_URL, {
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 });
 
+// ────────── Cookie handling (unchanged) ──────────
 interface CookieJar {
   cookieHeader: string;
   xsrfToken: string;
@@ -86,8 +87,7 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return res.data as T;
 }
 
-// ────────── Response shapes ──────────
-
+// ────────── Response shapes (unchanged) ──────────
 interface NineTag {
   id: number;
   name: string;
@@ -107,7 +107,7 @@ interface NineBook {
 
 interface SearchResponseBody {
   status: boolean;
-  total_count: number;
+  total_count: number;        // ⚠️ Can be missing/0 for tag‑filtered results
   results: NineBook[];
 }
 
@@ -174,11 +174,7 @@ function tagsOf(book: NineBook, type: number): string[] {
   return (book.tags || []).filter(t => t.type === type).map(t => t.name);
 }
 
-// ────────── Core fetch — no artificial cap ──────────────────────────────────
-// Each API call returns 20 results. `page` is 1-indexed externally,
-// converted to 0-indexed internally. Pass page=1 for normal single-page use.
-// To get ALL results up to 2000, the caller fetches pages 1..100 in batches.
-
+// ────────── Single‑page fetch (paginated) ────────────────────────────
 async function fetchPage(
   sort: number,
   page: number,
@@ -189,38 +185,55 @@ async function fetchPage(
   const body = buildSearchBody({ text: query, page: page - 1, sort, included, excluded });
   const data = await apiPost<SearchResponseBody>("/api/getBook", body);
   if (!data.status) throw new Error("9hentai.so returned status:false");
-  const totalPages = Math.ceil(data.total_count / 20);
-  return {
-    items: (data.results || []).map(toSummary),
-    page,
-    hasNextPage: page < totalPages,
-    totalCount: data.total_count, // expose so callers know how many pages exist
-  };
+
+  const items = (data.results || []).map(toSummary);
+
+  // ═══ FIX: safe pagination detection ════════════════════════════════
+  // The API often omits `total_count` (or returns 0) when tags are used.
+  // In that case we assume there's a next page if we got a full 20 results.
+  const totalCount = typeof data.total_count === "number" && data.total_count > 0
+    ? data.total_count
+    : 0;
+
+  const totalPages = totalCount > 0
+    ? Math.ceil(totalCount / 20)
+    : 0;
+
+  // hasNextPage = true if:
+  //  - totalPages > 0 and current page < totalPages, OR
+  //  - totalPages is 0/unknown and we got exactly 20 results (likely more)
+  const hasNextPage = totalPages > 0
+    ? page < totalPages
+    : items.length === 20;
+
+  console.log(
+    `[9Hentai] page=${page} items=${items.length} totalCount=${totalCount} totalPages=${totalPages} hasNext=${hasNextPage}`
+  );
+  return { items, page, hasNextPage };
 }
 
-// ────────── Multi-page fetch — up to 2000 results in parallel batches ───────
-
+// ────────── Multi‑page fetch (for AI) ────────────────────────────────
 const MAX_RESULTS = 2000;
 const PAGE_SIZE   = 20;
-const BATCH_SIZE  = 10; // concurrent requests per batch
+const BATCH_SIZE  = 10;
 
 async function fetchAllPages(
   sort: number,
   query?: string,
   tagIds?: string[],
 ): Promise<MangaSummary[]> {
-  // Step 1: fetch page 1 to learn total_count
   const first = await fetchPage(sort, 1, query, tagIds);
   const all: MangaSummary[] = [...first.items];
-
   if (!first.hasNextPage) return all;
 
-  const totalCount = (first as any).totalCount as number ?? MAX_RESULTS;
-  const totalPages = Math.min(Math.ceil(totalCount / PAGE_SIZE), MAX_RESULTS / PAGE_SIZE);
+  // Estimate total pages from first page's totalCount (if available)
+  const firstTotalCount = (first as any)._totalCount as number ?? 0;
+  const estimatedTotalPages = firstTotalCount > 0
+    ? Math.ceil(firstTotalCount / PAGE_SIZE)
+    : 100;   // fallback – we'll stop when a batch returns nothing
 
-  // Step 2: fetch remaining pages in parallel batches
-  for (let batchStart = 2; batchStart <= totalPages; batchStart += BATCH_SIZE) {
-    const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, totalPages);
+  for (let batchStart = 2; batchStart <= estimatedTotalPages; batchStart += BATCH_SIZE) {
+    const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, estimatedTotalPages);
     const pageNums = Array.from(
       { length: batchEnd - batchStart + 1 },
       (_, i) => batchStart + i
@@ -238,15 +251,13 @@ async function fetchAllPages(
       }
     }
 
-    if (!gotAny) break;
-    if (all.length >= MAX_RESULTS) break;
+    if (!gotAny || all.length >= MAX_RESULTS) break;
   }
 
   return all.slice(0, MAX_RESULTS);
 }
 
-// ────────── Tag fetcher ──────────────────────────────────────────────────────
-
+// ────────── Tag fetcher (unchanged) ──────────────────────────────────
 let tagCache: SourceTag[] | null = null;
 
 interface NineTagResult extends NineTag {
@@ -294,8 +305,7 @@ async function fetchTags(): Promise<SourceTag[]> {
   return all;
 }
 
-// ────────── Sort map ─────────────────────────────────────────────────────────
-
+// ────────── Sort mapping ─────────────────────────────────────────────
 const NINE_SORTS: Record<string, number> = { "0": 0, "1": 1, "2": 2, "3": 3 };
 
 function resolveSort(o: ListOptions, fallback: number): number {
@@ -304,8 +314,7 @@ function resolveSort(o: ListOptions, fallback: number): number {
     : fallback;
 }
 
-// ────────── Source export ────────────────────────────────────────────────────
-
+// ══════════════════════════════════════════════════════════════════════
 export const NineHentaiSource: MangaSource = {
   id: "en.ninehentai",
   name: "9Hentai",
@@ -320,7 +329,7 @@ export const NineHentaiSource: MangaSource = {
     { value: "3", label: "Most Viewed" },
   ],
 
-  // Single-page calls — used by the browse UI (infinite scroll handles pagination)
+  // ── Browse methods (single‑page) ───────────────────────────────────
   async popular(o: ListOptions) {
     return fetchPage(resolveSort(o, 1), o.page, undefined, o.tagIds);
   },
@@ -333,7 +342,7 @@ export const NineHentaiSource: MangaSource = {
     return fetchPage(0, o.page, query || undefined, o.tagIds);
   },
 
-  // Bulk calls — used by Comi AI to return up to 2000 results at once
+  // ── Bulk methods (for AI) ─────────────────────────────────────────
   async popularAll(o: ListOptions) {
     const items = await fetchAllPages(resolveSort(o, 1), undefined, o.tagIds);
     return { items, page: 1, hasNextPage: false };
@@ -355,13 +364,13 @@ export const NineHentaiSource: MangaSource = {
     return tagCache;
   },
 
+  // ── Details (unchanged – returns genres / sourceTags) ─────────────
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
     const data = await apiPost<DetailResponseBody>("/api/getBookByID", { id: Number(id) });
     if (!data.status) throw new Error(`9hentai.so: book ${id} not found`);
     const book = data.results;
 
     let enrichedBook: NineBook | null = null;
-
     try {
       await Promise.race([
         (async () => {
@@ -385,7 +394,7 @@ export const NineHentaiSource: MangaSource = {
         ),
       ]);
     } catch {
-      // fall through to basic book data
+      // fall through
     }
 
     const effective = enrichedBook ?? book;
