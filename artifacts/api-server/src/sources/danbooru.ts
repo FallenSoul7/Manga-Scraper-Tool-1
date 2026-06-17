@@ -14,8 +14,13 @@ import type {
 import { fetchJson, makeHttp, absUrl } from "./scraper-utils";
 
 const BASE = "https://danbooru.donmai.us";
-const http = makeHttp(BASE);
-const PER_PAGE = 20; // Danbooru default limit
+// Mimic a real browser – Danbooru requires this
+const http = makeHttp(BASE, {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Referer": `${BASE}/`,
+  "Accept": "application/json",
+});
+const PER_PAGE = 20;
 
 // ── Response types ─────────────────────────────────────────────────────────
 interface DbPool {
@@ -39,13 +44,6 @@ interface DbPost {
   pool_string?: string;
 }
 
-interface DbTag {
-  id: number;
-  name: string;
-  post_count: number;
-  category: number;
-}
-
 // ── Helpers ────────────────────────────────────────────────────────────────
 function normalizePoolName(s: string): string {
   return s.replace(/_/g, " ").trim() || "(untitled)";
@@ -61,7 +59,6 @@ function poolToSummary(p: DbPool, thumb: string): MangaSummary {
   };
 }
 
-// Fetch a single post thumbnail
 async function fetchPostThumb(id: number): Promise<string> {
   try {
     const post = await fetchJson<DbPost>(http, `/posts/${id}.json`);
@@ -71,7 +68,6 @@ async function fetchPostThumb(id: number): Promise<string> {
   }
 }
 
-// Fetch pool details
 async function fetchPool(id: number): Promise<DbPool> {
   return fetchJson<DbPool>(http, `/pools/${id}.json`);
 }
@@ -87,63 +83,78 @@ export const DanbooruSource: MangaSource = {
   // ── Popular pools ─────────────────────────────────────────────────
   async popular(o: ListOptions): Promise<MangaListResponse> {
     console.log(`[Danbooru] Fetching popular pools, page ${o.page}`);
-    const pools = await fetchJson<DbPool[]>(http, "/pools.json", {
-      params: {
-        search: { order: "post_count" },
-        limit: PER_PAGE,
-        page: o.page,
-      },
-    });
-    const thumbs = await Promise.all(
-      pools.map(p => (p.post_ids[0] ? fetchPostThumb(p.post_ids[0]) : Promise.resolve("")))
-    );
-    const items = pools.map((p, i) => poolToSummary(p, thumbs[i] || ""));
-    console.log(`[Danbooru] Popular found ${items.length} pools`);
-    return { items, page: o.page, hasNextPage: pools.length === PER_PAGE };
+    try {
+      const pools = await fetchJson<DbPool[]>(http, "/pools.json", {
+        params: {
+          search: { order: "post_count" },
+          limit: PER_PAGE,
+          page: o.page,
+        },
+      });
+      const thumbs = await Promise.all(
+        pools.map(p => (p.post_ids[0] ? fetchPostThumb(p.post_ids[0]) : Promise.resolve("")))
+      );
+      const items = pools.map((p, i) => poolToSummary(p, thumbs[i] || ""));
+      console.log(`[Danbooru] Popular found ${items.length} pools`);
+      return { items, page: o.page, hasNextPage: pools.length === PER_PAGE };
+    } catch (e: any) {
+      console.error(`[Danbooru] Popular failed: ${e.message} (status ${e.response?.status})`);
+      return { items: [], page: o.page, hasNextPage: false };
+    }
   },
 
   // ── Latest pools ──────────────────────────────────────────────────
   async latest(o: ListOptions): Promise<MangaListResponse> {
     console.log(`[Danbooru] Fetching latest pools, page ${o.page}`);
-    const pools = await fetchJson<DbPool[]>(http, "/pools.json", {
-      params: {
-        search: { order: "updated_at" },
-        limit: PER_PAGE,
-        page: o.page,
-      },
-    });
-    const thumbs = await Promise.all(
-      pools.map(p => (p.post_ids[0] ? fetchPostThumb(p.post_ids[0]) : Promise.resolve("")))
-    );
-    const items = pools.map((p, i) => poolToSummary(p, thumbs[i] || ""));
-    console.log(`[Danbooru] Latest found ${items.length} pools`);
-    return { items, page: o.page, hasNextPage: pools.length === PER_PAGE };
+    try {
+      const pools = await fetchJson<DbPool[]>(http, "/pools.json", {
+        params: {
+          search: { order: "updated_at" },
+          limit: PER_PAGE,
+          page: o.page,
+        },
+      });
+      const thumbs = await Promise.all(
+        pools.map(p => (p.post_ids[0] ? fetchPostThumb(p.post_ids[0]) : Promise.resolve("")))
+      );
+      const items = pools.map((p, i) => poolToSummary(p, thumbs[i] || ""));
+      console.log(`[Danbooru] Latest found ${items.length} pools`);
+      return { items, page: o.page, hasNextPage: pools.length === PER_PAGE };
+    } catch (e: any) {
+      console.error(`[Danbooru] Latest failed: ${e.message} (status ${e.response?.status})`);
+      return { items: [], page: o.page, hasNextPage: false };
+    }
   },
 
   // ── Search pools ──────────────────────────────────────────────────
   async search(query: string, o: ListOptions): Promise<MangaListResponse> {
     console.log(`[Danbooru] Searching pools for "${query}", page ${o.page}`);
-    const pools = await fetchJson<DbPool[]>(http, "/pools.json", {
-      params: {
-        search: { name_matches: `*${query}*` },
-        limit: PER_PAGE,
-        page: o.page,
-      },
-    });
-    const thumbs = await Promise.all(
-      pools.map(p => (p.post_ids[0] ? fetchPostThumb(p.post_ids[0]) : Promise.resolve("")))
-    );
-    const items = pools.map((p, i) => poolToSummary(p, thumbs[i] || ""));
-    console.log(`[Danbooru] Search found ${items.length} pools`);
-    return { items, page: o.page, hasNextPage: pools.length === PER_PAGE };
+    try {
+      const pools = await fetchJson<DbPool[]>(http, "/pools.json", {
+        params: {
+          search: { name_matches: `*${query}*` },
+          limit: PER_PAGE,
+          page: o.page,
+        },
+      });
+      const thumbs = await Promise.all(
+        pools.map(p => (p.post_ids[0] ? fetchPostThumb(p.post_ids[0]) : Promise.resolve("")))
+      );
+      const items = pools.map((p, i) => poolToSummary(p, thumbs[i] || ""));
+      console.log(`[Danbooru] Search found ${items.length} pools`);
+      return { items, page: o.page, hasNextPage: pools.length === PER_PAGE };
+    } catch (e: any) {
+      console.error(`[Danbooru] Search failed: ${e.message} (status ${e.response?.status})`);
+      return { items: [], page: o.page, hasNextPage: false };
+    }
   },
 
   // ── Tags ──────────────────────────────────────────────────────────
   async tags(): Promise<SourceTag[]> {
     console.log("[Danbooru] Fetching tags...");
     try {
-      const tags = await fetchJson<DbTag[]>(http, "/tags.json", {
-        params: { limit: 0, search: { order: "count" } }, // no limit? Danbooru caps at 1000 by default, but we can get many
+      const tags = await fetchJson<any[]>(http, "/tags.json", {
+        params: { limit: 0, search: { order: "count" } },
       });
       const result: SourceTag[] = tags.map(t => ({
         id: t.name,
@@ -153,8 +164,8 @@ export const DanbooruSource: MangaSource = {
       }));
       console.log(`[Danbooru] Found ${result.length} tags`);
       return result;
-    } catch (e) {
-      console.error("[Danbooru] Failed to fetch tags:", e);
+    } catch (e: any) {
+      console.error(`[Danbooru] Tags failed: ${e.message} (status ${e.response?.status})`);
       return [];
     }
   },
@@ -209,7 +220,6 @@ export const DanbooruSource: MangaSource = {
       return { chapterId, pages: [] };
     }
 
-    // Fetch posts in chunks of 100 (Danbooru API limit)
     const pages: PageInfo[] = [];
     const chunkSize = 100;
     let index = 0;
