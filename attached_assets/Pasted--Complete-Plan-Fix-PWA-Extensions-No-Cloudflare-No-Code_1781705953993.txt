@@ -1,0 +1,68 @@
+🧭 Complete Plan — Fix PWA & Extensions (No Cloudflare, No Code)
+
+🔧 1. Immediate Stabilisation (extensions not loading)
+
+· Check Vercel environment variable VITE_API_URL → must be exactly https://comihub-backend.onrender.com (no trailing slash).
+· Search all frontend source files (comix-web/src) for any leftover workers.dev or long-frost-ee98 strings. Replace them with the correct Render URL or the env variable import.meta.env.VITE_API_URL.
+· Remove any other API‑related env vars in Vercel (like API_BASE, RENDER_URL). Only VITE_API_URL should remain.
+· Redeploy the frontend and verify extensions, popular, latest, tags all load normally.
+
+---
+
+📱 2. PWA Foundation (what Replit AI missed)
+
+· Create public/manifest.json — set app name, icons (two PNGs 192×192 and 512×512), display: standalone, theme colours.
+· Create two placeholder icon files (simple coloured squares or a quick icon) in public/.
+· Create public/sw.js — a service worker with:
+  · Three caches: static assets, API responses, images.
+  · Cache strategy: images (cache‑first, long expiry), API (network‑first with cache fallback), static (cache‑first).
+  · Message listeners to report cache size per cache and to clear all caches.
+· Register the service worker in index.html by adding a <script> that loads /sw.js after the page loads. Also add the manifest link and theme‑color meta tag.
+
+---
+
+📲 3. Real Install Button (fixing AI’s /install page)
+
+· Capture the beforeinstallprompt event at the root of your React app (in App.tsx or a dedicated provider). Store it in a global state (React context or zustand).
+· Pass this event to the /install page and to the System page’s Install button.
+· When the user taps the install button:
+  · If the stored event exists (Android), call prompt() → show native dialog.
+  · If on iOS and not installed, show the step‑by‑step guide (already partially done by AI).
+  · If already installed (standalone mode), show “App already installed”.
+· Hide the install prompts permanently after a successful installation.
+
+---
+
+🗄️ 4. Storage Section (cache & downloads sizes)
+
+· Cache size reporting:
+  · The /cache page (created by AI) needs to communicate with the service worker.
+  · Use navigator.serviceWorker.controller.postMessage('GET_CACHE_SIZES') and listen for the response to update UI with real sizes (static, API, image caches).
+  · Provide a “Clear All Cache” button that posts 'CLEAR_ALL_CACHES' to the SW and refreshes the display.
+· Downloads size:
+  · If chapters are downloaded (stored as blobs in IndexedDB or a separate cache), track their total size in a persistent way (e.g., IndexedDB or a dedicated download cache).
+  · Show this size in the Cache page (or a separate “Downloads” section).
+  · In the future (Phase 3 IndexedDB), this will be fully integrated.
+
+---
+
+✅ 5. Verification & Cleanup
+
+· Test on Android: open the app → System → Install → should trigger native install prompt.
+· After installation, open from home screen → should appear full‑screen, no browser UI.
+· Test on iOS: install page should show guide. After adding to home screen, app opens standalone.
+· Browse sources, read chapters, check that images and API data are cached (load fast on second visit).
+· Use the Cache page to view sizes and clear cache.
+
+---
+
+🚀 Next Steps (After Phase 1)
+
+· Phase 2: Google Login.
+· Phase 3: IndexedDB migration for library, progress, and downloads.
+· Phase 4: Performance polish (preloading, blur‑up placeholders).
+
+---
+
+Start with step 1 (fix extensions), then step 2 (PWA files), then step 3 (install button), then step 4 (storage).
+I’ll provide each file’s exact content when you’re ready – no Cloudflare, no guesswork, just a clean offline‑first app.

@@ -1,54 +1,10 @@
-import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, AppWindow, Share, Plus, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, AppWindow, Share, Plus, CheckCircle2, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-type Platform = "android" | "ios" | "installed" | "other";
-
-function detectPlatform(): Platform {
-  if (typeof window === "undefined") return "other";
-  if ((window.navigator as any).standalone === true) return "installed";
-  const ua = window.navigator.userAgent;
-  const isIOS = /iphone|ipad|ipod/i.test(ua);
-  const isAndroid = /android/i.test(ua);
-  if (isIOS) return "ios";
-  if (isAndroid) return "android";
-  return "other";
-}
+import { usePwa } from "@/lib/pwa-context";
 
 export default function InstallPage() {
-  const [platform, setPlatform] = useState<Platform>("other");
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [installed, setInstalled] = useState(false);
-
-  useEffect(() => {
-    setPlatform(detectPlatform());
-
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-    window.addEventListener("beforeinstallprompt", handler as EventListener);
-
-    window.addEventListener("appinstalled", () => {
-      setInstalled(true);
-      setDeferredPrompt(null);
-    });
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", handler as EventListener);
-    };
-  }, []);
-
-  const handleAndroidInstall = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === "accepted") {
-      setInstalled(true);
-      setDeferredPrompt(null);
-    }
-  };
+  const { deferredPrompt, isInstalled, isIOS, isAndroid, promptInstall } = usePwa();
 
   return (
     <main className="container mx-auto px-4 py-12 max-w-2xl animate-in fade-in duration-500">
@@ -63,40 +19,42 @@ export default function InstallPage() {
 
       <div className="bg-card border border-border rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
 
-        {(platform === "installed" || installed) && (
+        {isInstalled && (
           <div className="flex flex-col items-center gap-4 py-8 text-center">
             <div className="h-16 w-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
               <CheckCircle2 className="h-8 w-8" />
             </div>
             <div>
               <p className="text-xl font-semibold text-foreground">Already installed!</p>
-              <p className="text-sm text-muted-foreground mt-1">ComiHub is running as an installed app.</p>
+              <p className="text-sm text-muted-foreground mt-1">ComiHub is running as a home screen app.</p>
             </div>
           </div>
         )}
 
-        {platform === "android" && !installed && (
+        {!isInstalled && isAndroid && (
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <div className="h-11 w-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <AppWindow className="h-5 w-5" />
+                <Smartphone className="h-5 w-5" />
               </div>
               <div>
                 <p className="font-semibold text-foreground">Android / Chrome</p>
-                <p className="text-sm text-muted-foreground">Tap the button below to install.</p>
+                <p className="text-sm text-muted-foreground">
+                  {deferredPrompt ? "Tap below to install ComiHub instantly." : "Use Chrome's menu to install."}
+                </p>
               </div>
             </div>
 
             {deferredPrompt ? (
-              <Button className="w-full" onClick={handleAndroidInstall}>
+              <Button className="w-full" onClick={promptInstall}>
                 <AppWindow className="mr-2 h-4 w-4" /> Install ComiHub
               </Button>
             ) : (
               <div className="space-y-3 rounded-xl border border-border p-4 text-sm text-muted-foreground">
-                <p>If the install button doesn't appear, use Chrome's menu:</p>
+                <p>Open Chrome's menu and follow these steps:</p>
                 <ol className="list-decimal list-inside space-y-1.5">
                   <li>Tap the <strong>⋮</strong> menu in the top-right corner.</li>
-                  <li>Select <strong>"Add to Home screen"</strong>.</li>
+                  <li>Tap <strong>"Add to Home screen"</strong>.</li>
                   <li>Tap <strong>"Add"</strong> to confirm.</li>
                 </ol>
               </div>
@@ -104,7 +62,7 @@ export default function InstallPage() {
           </div>
         )}
 
-        {platform === "ios" && !installed && (
+        {!isInstalled && isIOS && (
           <div className="space-y-5">
             <div className="flex items-center gap-3">
               <div className="h-11 w-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
@@ -112,7 +70,7 @@ export default function InstallPage() {
               </div>
               <div>
                 <p className="font-semibold text-foreground">iPhone / Safari</p>
-                <p className="text-sm text-muted-foreground">Follow these steps to install.</p>
+                <p className="text-sm text-muted-foreground">Follow these three steps in Safari.</p>
               </div>
             </div>
 
@@ -120,7 +78,7 @@ export default function InstallPage() {
               {[
                 {
                   icon: <Share className="h-5 w-5" />,
-                  text: <>Tap the <strong>Share</strong> icon at the bottom of Safari (the box with an arrow pointing up).</>,
+                  text: <>Tap the <strong>Share</strong> icon at the bottom of Safari (the square with an arrow).</>,
                 },
                 {
                   icon: <Plus className="h-5 w-5" />,
@@ -128,7 +86,7 @@ export default function InstallPage() {
                 },
                 {
                   icon: <CheckCircle2 className="h-5 w-5" />,
-                  text: <>Tap <strong>"Add"</strong> in the top-right corner to confirm.</>,
+                  text: <>Tap <strong>"Add"</strong> in the top-right corner.</>,
                 },
               ].map((step, i) => (
                 <li key={i} className="flex items-start gap-4">
@@ -142,20 +100,22 @@ export default function InstallPage() {
           </div>
         )}
 
-        {platform === "other" && !installed && (
+        {!isInstalled && !isIOS && !isAndroid && (
           <div className="space-y-5">
             <div className="flex items-center gap-3">
               <div className="h-11 w-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
                 <AppWindow className="h-5 w-5" />
               </div>
               <div>
-                <p className="font-semibold text-foreground">Desktop / Chrome</p>
-                <p className="text-sm text-muted-foreground">Install ComiHub as a desktop app.</p>
+                <p className="font-semibold text-foreground">Desktop / Chrome or Edge</p>
+                <p className="text-sm text-muted-foreground">
+                  {deferredPrompt ? "Click below to install ComiHub as a desktop app." : "Use the browser menu to install."}
+                </p>
               </div>
             </div>
 
             {deferredPrompt ? (
-              <Button className="w-full" onClick={handleAndroidInstall}>
+              <Button className="w-full" onClick={promptInstall}>
                 <AppWindow className="mr-2 h-4 w-4" /> Install ComiHub
               </Button>
             ) : (
