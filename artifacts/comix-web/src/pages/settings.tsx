@@ -8,10 +8,10 @@ import { useStore, storeActions, THEME_OPTIONS, type Theme } from "@/lib/storage
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Download, Upload, BarChart3, AlertTriangle, ArrowLeft, Check, CirclePlay, Trash2 } from "lucide-react";
+import { Download, Upload, BarChart3, AlertTriangle, ArrowLeft, Check, CirclePlay, Trash2, Shield } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
@@ -22,6 +22,16 @@ export default function SettingsPage() {
   const progress = useStore(s => s.progress);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── VPN proxy toggle ────────────────────────────────────────────────────
+  const [isVpnEnabled, setIsVpnEnabled] = useState(
+    () => localStorage.getItem("builtin_vpn_enabled") === "true"
+  );
+  const toggleVpn = (val: boolean) => {
+    setIsVpnEnabled(val);
+    localStorage.setItem("builtin_vpn_enabled", String(val));
+  };
+
   const downloadedItems = useMemo(() => {
     return Object.values(library)
       .map(manga => {
@@ -55,22 +65,14 @@ export default function SettingsPage() {
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       const result = event.target?.result as string;
       const { ok, error } = storeActions.importBackup(result);
       if (ok) {
-        toast({
-          title: "Backup restored",
-          description: "Your library and settings have been restored successfully.",
-        });
+        toast({ title: "Backup restored", description: "Your library and settings have been restored successfully." });
       } else {
-        toast({
-          title: "Restore failed",
-          description: error || "Invalid backup file",
-          variant: "destructive",
-        });
+        toast({ title: "Restore failed", description: error || "Invalid backup file", variant: "destructive" });
       }
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
@@ -132,11 +134,10 @@ export default function SettingsPage() {
             ))}
           </div>
         </section>
-        
+
         {/* Appearance Section */}
         <section className="space-y-6">
           <h2 className="text-xl font-semibold text-foreground">Appearance</h2>
-          
           <div className="space-y-3">
             <Label className="text-base font-medium">Theme</Label>
             <p className="text-sm text-muted-foreground -mt-1">
@@ -161,7 +162,6 @@ export default function SettingsPage() {
                       className="relative h-9 w-9 rounded-lg border shrink-0 overflow-hidden"
                       style={{ backgroundColor: opt.bg, borderColor: "rgba(0,0,0,0.15)" }}
                     >
-                      {/* The vivid accent dot — gives an at-a-glance preview. */}
                       <span
                         className="absolute inset-1 rounded-md"
                         style={{ backgroundColor: opt.swatch, boxShadow: opt.id === 'neon-green' ? `0 0 8px ${opt.swatch}` : undefined }}
@@ -190,7 +190,6 @@ export default function SettingsPage() {
         {/* Reader Defaults */}
         <section className="space-y-6">
           <h2 className="text-xl font-semibold text-foreground">Reader Defaults</h2>
-          
           <div className="grid gap-6 sm:grid-cols-2">
             <div className="space-y-3">
               <Label>Reading Direction</Label>
@@ -204,7 +203,6 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-3">
               <Label>Image Fit</Label>
               <Select value={readerSettings.fit} onValueChange={(v: any) => storeActions.setReader({ fit: v })}>
@@ -216,7 +214,6 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-3">
               <Label>Background</Label>
               <Select value={readerSettings.background} onValueChange={(v: any) => storeActions.setReader({ background: v })}>
@@ -229,13 +226,11 @@ export default function SettingsPage() {
               </Select>
             </div>
           </div>
-
           <div className="space-y-4 pt-2">
             <div className="flex items-center justify-between">
               <Label>Show Page Number</Label>
               <Switch checked={readerSettings.showPageNumber} onCheckedChange={(v) => storeActions.setReader({ showPageNumber: v })} />
             </div>
-
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label>Keep Screen On</Label>
@@ -251,7 +246,6 @@ export default function SettingsPage() {
         {/* Content Section */}
         <section className="space-y-6">
           <h2 className="text-xl font-semibold text-foreground">Content Preferences</h2>
-          
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="hide-nsfw" className="text-base font-medium">Hide Mature Content</Label>
@@ -263,9 +257,7 @@ export default function SettingsPage() {
               onCheckedChange={(checked) => updateSettings({ hideNsfw: checked })}
             />
           </div>
-
           <Separator />
-
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="show-alt" className="text-base font-medium">Show Alternative Titles</Label>
@@ -277,9 +269,7 @@ export default function SettingsPage() {
               onCheckedChange={(checked) => updateSettings({ showAltNames: checked })}
             />
           </div>
-          
           <Separator />
-
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="dedupe" className="text-base font-medium">Deduplicate Chapters</Label>
@@ -295,10 +285,10 @@ export default function SettingsPage() {
 
         <Separator />
 
-        {/* Display Section */}
+        {/* Display & Network Section */}
         <section className="space-y-6 pt-6">
           <h2 className="text-xl font-semibold text-foreground">Display & Network</h2>
-          
+
           <div className="space-y-4">
             <Label className="text-base font-medium">Cover Quality</Label>
             <p className="text-sm text-muted-foreground -mt-3">Choose lower quality on slow connections to save bandwidth.</p>
@@ -347,6 +337,25 @@ export default function SettingsPage() {
             </RadioGroup>
           </div>
 
+          <Separator />
+
+          {/* ── Built-in Image Proxy (VPN) ─────────────────────────────── */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="builtin-vpn" className="text-base font-medium flex items-center gap-2">
+                <Shield className="h-4 w-4 text-primary" />
+                Built-in Image Proxy
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Route chapter images through the server to bypass regional blocks. May slow loading slightly.
+              </p>
+            </div>
+            <Switch
+              id="builtin-vpn"
+              checked={isVpnEnabled}
+              onCheckedChange={toggleVpn}
+            />
+          </div>
         </section>
 
         <Separator />
@@ -357,26 +366,23 @@ export default function SettingsPage() {
           <p className="text-sm text-muted-foreground -mt-4">
             Save your library, history, and settings to a file, or restore from a previous backup.
           </p>
-
           <div className="flex flex-col sm:flex-row gap-4">
             <Button variant="outline" onClick={handleExport} className="flex-1">
               <Download className="mr-2 h-4 w-4" /> Export Backup
             </Button>
-            
             <div className="flex-1 relative">
-              <input 
-                type="file" 
-                accept=".json" 
+              <input
+                type="file"
+                accept=".json"
                 ref={fileInputRef}
                 onChange={handleImport}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
               />
               <Button variant="outline" className="w-full pointer-events-none">
                 <Upload className="mr-2 h-4 w-4" /> Import Backup
               </Button>
             </div>
           </div>
-
           <div className="pt-4">
             <AlertDialog>
               <AlertDialogTrigger asChild>
