@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'comihub-static-v1';
-const API_CACHE = 'comihub-api-v1';
+const STATIC_CACHE = 'comihub-static-v2';
+const API_CACHE = 'comihub-api-v2';
 const IMAGE_CACHE = 'comihub-images-v1';
 
 const API_PATTERNS = ['/api/popular', '/api/latest', '/api/search', '/api/tags', '/api/details', '/api/chapters', '/api/pages'];
@@ -10,7 +10,16 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  // Delete all old caches (any that are not in the current set)
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((k) => ![STATIC_CACHE, API_CACHE, IMAGE_CACHE].includes(k))
+          .map((k) => caches.delete(k)),
+      ),
+    ).then(() => self.clients.claim()),
+  );
 });
 
 function isApiRequest(url) {

@@ -10,6 +10,7 @@ import { registerHistoryHeader } from "@/lib/header-history";
 export default function HistoryPage() {
   const historyKeys = useStore(s => s.history);
   const progressMap = useStore(s => s.progress);
+  const library = useStore(s => s.library);
   const [filterText, setFilterText] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -118,7 +119,10 @@ export default function HistoryPage() {
 
               {/* Text info — links to reader */}
               <Link
-                href={`/reader/${item.chapterId}?mangaId=${item.mangaId}`}
+                href={(() => {
+                  const sid = library[item.mangaId]?.sourceId;
+                  return `/reader/${item.chapterId}?mangaId=${item.mangaId}${sid ? `&sourceId=${sid}` : ""}`;
+                })()}
                 className="flex-1 min-w-0 py-0.5"
               >
                 <p className="font-semibold text-[15px] leading-snug text-foreground line-clamp-2 mb-0.5">

@@ -26,8 +26,13 @@ export default function Reader() {
   const chapterId = params?.chapterId || "";
   const searchString = useSearch();
   const mangaId = new URLSearchParams(searchString).get("mangaId");
-  const sourceId = new URLSearchParams(searchString).get("sourceId");
+  const sourceIdFromUrl = new URLSearchParams(searchString).get("sourceId");
   const [, setLocation] = useLocation();
+
+  // Fallback: if sourceId isn't in the URL (e.g. opened from history before
+  // the fix), grab it from the library entry for this manga.
+  const library = useStore(s => s.library);
+  const sourceId = sourceIdFromUrl ?? (mangaId ? (library[mangaId]?.sourceId ?? null) : null);
 
   // Set synchronously (not in useEffect) so the header is present on the
   // very first render when useGetChapterPages fires its query.
