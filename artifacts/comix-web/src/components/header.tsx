@@ -1,5 +1,5 @@
 import { Link, useLocation, useSearch } from "wouter";
-import { Search, Library, Clock, RefreshCw, Sun, Moon, Laptop, X, Boxes, LayoutGrid, Trash2 } from "lucide-react";
+import { Search, Library, Clock, RefreshCw, Sun, Moon, Laptop, X, Boxes, LayoutGrid, Trash2, LogIn } from "lucide-react";
 import { Input } from "./ui/input";
 import { useEffect, useState } from "react";
 import { useUpdatesCount } from "@/hooks/use-updates-count";
@@ -15,6 +15,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/system": "System",
   "/search": "Search",
   "/stats": "Stats",
+  "/login": "Account",
 };
 
 export function Header() {
@@ -51,6 +52,7 @@ export function Header() {
     { href: "/history", label: "History", icon: Clock },
     { href: "/sources", label: "Sources", icon: Boxes },
     { href: "/system", label: "System", icon: LayoutGrid },
+    { href: "/login", label: "Login", icon: LogIn },
   ];
 
   return (
@@ -244,7 +246,7 @@ export function Header() {
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 border-t">
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-6">
           {navLinks.map((link) => {
             const isActive = location === link.href;
             return (

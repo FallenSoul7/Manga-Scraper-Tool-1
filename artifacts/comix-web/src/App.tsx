@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PwaProvider } from "@/lib/pwa-context";
 import { Header } from "@/components/header";
 import { InstallBanner } from "@/components/install-banner";
+import { WelcomeOverlay } from "@/components/welcome-overlay";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Loader2 } from "lucide-react";
 import NotFound from "@/pages/not-found";
@@ -28,6 +29,7 @@ const ComiAIPage           = lazy(() => import("@/pages/comi-ai"));
 const VpnPage              = lazy(() => import("@/pages/vpn"));
 const CachePage            = lazy(() => import("@/pages/cache"));
 const InstallPage          = lazy(() => import("@/pages/install"));
+const LoginPage            = lazy(() => import("@/pages/login"));
 
 import { useActiveSourceId, applyActiveSource, registerQueryClient } from "@/lib/source";
 
@@ -103,6 +105,7 @@ function AppContent() {
         <Route>
           <Header />
           <InstallBanner />
+          <WelcomeOverlay />
           <div className="flex-1 pb-16 md:pb-0">
             <Switch>
               <Route path="/">
@@ -143,6 +146,9 @@ function AppContent() {
               </Route>
               <Route path="/install">
                 <Lazy><InstallPage /></Lazy>
+              </Route>
+              <Route path="/login">
+                <Lazy><LoginPage /></Lazy>
               </Route>
               <Route component={NotFound} />
             </Switch>

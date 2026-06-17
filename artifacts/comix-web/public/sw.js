@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'comihub-static-v2';
+const STATIC_CACHE = 'comihub-static-v3';
 const API_CACHE = 'comihub-api-v2';
 const IMAGE_CACHE = 'comihub-images-v1';
 
@@ -10,7 +10,6 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  // Delete all old caches (any that are not in the current set)
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
@@ -31,8 +30,15 @@ function isImageRequest(url) {
     /\.(jpg|jpeg|png|gif|webp|avif)$/i.test(url.pathname);
 }
 
+function isHashedAsset(url) {
+  // Vite content-hashes its JS/CSS bundles: assets/index-AbCd1234.js
+  // These are safe to cache forever since the filename changes with content.
+  return /\/assets\/[^/]+-[a-zA-Z0-9]{8,}\.(js|css)$/.test(url.pathname);
+}
+
 function isStaticAsset(url) {
-  return /\.(js|css|woff2?|ttf|eot|svg|ico)$/i.test(url.pathname);
+  return /\.(woff2?|ttf|eot|svg|ico|png|webp|jpg|jpeg)$/i.test(url.pathname) &&
+    !url.pathname.includes('/api/');
 }
 
 async function networkFirst(request, cacheName, maxAgeSecs) {
@@ -84,15 +90,27 @@ async function cacheFirst(request, cacheName, maxAgeSecs) {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
+
+  // Auth endpoints — always bypass SW so session cookies work properly
+  if (url.pathname.startsWith('/api/auth')) return;
+
   if (url.origin !== self.location.origin && !isImageRequest(url)) return;
 
-  if (isImageRequest(url)) {
+  if (isImageRequest(url) && url.origin !== self.location.origin) {
+    // External CDN images (manga pages) — cache 30 days
     event.respondWith(cacheFirst(event.request, IMAGE_CACHE, 30 * 24 * 3600));
   } else if (isApiRequest(url)) {
+    // API data — network first, 1h offline fallback
     event.respondWith(networkFirst(event.request, API_CACHE, 3600));
-  } else if (isStaticAsset(url)) {
+  } else if (isHashedAsset(url)) {
+    // Vite-hashed bundles — cache forever (content hash changes with code)
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, null));
+  } else if (isStaticAsset(url)) {
+    // Fonts, icons, other static files — cache 7 days
+    event.respondWith(cacheFirst(event.request, STATIC_CACHE, 7 * 24 * 3600));
   }
+  // HTML (index.html, app shell) — no SW caching; browser fetches fresh every time.
+  // This means every new deploy is immediately picked up by the home screen app.
 });
 
 async function getCacheSizes() {
