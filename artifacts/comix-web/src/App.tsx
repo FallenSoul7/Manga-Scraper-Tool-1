@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PwaProvider } from "@/lib/pwa-context";
 import { Header } from "@/components/header";
+import { InstallBanner } from "@/components/install-banner";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Loader2 } from "lucide-react";
 import NotFound from "@/pages/not-found";
@@ -101,6 +102,7 @@ function AppContent() {
         {/* Everything else: global header + bottom nav */}
         <Route>
           <Header />
+          <InstallBanner />
           <div className="flex-1 pb-16 md:pb-0">
             <Switch>
               <Route path="/">

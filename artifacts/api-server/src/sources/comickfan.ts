@@ -328,12 +328,50 @@ export const ComickFanSource: MangaSource = {
   },
 
   // ---- Pages ---------------------------------------------------------------
-  // Official: div.w-full > img[loading=lazy]
+  // Primary: JSON API endpoint (mirrors ComicK API pattern).
+  // Fallback: scrape the HTML reader page.
   async pages(chapterId: string): Promise<PageListResponse> {
     const decoded = decodeChapterId(chapterId);
     if (!decoded) throw new Error(`ComicKFan: invalid chapter ID "${chapterId}"`);
     const { slug, chapter, hashId } = decoded;
 
+    // --- Attempt 1: JSON API (fast, no JS rendering needed) ---
+    try {
+      const apiRes = await api.get<{ images?: Array<{ url?: string; b2_key?: string }> }>(
+        `/api/chapters/${hashId}/`,
+        { headers: { Referer: `${BASE}/manga/${slug}` } },
+      );
+      const images = apiRes.data?.images ?? [];
+      if (images.length > 0) {
+        const pageUrls = images
+          .map(img => img.url ?? (img.b2_key ? `https://meo.cdncmk.com/${img.b2_key}` : ""))
+          .filter(Boolean);
+        if (pageUrls.length > 0) {
+          return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
+        }
+      }
+    } catch {
+      // fall through to HTML scrape
+    }
+
+    // --- Attempt 2: alternate API path ---
+    try {
+      const apiRes2 = await api.get<{ pages?: Array<{ url?: string }> }>(
+        `/api/comics/${slug}/chapters/${chapter}/pages`,
+        { headers: { Referer: `${BASE}/manga/${slug}` } },
+      );
+      const pages = apiRes2.data?.pages ?? [];
+      if (pages.length > 0) {
+        const pageUrls = pages.map(p => p.url ?? "").filter(Boolean);
+        if (pageUrls.length > 0) {
+          return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
+        }
+      }
+    } catch {
+      // fall through to HTML scrape
+    }
+
+    // --- Attempt 3: scrape the HTML reader page ---
     const readingUrl = `/manga/${slug}/chapter-${chapter}-${hashId}`;
     const res = await html.get(readingUrl, {
       headers: { Referer: `${BASE}/manga/${slug}` },
@@ -344,20 +382,21 @@ export const ComickFanSource: MangaSource = {
     const pageUrls: string[] = [];
     const seen = new Set<string>();
 
-    // Try the primary selector first; fall back to broader selectors if the
-    // site structure has changed.
     const selectors = [
       "div.w-full > img[loading=lazy]",
+      "div.w-full img",
       ".reading-content img",
       ".chapter-content img",
       "img[loading=lazy][src*='cdn']",
+      "img[loading=lazy][src*='meo']",
       "img[loading=lazy]",
+      "img[data-src]",
     ];
     for (const sel of selectors) {
       $(sel).each((_i, el) => {
         const src = $(el).attr("src") ?? $(el).attr("data-src") ?? "";
         if (!src || seen.has(src)) return;
-        if (src.startsWith("data:")) return; // skip inline placeholders
+        if (src.startsWith("data:")) return;
         seen.add(src);
         pageUrls.push(src);
       });
