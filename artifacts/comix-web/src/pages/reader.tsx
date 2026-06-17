@@ -9,6 +9,8 @@ import {
   setExtraHeader,
 } from "@workspace/api-client-react";
 import { proxyImage } from "@/lib/utils";
+// ── ADD THIS IMPORT ──────────────────────────────────────────────────────────
+import { getProxiedImageUrl } from "@/lib/vpn";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
@@ -21,19 +23,12 @@ import { Button } from "@/components/ui/button";
 
 export default function Reader() {
   const [, params] = useRoute("/reader/:chapterId");
-  // Keep chapterId as a string — numeric sources (NineHentai) use numeric IDs
-  // while string sources (ComickFan) use compound IDs like "slug|||ch|||hash".
-  // parseInt would convert those to NaN, disabling the pages query.
   const chapterId = params?.chapterId || "";
   const searchString = useSearch();
   const mangaId = new URLSearchParams(searchString).get("mangaId");
   const sourceId = new URLSearchParams(searchString).get("sourceId");
   const [, setLocation] = useLocation();
 
-  // Apply the source header so chapter-pages API uses the right backend source.
-  // Using setExtraHeader directly (not applyActiveSource) to avoid invalidating
-  // all cached queries, which would cause a full refetch storm every time
-  // the reader opens.
   useEffect(() => {
     if (sourceId) setExtraHeader("X-Source", sourceId);
   }, [sourceId]);
@@ -47,11 +42,8 @@ export default function Reader() {
 
   const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(currentProgress?.lastPageRead || 0);
-
-  // Track which images are fully decoded and visible
   const [loadedImgs, setLoadedImgs] = useState<Record<number, boolean>>({});
 
-  // Continuous reading: chapters appended below the current one as user scrolls
   type AppendedChapter = { id: string; number: number; title: string; pages: { index: number; url: string }[] };
   const [appendedChapters, setAppendedChapters] = useState<AppendedChapter[]>([]);
   const [loadingNextChapter, setLoadingNextChapter] = useState(false);
@@ -61,6 +53,15 @@ export default function Reader() {
   const scrollTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
+  // ── ADD THIS — read VPN setting once on mount ────────────────────────────
+  const vpnEnabled = localStorage.getItem("builtin_vpn_enabled") === "true";
+
+  // ── Helper to pick the right URL ─────────────────────────────────────────
+  const resolveImageUrl = (url: string) =>
+    vpnEnabled
+      ? getProxiedImageUrl(url, sourceId ?? "")
+      : proxyImage(url, sourceId ?? undefined);
+
   const { data: pagesData, isLoading: pagesLoading } = useGetChapterPages(chapterId, {
     query: {
       enabled: !!chapterId && chapterId !== "0",
@@ -68,8 +69,6 @@ export default function Reader() {
     },
   });
 
-  // Match the manga-detail page: fetch ALL chapters (dedupe=false) so we can apply
-  // the same scanlator filter for prev/next navigation, and share the React Query cache.
   const chapterFetchParams = { dedupe: false };
   const { data: chaptersData } = useGetChapters(mangaId || "", chapterFetchParams, {
     query: {
@@ -85,32 +84,20 @@ export default function Reader() {
     },
   });
 
-  // Track real reading time. Adds the elapsed wall-clock time to global stats
-  // every few seconds, but pauses while the tab is hidden so it doesn't count
-  // time when the user has switched away.
   useEffect(() => {
     const TICK_MS = 5000;
     let lastTick = document.visibilityState === 'visible' ? Date.now() : null;
-
     const flush = () => {
       if (lastTick === null) return;
       const now = Date.now();
       const delta = now - lastTick;
       lastTick = now;
-      // Cap any single tick at 60s — avoids dumping a giant chunk if the
-      // browser throttled the timer or the tab was idle for a long time.
       if (delta > 0) storeActions.addReadingTime(Math.min(delta, 60_000));
     };
-
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        lastTick = Date.now();
-      } else {
-        flush();
-        lastTick = null;
-      }
+      if (document.visibilityState === 'visible') { lastTick = Date.now(); }
+      else { flush(); lastTick = null; }
     };
-
     document.addEventListener('visibilitychange', onVisibility);
     const interval = window.setInterval(flush, TICK_MS);
     return () => {
@@ -120,44 +107,29 @@ export default function Reader() {
     };
   }, []);
 
-  // Keep screen on
   useEffect(() => {
-    if (!(readerSettings.keepScreenOn && 'wakeLock' in navigator)) {
-      return;
-    }
-    {
-      const requestWakeLock = async () => {
-        try {
-          wakeLockRef.current = await navigator.wakeLock.request('screen');
-        } catch (err) {
-          console.error(err);
-        }
-      };
-      requestWakeLock();
-      
-      const handleVisibilityChange = () => {
-        if (wakeLockRef.current !== null && document.visibilityState === 'visible') {
-          requestWakeLock();
-        }
-      };
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      
-      return () => {
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-        wakeLockRef.current?.release();
-        wakeLockRef.current = null;
-      };
-    }
+    if (!(readerSettings.keepScreenOn && 'wakeLock' in navigator)) return;
+    const requestWakeLock = async () => {
+      try { wakeLockRef.current = await navigator.wakeLock.request('screen'); }
+      catch (err) { console.error(err); }
+    };
+    requestWakeLock();
+    const handleVisibilityChange = () => {
+      if (wakeLockRef.current !== null && document.visibilityState === 'visible') requestWakeLock();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      wakeLockRef.current?.release();
+      wakeLockRef.current = null;
+    };
   }, [readerSettings.keepScreenOn]);
 
-
-  // Initial scroll — restore last-read page position on chapter open.
   const didInitialScroll = useRef(false);
   useEffect(() => {
     if (!pagesData?.pages.length || didInitialScroll.current) return;
     const target = currentProgress?.lastPageRead;
     if (!target || target === 0) { didInitialScroll.current = true; return; }
-
     if (readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl') {
       if (containerRef.current) {
         containerRef.current.scrollTo({
@@ -167,8 +139,6 @@ export default function Reader() {
       didInitialScroll.current = true;
       return;
     }
-
-    // Vertical/webtoon: wait one rAF so images start rendering, then scroll.
     requestAnimationFrame(() => {
       const pageEl = document.getElementById(`page-${target}`);
       if (pageEl) pageEl.scrollIntoView({ behavior: 'auto', block: 'start' });
@@ -176,141 +146,93 @@ export default function Reader() {
     });
   }, [pagesData, currentProgress?.lastPageRead, readerSettings.direction]);
 
-  // Scroll tracking
   useEffect(() => {
     const handleScroll = () => {
       if (!pagesData?.pages.length || !mangaId || !chaptersData || !mangaData) return;
-
       clearTimeout(scrollTimeout.current);
       scrollTimeout.current = setTimeout(() => {
         const container = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical' ? window : containerRef.current;
         if (!container) return;
-
         let newPage = currentPage;
-
         if (readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') {
           const scrollY = window.scrollY;
           const wh = window.innerHeight;
           const pageElements = Array.from(document.querySelectorAll('.reader-page'));
-          
           for (let i = 0; i < pageElements.length; i++) {
             const rect = pageElements[i].getBoundingClientRect();
-            // If top is above middle of screen and bottom is below middle
-            if (rect.top <= wh / 2 && rect.bottom >= wh / 2) {
-              newPage = i;
-              break;
-            }
+            if (rect.top <= wh / 2 && rect.bottom >= wh / 2) { newPage = i; break; }
           }
-
-          // Check if at bottom (90%)
           const docHeight = document.documentElement.scrollHeight;
           if (scrollY + wh >= docHeight * 0.9) {
-             const ch = chaptersData.items.find(c => String(c.id) === chapterId);
-             if (ch) {
-               storeActions.markChapterRead(mangaId, ch, mangaData, pagesData.pages.length);
-             }
+            const ch = chaptersData.items.find(c => String(c.id) === chapterId);
+            if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, pagesData.pages.length);
           }
         } else {
-          // LTR / RTL
           if (containerRef.current) {
             const scrollX = Math.abs(containerRef.current.scrollLeft);
             const cw = containerRef.current.clientWidth;
             newPage = Math.round(scrollX / cw);
-            
             if (newPage >= pagesData.pages.length - 1) {
               const ch = chaptersData.items.find(c => String(c.id) === chapterId);
-               if (ch) {
-                 storeActions.markChapterRead(mangaId, ch, mangaData, pagesData.pages.length);
-               }
+              if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, pagesData.pages.length);
             }
           }
         }
-
         if (newPage !== currentPage) {
           setCurrentPage(newPage);
           const ch = chaptersData.items.find(c => String(c.id) === chapterId);
           if (ch && !currentProgress?.isRead) {
             storeActions.recordProgress({
-              mangaId,
-              chapterId: ch.id,
-              chapterNumber: ch.number,
-              chapterTitle: ch.title,
-              mangaTitle: mangaData.title,
-              mangaThumbnail: mangaData.thumbnail,
-              totalPages: pagesData.pages.length,
-              lastPageRead: newPage,
-              isRead: false
+              mangaId, chapterId: ch.id, chapterNumber: ch.number,
+              chapterTitle: ch.title, mangaTitle: mangaData.title,
+              mangaThumbnail: mangaData.thumbnail, totalPages: pagesData.pages.length,
+              lastPageRead: newPage, isRead: false,
             });
           }
         }
       }, 500);
     };
-
     const container = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical' ? window : containerRef.current;
-    if (container) {
-      container.addEventListener('scroll', handleScroll, { passive: true });
-    }
+    if (container) container.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       if (container) container.removeEventListener('scroll', handleScroll);
       clearTimeout(scrollTimeout.current);
     };
   }, [readerSettings.direction, pagesData, mangaId, chaptersData, mangaData, currentPage, currentProgress?.isRead]);
 
-
-  // Navigation — apply the same scanlator filter the user picked on the manga page.
-  // If the user is reading a chapter from a source that's filtered out, fall back to
-  // showing all chapters so we can still find prev/next.
   const navChapters = useMemo<any[]>(() => {
     if (!chaptersData?.items) return [];
     if (!selectedScanlator) {
-      // No source selected — dedupe so prev/next don't jump between sources of the same chapter.
       const map = new Map<number, any>();
       const score = (ch: any) => (ch.isOfficial ? 100000 : 0) + (ch.votes || 0);
       for (const ch of chaptersData.items) {
         const existing = map.get(ch.number);
         if (!existing || score(ch) > score(existing)) map.set(ch.number, ch);
       }
-      // Keep newest-first like the API
       return Array.from(map.values()).sort((a, b) => b.number - a.number);
     }
     const filtered = chaptersData.items.filter(c => (c.scanlator || "Unknown") === selectedScanlator);
-    if (!filtered.find(c => String(c.id) === chapterId)) {
-      // Reading something outside the chosen source; use all chapters so navigation works
-      return chaptersData.items;
-    }
+    if (!filtered.find(c => String(c.id) === chapterId)) return chaptersData.items;
     return filtered.sort((a, b) => b.number - a.number);
   }, [chaptersData, selectedScanlator, chapterId]);
 
-  const chapterIndex = useMemo(() => {
-    return navChapters.findIndex(c => String(c.id) === chapterId);
-  }, [navChapters, chapterId]);
-
+  const chapterIndex = useMemo(() => navChapters.findIndex(c => String(c.id) === chapterId), [navChapters, chapterId]);
   const prevChapter = chapterIndex >= 0 && chapterIndex < navChapters.length - 1 ? navChapters[chapterIndex + 1] : null;
   const nextChapter = chapterIndex > 0 ? navChapters[chapterIndex - 1] : null;
 
-  // Auto-load next chapter when user reaches the last 3 pages (continuous reading).
-  // Placed after nextChapter is declared so we can reference it safely.
   useEffect(() => {
     const isVertical = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
     if (!isVertical || !nextChapter || loadingNextChapter) return;
     if (appendedIdsRef.current.has(nextChapter.id)) return;
     const totalPages = pagesData?.pages.length ?? 0;
     if (totalPages === 0 || currentPage < totalPages - 3) return;
-
     const nc = nextChapter;
     appendedIdsRef.current.add(nc.id);
     setLoadingNextChapter(true);
-    fetch(`/api/chapter/${nc.id}/pages`, {
-      headers: sourceId ? { "X-Source": sourceId } : {},
-    })
+    fetch(`/api/chapter/${nc.id}/pages`, { headers: sourceId ? { "X-Source": sourceId } : {} })
       .then(r => r.json())
       .then((data: { pages: { index: number; url: string }[] }) => {
-        setAppendedChapters(prev => [...prev, {
-          id: nc.id,
-          number: nc.number,
-          title: nc.title ?? '',
-          pages: data.pages,
-        }]);
+        setAppendedChapters(prev => [...prev, { id: nc.id, number: nc.number, title: nc.title ?? '', pages: data.pages }]);
       })
       .catch(() => { appendedIdsRef.current.delete(nc.id); })
       .finally(() => setLoadingNextChapter(false));
@@ -321,36 +243,20 @@ export default function Reader() {
   };
 
   const goBack = () => {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      setLocation(mangaId ? `/manga/${mangaId}` : "/");
-    }
+    if (window.history.length > 1) window.history.back();
+    else setLocation(mangaId ? `/manga/${mangaId}` : "/");
   };
 
   const handleKeydown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      goBack();
-      return;
-    }
-    
+    if (e.key === 'Escape') { goBack(); return; }
     const isPaginated = readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl';
-    
     if (e.key === 'ArrowRight') {
       if (isPaginated && containerRef.current) {
-         if (readerSettings.direction === 'ltr') {
-           containerRef.current.scrollBy({ left: containerRef.current.clientWidth, behavior: 'smooth' });
-         } else {
-           containerRef.current.scrollBy({ left: -containerRef.current.clientWidth, behavior: 'smooth' });
-         }
+        containerRef.current.scrollBy({ left: readerSettings.direction === 'ltr' ? containerRef.current.clientWidth : -containerRef.current.clientWidth, behavior: 'smooth' });
       }
     } else if (e.key === 'ArrowLeft') {
       if (isPaginated && containerRef.current) {
-         if (readerSettings.direction === 'ltr') {
-           containerRef.current.scrollBy({ left: -containerRef.current.clientWidth, behavior: 'smooth' });
-         } else {
-           containerRef.current.scrollBy({ left: containerRef.current.clientWidth, behavior: 'smooth' });
-         }
+        containerRef.current.scrollBy({ left: readerSettings.direction === 'ltr' ? -containerRef.current.clientWidth : containerRef.current.clientWidth, behavior: 'smooth' });
       }
     }
   };
@@ -359,7 +265,6 @@ export default function Reader() {
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [readerSettings.direction]);
-
 
   if (pagesLoading) {
     return (
@@ -387,18 +292,15 @@ export default function Reader() {
 
   const bgClass = readerSettings.background === 'paper' ? 'bg-[#f4f1ea]' : readerSettings.background === 'black' ? 'bg-black' : 'bg-[#1a1a1a]';
   const textClass = readerSettings.background === 'paper' ? 'text-black' : 'text-white';
-  
   const fitClass = readerSettings.fit === 'width' ? 'w-full h-auto' : readerSettings.fit === 'height' ? 'h-[100dvh] w-auto mx-auto' : 'w-auto h-auto mx-auto';
 
   const handlePageClick = (e: React.MouseEvent) => {
     const x = e.clientX;
     const w = window.innerWidth;
-    
     if (readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl') {
       const goNext = readerSettings.direction === 'ltr' ? x > w / 2 : x < w / 2;
       if (containerRef.current) {
-        const scrollAmount = containerRef.current.clientWidth * (readerSettings.direction === 'rtl' ? -1 : 1);
-        containerRef.current.scrollBy({ left: goNext ? scrollAmount : -scrollAmount, behavior: 'smooth' });
+        containerRef.current.scrollBy({ left: goNext ? containerRef.current.clientWidth * (readerSettings.direction === 'rtl' ? -1 : 1) : -containerRef.current.clientWidth * (readerSettings.direction === 'rtl' ? -1 : 1), behavior: 'smooth' });
       }
     } else {
       setShowControls(!showControls);
@@ -421,7 +323,6 @@ export default function Reader() {
               <div className="text-sm font-semibold truncate leading-none">Ch. {currChapterObj?.number} {currChapterObj?.title ? `- ${currChapterObj.title}` : ""}</div>
             </div>
           </div>
-          
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <Button variant="ghost" size="icon" disabled={!prevChapter} onClick={(e) => { e.stopPropagation(); if (prevChapter) navigateToChapter(prevChapter.id); }} className="text-white/70 hover:text-white" title="Previous Chapter">
               <ChevronLeft className="h-4 w-4" />
@@ -429,7 +330,6 @@ export default function Reader() {
             <Button variant="ghost" size="icon" disabled={!nextChapter} onClick={(e) => { e.stopPropagation(); if (nextChapter) navigateToChapter(nextChapter.id); }} className="text-white/70 hover:text-white" title="Next Chapter">
               <ChevronRight className="h-4 w-4" />
             </Button>
-            
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="text-white/70 hover:text-white ml-1" onClick={e => e.stopPropagation()}>
@@ -437,9 +337,7 @@ export default function Reader() {
                 </Button>
               </SheetTrigger>
               <SheetContent className="w-[300px] sm:w-[400px]" onClick={e => e.stopPropagation()}>
-                <SheetHeader>
-                  <SheetTitle>Reader Settings</SheetTitle>
-                </SheetHeader>
+                <SheetHeader><SheetTitle>Reader Settings</SheetTitle></SheetHeader>
                 <div className="py-6 space-y-6">
                   <div className="space-y-3">
                     <Label>Reading Direction</Label>
@@ -453,7 +351,6 @@ export default function Reader() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="space-y-3">
                     <Label>Image Fit</Label>
                     <Select value={readerSettings.fit} onValueChange={(v: any) => storeActions.setReader({ fit: v })}>
@@ -465,7 +362,6 @@ export default function Reader() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="space-y-3">
                     <Label>Background</Label>
                     <Select value={readerSettings.background} onValueChange={(v: any) => storeActions.setReader({ background: v })}>
@@ -477,12 +373,10 @@ export default function Reader() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="flex items-center justify-between">
                     <Label>Show Page Number</Label>
                     <Switch checked={readerSettings.showPageNumber} onCheckedChange={(v) => storeActions.setReader({ showPageNumber: v })} />
                   </div>
-
                   <div className="flex items-center justify-between">
                     <Label>Keep Screen On</Label>
                     <Switch checked={readerSettings.keepScreenOn} onCheckedChange={(v) => storeActions.setReader({ keepScreenOn: v })} />
@@ -516,12 +410,9 @@ export default function Reader() {
               className={`reader-page relative flex-shrink-0 ${
                 isPaged
                 ? 'flex items-center justify-center bg-black w-[100vw] h-[100dvh] snap-center snap-always'
-                : isWebtoon
-                  ? 'w-full'
-                  : 'flex items-center justify-center bg-black w-full'
+                : isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full'
               } ${readerSettings.direction === 'vertical' ? 'mb-8' : ''}`}
             >
-              {/* Loading spinner — shown until image loads. Min-height keeps slot visible. */}
               {!isLoaded && (
                 <div className="flex flex-col items-center justify-center min-h-[40vw] w-full bg-black text-white/40 pointer-events-none">
                   <Loader2 className="h-10 w-10 animate-spin" />
@@ -532,7 +423,8 @@ export default function Reader() {
                 <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
               )}
               <img
-                src={proxyImage(page.url, sourceId ?? undefined)}
+                // ── CHANGED: resolveImageUrl instead of proxyImage ──────────
+                src={resolveImageUrl(page.url)}
                 alt={`Page ${page.index}`}
                 className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
                 loading={isVerticalLike ? 'eager' : (idx < 3 ? 'eager' : 'lazy')}
@@ -549,10 +441,9 @@ export default function Reader() {
           );
         })}
 
-        {/* Continuous reading: appended chapters rendered inline */}
+        {/* Continuous reading: appended chapters */}
         {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && appendedChapters.map((ch) => (
           <div key={ch.id} className="w-full">
-            {/* Chapter separator */}
             <div className="flex items-center gap-4 px-4 py-6 bg-black/80 border-y border-white/10">
               <div className="flex-1 h-px bg-white/20" />
               <div className="text-center">
@@ -561,8 +452,7 @@ export default function Reader() {
               </div>
               <div className="flex-1 h-px bg-white/20" />
             </div>
-            {/* Pages */}
-            {ch.pages.map((page, idx) => {
+            {ch.pages.map((page) => {
               const isWebtoon = readerSettings.direction === 'webtoon';
               return (
                 <div
@@ -572,7 +462,8 @@ export default function Reader() {
                   }`}
                 >
                   <img
-                    src={proxyImage(page.url, sourceId ?? undefined)}
+                    // ── CHANGED: resolveImageUrl instead of proxyImage ──────
+                    src={resolveImageUrl(page.url)}
                     alt={`Ch${ch.number} Page ${page.index}`}
                     loading="lazy"
                     decoding="async"
@@ -588,7 +479,6 @@ export default function Reader() {
           </div>
         ))}
 
-        {/* Loading next chapter indicator */}
         {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && loadingNextChapter && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-white/50">
             <Loader2 className="h-8 w-8 animate-spin" />
@@ -596,7 +486,6 @@ export default function Reader() {
           </div>
         )}
 
-        {/* End of chapter — no next chapter exists */}
         {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && !nextChapter && appendedChapters.length === 0 && (
           <div className="py-16 flex flex-col items-center gap-4 text-white/40">
             <div className="text-sm">You've reached the end</div>
@@ -607,7 +496,6 @@ export default function Reader() {
         )}
       </div>
 
-      {/* Page Indicator — hidden along with the rest of the UI when controls are toggled off */}
       {readerSettings.showPageNumber && showControls && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 backdrop-blur text-white text-xs font-medium z-40 pointer-events-none animate-in fade-in duration-200">
           {currentPage + 1} / {pagesData.pages.length}
