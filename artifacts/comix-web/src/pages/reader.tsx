@@ -9,6 +9,7 @@ import {
   setExtraHeader,
 } from "@workspace/api-client-react";
 import { proxyImage } from "@/lib/utils";
+import { isVpnEnabled } from "@/pages/vpn";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
@@ -44,6 +45,10 @@ export default function Reader() {
   const progressKey = `${mangaId}:${chapterId}`;
   const currentProgress = progressMap[progressKey];
   const selectedScanlator = mangaId ? (scanlatorPrefs[mangaId] ?? null) : null;
+
+  const vpnOn = isVpnEnabled();
+  const resolveImg = (url: string) =>
+    vpnOn ? proxyImage(url, sourceId ?? undefined) : url;
 
   const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(currentProgress?.lastPageRead || 0);
@@ -532,7 +537,7 @@ export default function Reader() {
                 <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
               )}
               <img
-                src={proxyImage(page.url, sourceId ?? undefined)}
+                src={resolveImg(page.url)}
                 alt={`Page ${page.index}`}
                 className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
                 loading={isVerticalLike ? 'eager' : (idx < 3 ? 'eager' : 'lazy')}
@@ -572,7 +577,7 @@ export default function Reader() {
                   }`}
                 >
                   <img
-                    src={proxyImage(page.url, sourceId ?? undefined)}
+                    src={resolveImg(page.url)}
                     alt={`Ch${ch.number} Page ${page.index}`}
                     loading="lazy"
                     decoding="async"

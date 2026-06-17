@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Settings, Download, BarChart3, Database, Info, FolderOpen, Sparkles } from "lucide-react";
+import { Settings, Download, BarChart3, Database, Info, FolderOpen, Sparkles, Shield } from "lucide-react";
 
 interface SystemBlock {
   href?: string;
@@ -17,6 +17,12 @@ const blocks: SystemBlock[] = [
     description: "AI chat assistant — sort your Tachimanga library by genre, tags, or any rule.",
     icon: Sparkles,
     highlight: true,
+  },
+  {
+    href: "/vpn",
+    label: "Built-in VPN",
+    description: "Route images through the server to bypass regional blocks.",
+    icon: Shield,
   },
   {
     href: "/settings",

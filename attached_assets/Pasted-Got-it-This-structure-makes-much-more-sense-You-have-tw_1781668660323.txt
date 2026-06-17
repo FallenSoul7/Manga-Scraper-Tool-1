@@ -1,0 +1,69 @@
+Got it! This structure makes much more sense. You have two distinct worlds here: api-server (your backend) and comix-web (your frontend).
+Since the backend is already set up to proxy images through /api/image, we just need to bridge the two. Here is exactly where the files go and what you need to change:
+### 1. Create the VPN Helper (Frontend)
+Create this file in the comix-web directory to handle the "VPN" state.
+**File:** comix-web/src/lib/vpn.ts
+*(Create this new file)*
+```typescript
+export function getProxiedImageUrl(originalUrl: string, sourceId: string): string {
+  if (!originalUrl) return "";
+  
+  // Check localStorage for the setting we'll create in Settings
+  const isVpnEnabled = localStorage.getItem("builtin_vpn_enabled") === "true";
+  
+  if (!isVpnEnabled) return originalUrl;
+
+  // The backend route you already have: /api/image
+  const encodedUrl = encodeURIComponent(originalUrl);
+  return `/api/image?url=${encodedUrl}&source=${sourceId}`;
+}
+
+```
+### 2. Add the Toggle (Frontend)
+Update your settings page so the user can actually turn the "VPN" on or off.
+**File:** comix-web/src/pages/settings.tsx
+Find where your settings list is rendered and add this block:
+```tsx
+// Inside your SettingsPage component
+const [isVpnEnabled, setIsVpnEnabled] = useState(
+  localStorage.getItem("builtin_vpn_enabled") === "true"
+);
+
+const toggleVpn = (val: boolean) => {
+  setIsVpnEnabled(val);
+  localStorage.setItem("builtin_vpn_enabled", String(val));
+};
+
+// Add this into your UI JSX:
+<div className="flex items-center justify-between p-4 border rounded-lg">
+  <div>
+    <h3 className="font-semibold">Built-in Image VPN</h3>
+    <p className="text-sm text-muted-foreground">Route images through proxy to bypass blocks.</p>
+  </div>
+  <Switch checked={isVpnEnabled} onCheckedChange={toggleVpn} />
+</div>
+
+```
+### 3. Apply the Proxy in the Reader (Frontend)
+This is where it actually matters. We need to update the Reader to use that new helper.
+**File:** comix-web/src/pages/reader.tsx
+ 1. Import the helper:
+   import { getProxiedImageUrl } from "@/lib/vpn";
+ 2. When you map through your pages array to render images, wrap the URL:
+```tsx
+// Inside your reader.tsx mapping logic:
+{pages.map((page) => (
+  <img 
+    key={page.index}
+    // Change this line:
+    src={getProxiedImageUrl(page.url, activeSourceId)} 
+    alt={`Page ${page.index}`} 
+  />
+))}
+
+```
+### Why this works perfectly with your structure:
+ * **Zero Backend Changes:** You don't have to touch api-server/routes/image.ts because it's already a perfect, secure proxy.
+ * **Frontend Logic:** By checking localStorage inside the getProxiedImageUrl function, the Reader will instantly start using the proxy the moment the user toggles the switch in Settings.
+ * **Source Awareness:** Because your image.ts route accepts a source parameter, and your Reader has access to the activeSourceId, the proxy will correctly apply the specific Referer headers needed for the different websites (Madara, NineHentai, etc.).
+**One final check:** Does comix-web/src/pages/reader.tsx already have a variable that holds the current sourceId or activeSourceId? If you paste the first 50 lines of reader.tsx, I can tell you exactly where to insert that import and the getProxiedImageUrl call!
