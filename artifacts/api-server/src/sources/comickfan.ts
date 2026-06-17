@@ -372,22 +372,45 @@ export const ComickFanSource: MangaSource = {
     }
 
     // --- Attempt 3: scrape the HTML reader page ---
+    // The reader is JS-rendered but the CDN image URLs are embedded directly
+    // in the static HTML as meo*.cdncmk.com URLs. We extract them with regex.
     const readingUrl = `/manga/${slug}/chapter-${chapter}-${hashId}`;
     const res = await html.get(readingUrl, {
       headers: { Referer: `${BASE}/manga/${slug}` },
     });
     if (res.status >= 400) throw new Error(`ComicKFan pages error ${res.status} for ${readingUrl}`);
 
-    const $ = cheerio.load(res.data as string);
-    const pageUrls: string[] = [];
-    const seen = new Set<string>();
+    const rawHtml = res.data as string;
 
+    // Extract thumbnail URL from window.chapter_data to exclude it from pages
+    let thumbnailUrl = "";
+    const thumbMatch = rawHtml.match(/"thumbnail"\s*:\s*"([^"]+)"/);
+    if (thumbMatch) thumbnailUrl = thumbMatch[1];
+
+    // Extract all CDN image URLs embedded in the page HTML
+    const cdnRegex = /https?:\/\/meo\d*\.cdncmk\.com\/[A-Za-z0-9_./-]+\.(?:webp|jpg|jpeg|png)/g;
+    const allCdnUrls = [...new Set(rawHtml.match(cdnRegex) ?? [])];
+
+    // Filter out the cover thumbnail — actual chapter pages are typically on meo2+ subdomains
+    const pageUrls = allCdnUrls.filter(url =>
+      url !== thumbnailUrl &&
+      !url.includes("thumb-default") &&
+      !url.includes("thumb-cover"),
+    );
+
+    if (pageUrls.length > 0) {
+      return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
+    }
+
+    // --- Final fallback: cheerio selectors (in case structure changes) ---
+    const $ = cheerio.load(rawHtml);
+    const fallbackUrls: string[] = [];
+    const seen = new Set<string>();
     const selectors = [
       "div.w-full > img[loading=lazy]",
       "div.w-full img",
       ".reading-content img",
       ".chapter-content img",
-      "img[loading=lazy][src*='cdn']",
       "img[loading=lazy][src*='meo']",
       "img[loading=lazy]",
       "img[data-src]",
@@ -395,17 +418,16 @@ export const ComickFanSource: MangaSource = {
     for (const sel of selectors) {
       $(sel).each((_i, el) => {
         const src = $(el).attr("src") ?? $(el).attr("data-src") ?? "";
-        if (!src || seen.has(src)) return;
-        if (src.startsWith("data:")) return;
+        if (!src || seen.has(src) || src.startsWith("data:")) return;
         seen.add(src);
-        pageUrls.push(src);
+        fallbackUrls.push(src);
       });
-      if (pageUrls.length > 0) break;
+      if (fallbackUrls.length > 0) break;
     }
 
     return {
       chapterId,
-      pages: pageUrls.map((url, i) => ({ index: i, url })),
+      pages: fallbackUrls.map((url, i) => ({ index: i, url })),
     };
   },
 

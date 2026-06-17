@@ -243,7 +243,7 @@ export function Header() {
       </header>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 border-t" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 border-t">
         <div className="grid grid-cols-5">
           {navLinks.map((link) => {
             const isActive = location === link.href;
@@ -251,7 +251,7 @@ export function Header() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`relative flex flex-col items-center justify-center gap-1 py-3 text-[11px] font-medium transition-colors ${
+                className={`relative flex flex-col items-center justify-center gap-1.5 py-4 text-[11px] font-medium transition-colors ${
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -266,6 +266,8 @@ export function Header() {
             );
           })}
         </div>
+        {/* Safe-area spacer for iPhone home indicator — sits below the tappable items */}
+        <div style={{ height: "env(safe-area-inset-bottom)" }} />
       </nav>
     </>
   );
