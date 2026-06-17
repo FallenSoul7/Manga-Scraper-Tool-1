@@ -1,75 +1,95 @@
+import * as cheerio from "cheerio";
 import type {
   MangaSource,
   ListOptions,
-  DetailOptions,
   MangaListResponse,
   MangaDetail,
+  DetailOptions,
   ChapterListResponse,
   PageListResponse,
   MangaSummary,
-  ChapterSummary,
-  PageInfo,
   SourceTag,
 } from "./types";
-import { fetchJson, makeHttp, absUrl } from "./scraper-utils";
+import { absUrl, fetchHtml, makeHttp } from "./scraper-utils";
 
 const BASE = "https://danbooru.donmai.us";
-// Mimic a real browser – Danbooru requires this
 const http = makeHttp(BASE, {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   "Referer": `${BASE}/`,
-  "Accept": "application/json",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
 });
+
 const PER_PAGE = 20;
-
-// ── Response types ─────────────────────────────────────────────────────────
-interface DbPool {
-  id: number;
-  name: string;
-  description: string;
-  category: string;
-  post_count: number;
-  post_ids: number[];
-  created_at: string;
-  updated_at: string;
-}
-
-interface DbPost {
-  id: number;
-  file_url?: string;
-  large_file_url?: string;
-  preview_file_url?: string;
-  rating?: string;
-  tag_string?: string;
-  pool_string?: string;
-}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function normalizePoolName(s: string): string {
   return s.replace(/_/g, " ").trim() || "(untitled)";
 }
 
-function poolToSummary(p: DbPool, thumb: string): MangaSummary {
-  return {
-    id: `pool:${p.id}`,
-    title: normalizePoolName(p.name),
-    thumbnail: thumb,
-    type: p.category === "series" ? "Series" : "Collection",
-    isNsfw: true,
-  };
+/** Convert a Danbooru thumbnail URL to the full-size original image URL. */
+function thumbToOriginal(thumbUrl: string): string {
+  // Thumb: https://cdn.donmai.us/180x180/__filename.jpg
+  // Full:  https://cdn.donmai.us/original/filename.jpg
+  return thumbUrl.replace(/\/\d+x\d+\/__/, "/original/");
 }
 
-async function fetchPostThumb(id: number): Promise<string> {
-  try {
-    const post = await fetchJson<DbPost>(http, `/posts/${id}.json`);
-    return post.preview_file_url || post.large_file_url || post.file_url || "";
-  } catch {
-    return "";
-  }
+/**
+ * Scrape a pool listing page (HTML).
+ * URL: /pools?page=N
+ */
+async function scrapePoolList(page: number): Promise<{ pools: { id: number; name: string; thumb: string }[]; hasNext: boolean }> {
+  const url = `${BASE}/pools?page=${page}`;
+  console.log(`[Danbooru] Fetching pool list: ${url}`);
+  const { $ } = await fetchHtml(http, url);
+
+  const pools: { id: number; name: string; thumb: string }[] = [];
+
+  // Each pool row: table tbody tr or div.pool-item
+  const rows = $("table tbody tr, div.pool-item, .pool-list-item");
+  rows.each((_i, el) => {
+    const $row = $(el);
+    const link = $row.find("a[href*='/pools/']").first();
+    const href = link.attr("href") || "";
+    const idMatch = href.match(/\/pools\/(\d+)/);
+    if (!idMatch) return;
+
+    const id = parseInt(idMatch[1], 10);
+    const name = link.text().trim() || $row.find(".pool-name, .pool-title").text().trim();
+    const img = $row.find("img").first();
+    const thumb = img.attr("src") || img.attr("data-src") || "";
+
+    if (id && name) {
+      pools.push({ id, name, thumb });
+    }
+  });
+
+  const hasNext = $("a.next_page, .pagination .next, a[rel='next']").length > 0;
+  console.log(`[Danbooru] Found ${pools.length} pools, hasNext: ${hasNext}`);
+  return { pools, hasNext };
 }
 
-async function fetchPool(id: number): Promise<DbPool> {
-  return fetchJson<DbPool>(http, `/pools/${id}.json`);
+/**
+ * Scrape a pool's page to extract all post image URLs.
+ * URL: /pools/ID
+ */
+async function scrapePoolImages(poolId: number): Promise<string[]> {
+  const url = `${BASE}/pools/${poolId}`;
+  console.log(`[Danbooru] Fetching pool page: ${url}`);
+  const { $ } = await fetchHtml(http, url);
+
+  const imageUrls: string[] = [];
+
+  // Images are inside .post-preview img, .pool-post img, etc.
+  $(".post-preview img, .pool-post img, .post img").each((_i, el) => {
+    const src = $(el).attr("src") || $(el).attr("data-src") || "";
+    if (src && !src.includes("blank.gif")) {
+      const full = thumbToOriginal(src);
+      imageUrls.push(full);
+    }
+  });
+
+  console.log(`[Danbooru] Extracted ${imageUrls.length} images from pool page`);
+  return imageUrls;
 }
 
 // ── Source object ─────────────────────────────────────────────────────────
@@ -80,111 +100,93 @@ export const DanbooruSource: MangaSource = {
   isNsfw: true,
   imageReferer: `${BASE}/`,
 
-  // ── Popular pools ─────────────────────────────────────────────────
+  // ── Popular (by post count, scraped from pool list sorted? We'll just fetch default order,
+  //      which is by creation date. For popular, we can't sort without API.
+  //      We'll just use the pool list as-is. ──────────────────────────────
   async popular(o: ListOptions): Promise<MangaListResponse> {
-    console.log(`[Danbooru] Fetching popular pools, page ${o.page}`);
     try {
-      const pools = await fetchJson<DbPool[]>(http, "/pools.json", {
-        params: {
-          search: { order: "post_count" },
-          limit: PER_PAGE,
-          page: o.page,
-        },
-      });
-      const thumbs = await Promise.all(
-        pools.map(p => (p.post_ids[0] ? fetchPostThumb(p.post_ids[0]) : Promise.resolve("")))
-      );
-      const items = pools.map((p, i) => poolToSummary(p, thumbs[i] || ""));
-      console.log(`[Danbooru] Popular found ${items.length} pools`);
-      return { items, page: o.page, hasNextPage: pools.length === PER_PAGE };
-    } catch (e: any) {
-      console.error(`[Danbooru] Popular failed: ${e.message} (status ${e.response?.status})`);
-      return { items: [], page: o.page, hasNextPage: false };
-    }
-  },
-
-  // ── Latest pools ──────────────────────────────────────────────────
-  async latest(o: ListOptions): Promise<MangaListResponse> {
-    console.log(`[Danbooru] Fetching latest pools, page ${o.page}`);
-    try {
-      const pools = await fetchJson<DbPool[]>(http, "/pools.json", {
-        params: {
-          search: { order: "updated_at" },
-          limit: PER_PAGE,
-          page: o.page,
-        },
-      });
-      const thumbs = await Promise.all(
-        pools.map(p => (p.post_ids[0] ? fetchPostThumb(p.post_ids[0]) : Promise.resolve("")))
-      );
-      const items = pools.map((p, i) => poolToSummary(p, thumbs[i] || ""));
-      console.log(`[Danbooru] Latest found ${items.length} pools`);
-      return { items, page: o.page, hasNextPage: pools.length === PER_PAGE };
-    } catch (e: any) {
-      console.error(`[Danbooru] Latest failed: ${e.message} (status ${e.response?.status})`);
-      return { items: [], page: o.page, hasNextPage: false };
-    }
-  },
-
-  // ── Search pools ──────────────────────────────────────────────────
-  async search(query: string, o: ListOptions): Promise<MangaListResponse> {
-    console.log(`[Danbooru] Searching pools for "${query}", page ${o.page}`);
-    try {
-      const pools = await fetchJson<DbPool[]>(http, "/pools.json", {
-        params: {
-          search: { name_matches: `*${query}*` },
-          limit: PER_PAGE,
-          page: o.page,
-        },
-      });
-      const thumbs = await Promise.all(
-        pools.map(p => (p.post_ids[0] ? fetchPostThumb(p.post_ids[0]) : Promise.resolve("")))
-      );
-      const items = pools.map((p, i) => poolToSummary(p, thumbs[i] || ""));
-      console.log(`[Danbooru] Search found ${items.length} pools`);
-      return { items, page: o.page, hasNextPage: pools.length === PER_PAGE };
-    } catch (e: any) {
-      console.error(`[Danbooru] Search failed: ${e.message} (status ${e.response?.status})`);
-      return { items: [], page: o.page, hasNextPage: false };
-    }
-  },
-
-  // ── Tags ──────────────────────────────────────────────────────────
-  async tags(): Promise<SourceTag[]> {
-    console.log("[Danbooru] Fetching tags...");
-    try {
-      const tags = await fetchJson<any[]>(http, "/tags.json", {
-        params: { limit: 0, search: { order: "count" } },
-      });
-      const result: SourceTag[] = tags.map(t => ({
-        id: t.name,
-        name: t.name,
-        group: ["general", "artist", "copyright", "character", "meta"][t.category] || "other",
-        count: t.post_count,
+      const { pools, hasNext } = await scrapePoolList(o.page);
+      const items: MangaSummary[] = pools.map(p => ({
+        id: `pool:${p.id}`,
+        title: normalizePoolName(p.name),
+        thumbnail: p.thumb,
+        type: "Collection",
+        isNsfw: true,
       }));
-      console.log(`[Danbooru] Found ${result.length} tags`);
-      return result;
+      return { items, page: o.page, hasNextPage: hasNext };
     } catch (e: any) {
-      console.error(`[Danbooru] Tags failed: ${e.message} (status ${e.response?.status})`);
-      return [];
+      console.error(`[Danbooru] Popular scrape failed: ${e.message}`);
+      return { items: [], page: o.page, hasNextPage: false };
     }
   },
 
-  // ── Details ───────────────────────────────────────────────────────
+  // ── Latest (pool list is sorted by update date by default) ───────────
+  async latest(o: ListOptions): Promise<MangaListResponse> {
+    return this.popular(o); // same endpoint, default sort is latest
+  },
+
+  // ── Search (by name) ────────────────────────────────────────────────
+  async search(query: string, o: ListOptions): Promise<MangaListResponse> {
+    try {
+      const url = `${BASE}/pools?search[name_matches]=*${encodeURIComponent(query)}*&page=${o.page}`;
+      console.log(`[Danbooru] Search pools: ${url}`);
+      const { $ } = await fetchHtml(http, url);
+      const pools: { id: number; name: string; thumb: string }[] = [];
+
+      $("table tbody tr, div.pool-item").each((_i, el) => {
+        const $row = $(el);
+        const link = $row.find("a[href*='/pools/']").first();
+        const href = link.attr("href") || "";
+        const idMatch = href.match(/\/pools\/(\d+)/);
+        if (!idMatch) return;
+        const id = parseInt(idMatch[1], 10);
+        const name = link.text().trim() || $row.find(".pool-name, .pool-title").text().trim();
+        const img = $row.find("img").first();
+        const thumb = img.attr("src") || img.attr("data-src") || "";
+        if (id && name) pools.push({ id, name, thumb });
+      });
+
+      const hasNext = $("a.next_page, .pagination .next, a[rel='next']").length > 0;
+      const items: MangaSummary[] = pools.map(p => ({
+        id: `pool:${p.id}`,
+        title: normalizePoolName(p.name),
+        thumbnail: p.thumb,
+        type: "Collection",
+        isNsfw: true,
+      }));
+      return { items, page: o.page, hasNextPage: hasNext };
+    } catch (e: any) {
+      console.error(`[Danbooru] Search scrape failed: ${e.message}`);
+      return { items: [], page: o.page, hasNextPage: false };
+    }
+  },
+
+  // ── Tags (not easily scraped without API; return empty) ──────────────
+  async tags(): Promise<SourceTag[]> {
+    return [];
+  },
+
+  // ── Details ──────────────────────────────────────────────────────────
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
     const poolId = Number(id.replace(/^pool:/, ""));
-    console.log(`[Danbooru] Fetching details for pool ${poolId}`);
-    const pool = await fetchPool(poolId);
-    const thumb = pool.post_ids[0] ? await fetchPostThumb(pool.post_ids[0]) : "";
+    const url = `${BASE}/pools/${poolId}`;
+    console.log(`[Danbooru] Fetching pool details: ${url}`);
+    const { $ } = await fetchHtml(http, url);
+
+    const name = $("#pool-name, .pool-name, h1").first().text().trim() || `Pool ${poolId}`;
+    const description = $("#pool-description, .pool-description, .description").text().trim();
+    const thumbImg = $(".pool-cover img, .pool-thumb img").first();
+    const thumb = thumbImg.attr("src") || thumbImg.attr("data-src") || "";
+
     return {
       id,
-      title: normalizePoolName(pool.name),
+      title: normalizePoolName(name),
       author: "",
       artist: "",
-      synopsis: pool.description || "",
+      synopsis: description,
       altTitles: [],
-      status: pool.category === "series" ? "Ongoing" : "Completed",
-      type: pool.category === "series" ? "Series" : "Collection",
+      status: "Completed",
+      type: "Collection",
       isNsfw: true,
       rating: 0,
       thumbnail: thumb,
@@ -194,49 +196,31 @@ export const DanbooruSource: MangaSource = {
     };
   },
 
-  // ── Chapters ──────────────────────────────────────────────────────
+  // ── Chapters (single chapter = whole pool) ───────────────────────────
   async chapters(mangaId: string, _dedupe: boolean): Promise<ChapterListResponse> {
     const poolId = Number(mangaId.replace(/^pool:/, ""));
+    const url = `${BASE}/pools/${poolId}`;
     console.log(`[Danbooru] Fetching chapters for pool ${poolId}`);
-    const pool = await fetchPool(poolId);
-    const chap: ChapterSummary = {
-      id: `pool:${pool.id}`,
-      number: 1,
-      title: normalizePoolName(pool.name),
-      scanlator: "Danbooru",
-      date: Date.parse(pool.updated_at) || Date.now(),
+    const { $ } = await fetchHtml(http, url);
+    const name = $("#pool-name, .pool-name, h1").first().text().trim() || `Pool ${poolId}`;
+    return {
+      items: [{
+        id: `pool:${poolId}`,
+        number: 1,
+        title: normalizePoolName(name),
+        scanlator: "Danbooru",
+        date: Math.floor(Date.now() / 1000),
+      }],
     };
-    return { items: [chap] };
   },
 
-  // ── Pages ─────────────────────────────────────────────────────────
+  // ── Pages (scrape pool page for image thumbnails, convert to full) ───
   async pages(chapterId: string): Promise<PageListResponse> {
     const poolId = Number(chapterId.replace(/^pool:/, ""));
-    console.log(`[Danbooru] Fetching pages for pool ${poolId}`);
-    const pool = await fetchPool(poolId);
-    const postIds = pool.post_ids;
-    if (postIds.length === 0) {
-      console.log("[Danbooru] Pool has no posts");
-      return { chapterId, pages: [] };
-    }
-
-    const pages: PageInfo[] = [];
-    const chunkSize = 100;
-    let index = 0;
-    for (let i = 0; i < postIds.length; i += chunkSize) {
-      const chunk = postIds.slice(i, i + chunkSize);
-      console.log(`[Danbooru] Fetching posts chunk ${i}-${i + chunk.length}`);
-      const posts = await fetchJson<DbPost[]>(http, "/posts.json", {
-        params: { tags: `id:${chunk.join(",")}`, limit: chunk.length },
-      });
-      const byId = new Map(posts.map(p => [p.id, p]));
-      for (const id of chunk) {
-        const post = byId.get(id);
-        const url = post?.file_url || post?.large_file_url || "";
-        if (url) pages.push({ index: index++, url });
-      }
-    }
-    console.log(`[Danbooru] Extracted ${pages.length} pages`);
-    return { chapterId, pages };
+    const images = await scrapePoolImages(poolId);
+    return {
+      chapterId,
+      pages: images.map((url, i) => ({ index: i, url })),
+    };
   },
 };
