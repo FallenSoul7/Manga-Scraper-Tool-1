@@ -11,19 +11,17 @@ import type {
   SourceTag,
 } from "./types";
 import { absUrl } from "./scraper-utils";
-import { createSession, type TlsClient } from "tls-client";
+import axios from "axios";
+import { CookieJar } from "tough-cookie";
+import { wrapper } from "axios-cookiejar-support";
 
 const BASE = "https://danbooru.donmai.us";
 
-// ── Helper to create a fresh session with Chrome TLS fingerprint ──────
-function createChromeSession(): TlsClient {
-  return createSession({
-    clientIdentifier: "chrome_124", // latest Chrome fingerprint
-  });
-}
+// Persistent cookie jar (same as Tachiyomi's cookieJar)
+const jar = new CookieJar();
+const client = wrapper(axios.create({ jar, withCredentials: true }));
 
-// ── Common headers (same as a real browser) ───────────────────────────
-const browserHeaders = {
+const headers = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   Accept:
@@ -32,76 +30,56 @@ const browserHeaders = {
   Referer: `${BASE}/`,
 };
 
-// ── Simple fetch that returns a cheerio object + raw HTML ─────────────
-async function fetchPage(url: string): Promise<{
-  $: cheerio.CheerioAPI;
-  html: string;
-}> {
-  const session = createChromeSession();
+async function fetchPage(path: string) {
+  const url = `${BASE}${path}`;
   console.log(`[Danbooru] Fetching: ${url}`);
-  const response = await session.get(url, { headers: browserHeaders });
-  const html = response.body as string;
-  return { $: cheerio.load(html), html };
+  const res = await client.get(url, { headers });
+  if (res.status >= 400) throw new Error(`HTTP ${res.status} for ${url}`);
+  return cheerio.load(res.data as string);
 }
 
-// ── Scrape pool list (HTML) ───────────────────────────────────────────
-async function scrapePoolList(
-  page: number,
-  searchQuery?: string
-): Promise<{
-  pools: { id: number; name: string; thumb: string }[];
-  hasNext: boolean;
-}> {
+// ── Pool list ─────────────────────────────────────────────────────────
+async function scrapePoolList(page: number, searchQuery?: string) {
   const params = new URLSearchParams();
   params.set("page", String(page));
-  if (searchQuery) {
-    params.set("search[name_matches]", `*${searchQuery}*`);
-  }
-  const url = `${BASE}/pools?${params.toString()}`;
-  const { $ } = await fetchPage(url);
+  if (searchQuery) params.set("search[name_matches]", `*${searchQuery}*`);
+  const $ = await fetchPage(`/pools?${params.toString()}`);
 
   const pools: { id: number; name: string; thumb: string }[] = [];
   $("table tbody tr, div.pool-item, .pool-list-item").each((_i, el) => {
     const $row = $(el);
     const link = $row.find("a[href*='/pools/']").first();
     const href = link.attr("href") || "";
-    const idMatch = href.match(/\/pools\/(\d+)/);
-    if (!idMatch) return;
-    const id = parseInt(idMatch[1], 10);
+    const m = href.match(/\/pools\/(\d+)/);
+    if (!m) return;
+    const id = parseInt(m[1], 10);
     const name =
       link.text().trim() ||
       $row.find(".pool-name, .pool-title").text().trim();
     const img = $row.find("img").first();
     const thumb = img.attr("src") || img.attr("data-src") || "";
-    if (id && name) {
-      pools.push({ id, name, thumb });
-    }
+    if (id && name) pools.push({ id, name, thumb });
   });
 
   const hasNext =
     $("a.next_page, .pagination .next, a[rel='next']").length > 0;
-  console.log(
-    `[Danbooru] Found ${pools.length} pools, hasNext: ${hasNext}`
-  );
+  console.log(`[Danbooru] Found ${pools.length} pools, hasNext: ${hasNext}`);
   return { pools, hasNext };
 }
 
-// ── Scrape a pool’s image thumbnails and convert to full size ─────────
+// ── Pool images (thumbnails → original) ───────────────────────────────
 async function scrapePoolImages(poolId: number): Promise<string[]> {
-  const url = `${BASE}/pools/${poolId}`;
-  const { $ } = await fetchPage(url);
-  const imageUrls: string[] = [];
+  const $ = await fetchPage(`/pools/${poolId}`);
+  const urls: string[] = [];
   $(".post-preview img, .pool-post img, .post img").each((_i, el) => {
     const src = $(el).attr("src") || $(el).attr("data-src") || "";
     if (src && !src.includes("blank.gif")) {
       const full = src.replace(/\/\d+x\d+\/__/, "/original/");
-      imageUrls.push(full);
+      urls.push(full);
     }
   });
-  console.log(
-    `[Danbooru] Extracted ${imageUrls.length} images from pool`
-  );
-  return imageUrls;
+  console.log(`[Danbooru] Extracted ${urls.length} images from pool`);
+  return urls;
 }
 
 function normalizePoolName(s: string): string {
@@ -128,7 +106,7 @@ export const DanbooruSource: MangaSource = {
       }));
       return { items, page: o.page, hasNextPage: hasNext };
     } catch (e: any) {
-      console.error(`[Danbooru] Popular scrape failed: ${e.message}`);
+      console.error(`[Danbooru] Popular failed: ${e.message}`);
       return { items: [], page: o.page, hasNextPage: false };
     }
   },
@@ -149,7 +127,7 @@ export const DanbooruSource: MangaSource = {
       }));
       return { items, page: o.page, hasNextPage: hasNext };
     } catch (e: any) {
-      console.error(`[Danbooru] Search scrape failed: ${e.message}`);
+      console.error(`[Danbooru] Search failed: ${e.message}`);
       return { items: [], page: o.page, hasNextPage: false };
     }
   },
@@ -160,8 +138,7 @@ export const DanbooruSource: MangaSource = {
 
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
     const poolId = Number(id.replace(/^pool:/, ""));
-    const url = `${BASE}/pools/${poolId}`;
-    const { $ } = await fetchPage(url);
+    const $ = await fetchPage(`/pools/${poolId}`);
     const name =
       $("#pool-name, .pool-name, h1").first().text().trim() ||
       `Pool ${poolId}`;
@@ -194,8 +171,7 @@ export const DanbooruSource: MangaSource = {
     _dedupe: boolean
   ): Promise<ChapterListResponse> {
     const poolId = Number(mangaId.replace(/^pool:/, ""));
-    const url = `${BASE}/pools/${poolId}`;
-    const { $ } = await fetchPage(url);
+    const $ = await fetchPage(`/pools/${poolId}`);
     const name =
       $("#pool-name, .pool-name, h1").first().text().trim() ||
       `Pool ${poolId}`;
