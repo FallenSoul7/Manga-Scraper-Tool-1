@@ -251,7 +251,7 @@ export function Header() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`relative flex flex-col items-center justify-center gap-1.5 py-4 text-[11px] font-medium transition-colors ${
+                className={`relative flex flex-col items-center justify-center gap-1.5 py-5 text-[11px] font-medium transition-colors ${
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 }`}
               >

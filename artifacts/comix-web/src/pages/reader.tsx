@@ -29,6 +29,10 @@ export default function Reader() {
   const sourceId = new URLSearchParams(searchString).get("sourceId");
   const [, setLocation] = useLocation();
 
+  // Set synchronously (not in useEffect) so the header is present on the
+  // very first render when useGetChapterPages fires its query.
+  if (sourceId) setExtraHeader("X-Source", sourceId);
+
   useEffect(() => {
     if (sourceId) setExtraHeader("X-Source", sourceId);
   }, [sourceId]);
