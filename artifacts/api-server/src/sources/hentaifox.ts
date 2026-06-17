@@ -26,12 +26,24 @@ function buildSummary($: cheerio.CheerioAPI, el: any): MangaSummary | null {
   const idMatch = href.match(/\/gallery\/(\d+)/);
   if (!idMatch) return null;
   const id = idMatch[1];
-  const title = $el.find(".caption h2, h2, .t").text().trim() || $el.find("img").attr("alt") || "Untitled";
+
+  // Try multiple selectors for the title
+  let title =
+    $el.find(".caption h2, .caption h3, h2").text().trim() ||
+    $el.find("img").attr("alt")?.trim() ||
+    $el.text().trim(); // last resort
+
+  // If the title is just a number, it's probably the gallery ID or page count — ignore it
+  if (/^\d+$/.test(title)) {
+    // try the image alt again, maybe it's better
+    title = $el.find("img").attr("alt")?.trim() || title;
+  }
+
   const img = $el.find("img");
   const thumb = img.attr("data-src") || img.attr("src") || "";
   return {
     id,
-    title: title.trim(),
+    title: title || "Untitled",
     thumbnail: absUrl(BASE_URL, thumb),
     type: "Doujinshi",
     isNsfw: true,
@@ -43,11 +55,12 @@ async function fetchList(url: string, page: number): Promise<MangaListResponse> 
   const pageUrl = page > 1 ? `${url}${sep}page=${page}` : url;
   const { $ } = await fetchHtml(http, pageUrl);
   const items: MangaSummary[] = [];
+  // Primary grid: .col-6, .gallery, .g-wrap
   $(".col-6, .gallery, .g-wrap").each((_i, el) => {
     const s = buildSummary($, el);
     if (s) items.push(s);
   });
-  // Fallback: look for .doujin_page_thumb or .preview-gallery
+  // Fallback: any link that contains '/gallery/'
   if (items.length === 0) {
     $("a[href*='/gallery/']").each((_i, el) => {
       const $el = $(el);
@@ -119,6 +132,7 @@ export const HentaiFoxSource: MangaSource = {
     const url = `${BASE_URL}/gallery/${id}/`;
     const { $ } = await fetchHtml(http, url);
 
+    // title: h1 or <title>
     const title = $("h1, .info h1, .caption h1").first().text().trim()
       || $("title").text().replace(/\s*[-|].*$/, "").trim();
 
@@ -168,28 +182,41 @@ export const HentaiFoxSource: MangaSource = {
   },
 
   async pages(chapterId: string): Promise<PageListResponse> {
-    const galleryId = chapterId.split("/")[0];
+    const { $ } = await fetchHtml(http, `${BASE_URL}/gallery/${chapterId}/`);
 
-    // HentaiFox gallery page has hidden inputs with all needed data:
-    //   <input id="load_dir"   value="004"     /> — CDN bucket
-    //   <input id="load_id"    value="3917106" /> — internal image ID (≠ gallery URL ID)
-    //   <input id="load_pages" value="41"      /> — total pages
-    // Cover:  https://i3.hentaifox.com/{dir}/{load_id}/cover.jpg
-    // Pages:  https://i3.hentaifox.com/{dir}/{load_id}/1.jpg, 2.jpg, ...
-    // Thumbs: same but with 't' suffix  →  1t.jpg
-    const { $: $ } = await fetchHtml(http, `${BASE_URL}/gallery/${galleryId}/`);
+    // Strategy 1: Look for JavaScript variable "pages" (array of {url: ...})
+    const scripts = $('script')
+      .map((_, el) => $(el).html())
+      .get()
+      .join('\n');
 
-    const loadDir   = $("input#load_dir").val()   as string | undefined;
-    const loadId    = $("input#load_id").val()    as string | undefined;
-    const loadPages = $("input#load_pages").val() as string | undefined;
+    // Try standard "var pages = [...]"
+    let match = scripts.match(/var\s+pages\s*=\s*(\[[\s\S]*?\])/);
+    if (match) {
+      try {
+        const pagesArray = JSON.parse(match[1]);
+        const pages = pagesArray.map((p: any, i: number) => ({ index: i, url: p.url }));
+        if (pages.length > 0) return { chapterId, pages };
+      } catch {}
+    }
 
+    // Try alternative "rff_imageList = [...]" (less common)
+    match = scripts.match(/rff_imageList\s*=\s*(\[[\s\S]*?\])/);
+    if (match) {
+      try {
+        const list = JSON.parse(match[1]);
+        const pages = list.map((url: string, i: number) => ({ index: i, url }));
+        if (pages.length > 0) return { chapterId, pages };
+      } catch {}
+    }
+
+    // Strategy 2: Old method with hidden inputs
+    const loadDir   = $("#load_dir").val();
+    const loadId    = $("#load_id").val();
+    const loadPages = $("#load_pages").val();
     if (loadDir && loadId && loadPages) {
       const count = parseInt(loadPages, 10);
-      // Determine CDN host from cover image (may be i.hentaifox.com, i2..., i3...)
-      const coverSrc = $(".cover img").attr("src") || $(".cover img").attr("data-src") || "";
-      const cdnHostMatch = coverSrc.match(/(https?:\/\/i\d*\.hentaifox\.com)/);
-      const cdn = cdnHostMatch ? cdnHostMatch[1] : "https://i.hentaifox.com";
-
+      const cdn = "https://i.hentaifox.com";
       return {
         chapterId,
         pages: Array.from({ length: count }, (_, i) => ({
@@ -199,18 +226,18 @@ export const HentaiFoxSource: MangaSource = {
       };
     }
 
-    // Fallback: collect page thumbnails from the gallery div (.cover a img[data-src])
-    // and strip the trailing 't' to get full-size URLs
-    const pages: Array<{ index: number; url: string }> = [];
+    // Strategy 3: Fallback to thumbnails (.cover a) and strip 't'
+    const thumbPages: Array<{ index: number; url: string }> = [];
     $(".cover a").each((i, el) => {
       const img = $(el).find("img");
-      const src = img.attr("data-src") || img.attr("src") || "";
-      if (!src || src.includes("svg")) return;
-      // "1t.jpg" → "1.jpg"
+      let src = img.attr("data-src") || img.attr("src") || "";
+      // Convert thumbnail URL to full-size: '1t.jpg' -> '1.jpg'
       const full = src.replace(/(\d+)t(\.\w+)$/, "$1$2");
-      pages.push({ index: i, url: full });
+      if (full) thumbPages.push({ index: i, url: full });
     });
+    if (thumbPages.length > 0) return { chapterId, pages: thumbPages };
 
-    return { chapterId, pages };
+    // If nothing found, return empty (will show error in reader)
+    return { chapterId, pages: [] };
   },
 };
