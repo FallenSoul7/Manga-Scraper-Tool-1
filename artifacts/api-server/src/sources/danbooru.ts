@@ -58,9 +58,38 @@ function createClient(): AxiosInstance {
 async function fetchPage(path: string) {
   const client = createClient();
   console.log(`[Danbooru] Fetching: ${path}`);
-  const res = await client.get(path);
-  if (res.status >= 400) throw new Error(`HTTP ${res.status} for ${path}`);
-  return cheerio.load(res.data as string);
+  
+  try {
+    const res = await client.get(path);
+    const html = res.data as string;
+    
+    // If it succeeds, let's peek at the first 500 characters to make sure it's actually Danbooru 
+    // and not a proxy provider login page or Cloudflare splash screen.
+    console.log(`[Danbooru] SUCCESS fetching ${path}`);
+    console.log(`[Danbooru] HTML snippet (first 500 chars):`, html.slice(0, 500));
+    
+    if (html.includes("cloudflare") || html.includes("Just a moment...")) {
+       console.warn("[Danbooru] WARNING: We bypassed 403 but hit a Cloudflare challenge!");
+    }
+    
+    return cheerio.load(html);
+  } catch (err: any) {
+    console.error(`[Danbooru] FETCH FAILED for ${path} - ${err.message}`);
+    
+    // This is the golden ticket. If the server rejects us, it usually sends back an HTML page 
+    // explaining *why*. We need to see that page.
+    if (err.response) {
+      console.error(`[Danbooru] ERROR STATUS:`, err.response.status);
+      console.error(`[Danbooru] ERROR HEADERS:`, JSON.stringify(err.response.headers, null, 2));
+      
+      const errHtml = typeof err.response.data === 'string' 
+        ? err.response.data 
+        : JSON.stringify(err.response.data);
+        
+      console.error(`[Danbooru] ERROR HTML (first 1000 chars):`, errHtml.slice(0, 1000));
+    }
+    throw err;
+  }
 }
 
 // ── Correct pool list scraper (matching Tachiyomi selectors) ──────────
