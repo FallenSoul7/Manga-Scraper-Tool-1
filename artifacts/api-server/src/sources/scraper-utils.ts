@@ -89,14 +89,30 @@ export function imgAttr($el: cheerio.Cheerio<any>): string {
   return "";
 }
 
-/** Hash a string into a stable signed 32-bit integer ID (we use this for chapter IDs because
- *  the frontend types are number for chapterId). */
+/** Hash a string into a stable signed 32-bit integer ID */
 export function hash32(input: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < input.length; i++) {
     h ^= input.charCodeAt(i);
     h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
   }
-  // Make sure it fits in a positive 31-bit int
   return h & 0x7fffffff;
+}
+
+/** 
+ * NEW: Wraps an image URL in your backend proxy if needed.
+ * In the future, we can inject your server's domain here, but it's often 
+ * safer to just let the frontend app append the proxy prefix based on the user's Settings toggle!
+ */
+export function proxifyImage(originalUrl: string, referer: string, useProxy: boolean = false): string {
+  if (!originalUrl) return "";
+  if (!useProxy) return originalUrl;
+  
+  // This assumes you will add the /api/proxy-image route to your server.
+  // The frontend can dynamically replace "YOUR_SERVER_URL" or we can pass it as an environment variable.
+  const encodedUrl = encodeURIComponent(originalUrl);
+  const encodedRef = encodeURIComponent(referer);
+  
+  // Note: For relative frontend usage, you might just return `/api/proxy-image?...`
+  return `/api/proxy-image?url=${encodedUrl}&referer=${encodedRef}`;
 }
