@@ -9,6 +9,7 @@ import type {
   MangaSummary,
   ChapterSummary,
   PageInfo,
+  SourceTag,
 } from "./types";
 import { absUrl, fetchHtml, imgAttr, makeHttp } from "./scraper-utils";
 import * as cheerio from "cheerio";
@@ -67,6 +68,9 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
   const baseUrl = opts.baseUrl.replace(/\/+$/, "");
   const mangaSubString = opts.mangaSubString || "manga";
   const http = makeHttp(baseUrl);
+  
+  // Cache tags per-source instantiation to prevent constant refetching
+  let tagCache: SourceTag[] | null = null;
 
   function buildSummary($: cheerio.CheerioAPI, el: any): MangaSummary | null {
     const $el = $(el);
@@ -90,12 +94,9 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
   }
 
   async function listFromPage(path: string, page: number): Promise<MangaListResponse> {
-    // Madara load-more uses POST. We use the standard paginated page URLs which work for most themes.
     const url = `${baseUrl}/${mangaSubString}/${page > 1 ? `page/${page}/` : ""}${path}`;
     const { $ } = await fetchHtml(http, url);
-    // Standard Madara selectors + rs-manga-library custom theme (used by e.g. reset-scans.org)
-    const sel =
-      "div.page-item-detail, .manga__item, .c-tabs-item__content, article.rs-manga-library__card";
+    const sel = "div.page-item-detail, .manga__item, .c-tabs-item__content, article.rs-manga-library__card";
     const items: MangaSummary[] = [];
     $(sel).each((_i, el) => {
       const s = buildSummary($, el);
@@ -109,8 +110,62 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
     return { items, page, hasNextPage: hasNext };
   }
 
-  async function popularLatest(page: number, kind: "views" | "latest"): Promise<MangaListResponse> {
-    return listFromPage(`?m_orderby=${kind}`, page);
+  // Master fetcher that builds advanced search URLs with search terms, sorting parameters, and tags
+  async function fetchAdvancedList(page: number, query: string, sort: string, tagIds?: string[]): Promise<MangaListResponse> {
+    const params = new URLSearchParams();
+    params.append("s", query);
+    params.append("post_type", "wp-manga");
+    
+    if (sort) {
+      params.append("m_orderby", sort);
+    }
+    
+    if (tagIds && tagIds.length > 0) {
+      for (const tag of tagIds) {
+        // Strip out any accidental prefix if your UI passes them with groups
+        const cleanTag = tag.includes(":") ? tag.split(":")[1] : tag;
+        params.append("genre[]", cleanTag!);
+      }
+      params.append("op", "and"); // Ensures results match ALL selected tags
+    }
+
+    // WordPress handles queries perfectly using either the 'paged' query param or clean route matching
+    const pagePath = page > 1 ? `page/${page}/` : "";
+    const url = `${baseUrl}/${pagePath}?${params.toString()}`;
+    
+    const { $ } = await fetchHtml(http, url);
+    const items: MangaSummary[] = [];
+    
+    const sel = "div.page-item-detail, .manga__item, .c-tabs-item__content, article.rs-manga-library__card, div.row.c-tabs-item__content";
+    $(sel).each((_i, el) => {
+      const s = buildSummary($, el);
+      if (s) items.push(s);
+    });
+    
+    // Fallback parser if standard blocks aren't matching on search layouts
+    if (items.length === 0) {
+      $(".tab-thumb a, .tab-summary a").each((_i, el) => {
+        const $el = $(el);
+        const href = $el.attr("href");
+        if (!href) return;
+        const id = encodeURIComponent(href.replace(baseUrl, "").replace(/^\/+|\/+$/g, ""));
+        items.push({
+          id,
+          title: ($el.attr("title") || $el.text()).trim(),
+          thumbnail: "",
+          type: "Manga",
+          isNsfw: !!opts.isNsfw,
+        });
+      });
+    }
+    
+    const hasNext = $(
+      ".nav-previous, .wp-pagenavi a.nextpostslink, a.next.page-numbers, " +
+      "a.rs-manga-library__pagination-next, .rs-manga-library__pagination a[rel='next'], " +
+      ".rs-pagination a.next"
+    ).length > 0;
+    
+    return { items, page, hasNextPage: hasNext };
   }
 
   return {
@@ -120,40 +175,80 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
     isNsfw: !!opts.isNsfw,
     imageReferer: `${baseUrl}/`,
 
+    // Expose standard Madara engine sorting options to your user interface
+    popularSorts: [
+      { value: "views", label: "Most Viewed" },
+      { value: "latest", label: "Latest Update" },
+      { value: "alphabet", label: "Alphabetical" },
+      { value: "rating", label: "Highest Rated" },
+      { value: "trending", label: "Trending" },
+      { value: "new-manga", label: "New Additions" },
+    ],
+
     async popular(o: ListOptions): Promise<MangaListResponse> {
-      return popularLatest(o.page, "views");
+      // If advanced filters or a custom sort is picked, route through advanced engine
+      if ((o.tagIds && o.tagIds.length > 0) || (o.sort && o.sort !== "views")) {
+        return fetchAdvancedList(o.page, "", o.sort || "views", o.tagIds);
+      }
+      return listFromPage("?m_orderby=views", o.page);
     },
 
     async latest(o: ListOptions): Promise<MangaListResponse> {
-      return popularLatest(o.page, "latest");
+      if ((o.tagIds && o.tagIds.length > 0) || (o.sort && o.sort !== "latest")) {
+        return fetchAdvancedList(o.page, "", o.sort || "latest", o.tagIds);
+      }
+      return listFromPage("?m_orderby=latest", o.page);
     },
 
     async search(query: string, o: ListOptions): Promise<MangaListResponse> {
-      const url = `${baseUrl}/${o.page > 1 ? `page/${o.page}/` : ""}?s=${encodeURIComponent(query)}&post_type=wp-manga`;
-      const { $ } = await fetchHtml(http, url);
-      const items: MangaSummary[] = [];
-      $("div.c-tabs-item__content, .manga__item, div.row.c-tabs-item__content").each((_i, el) => {
-        const s = buildSummary($, el);
-        if (s) items.push(s);
-      });
-      // Fallback: some sites just render listing rows
-      if (items.length === 0) {
-        $(".tab-thumb a, .tab-summary a").each((_i, el) => {
+      return fetchAdvancedList(o.page, query || "", o.sort || "views", o.tagIds);
+    },
+
+    // Dynamic tag scanner: Scrapes genres directly from the site's advanced filter page
+    async tags(): Promise<SourceTag[]> {
+      if (tagCache) return tagCache;
+      
+      try {
+        const { $ } = await fetchHtml(http, `${baseUrl}/?s=&post_type=wp-manga`);
+        const foundTags: SourceTag[] = [];
+        const seen = new Set<string>();
+
+        // Target standard Madara advanced form checkboxes
+        $("input[name='genre[]']").each((_i, el) => {
           const $el = $(el);
-          const href = $el.attr("href");
-          if (!href) return;
-          const id = encodeURIComponent(href.replace(baseUrl, "").replace(/^\/+|\/+$/g, ""));
-          items.push({
-            id,
-            title: ($el.attr("title") || $el.text()).trim(),
-            thumbnail: "",
-            type: "Manga",
-            isNsfw: !!opts.isNsfw,
-          });
+          const id = $el.val() as string;
+          if (!id || seen.has(id)) return;
+          
+          let name = $el.next("label").text().trim();
+          if (!name) name = $el.parent().text().trim();
+          if (!name) name = id;
+
+          seen.add(id);
+          foundTags.push({ id: `genre:${id}`, name, group: "Genre" });
         });
+
+        // Fallback: Parse sidebars or list-widgets if advanced search forms are hidden
+        if (foundTags.length === 0) {
+          $(".genres__list a, .manga-genres-list a, .wp-manga-genre a, .manga-genre-item a").each((_i, el) => {
+            const $el = $(el);
+            const href = $el.attr("href") || "";
+            const match = href.match(/\/manga-genre\/([^/]+)/);
+            const id = match ? match[1] : $el.text().trim().toLowerCase().replace(/\s+/g, "-");
+            const name = $el.text().trim();
+            
+            if (id && name && !seen.has(id)) {
+              seen.add(id);
+              foundTags.push({ id: `genre:${id}`, name, group: "Genre" });
+            }
+          });
+        }
+
+        tagCache = foundTags.sort((a, b) => a.name.localeCompare(b.name));
+        return tagCache;
+      } catch (err) {
+        console.error(`[${opts.name}] Failed parsing search parameters:`, err);
+        return [];
       }
-      const hasNext = $("a.next.page-numbers, .wp-pagenavi a.nextpostslink").length > 0;
-      return { items, page: o.page, hasNextPage: hasNext };
     },
 
     async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
@@ -251,7 +346,6 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
       const seen = new Set<string>();
       $("li.wp-manga-chapter").each((_i, el) => {
         const $el = $(el);
-        // Find the real chapter anchor — skip overlay/style anchors with href="#"
         let a = $el.find("a").filter((_j, ae) => {
           const h = $(ae).attr("href") || "";
           return !!h && h !== "#" && !h.startsWith("javascript:");
@@ -279,7 +373,6 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
           date: parseMadaraDate(dateText),
         });
       });
-      // Already typically sorted newest-first in Madara
       return { items };
     },
 
@@ -317,8 +410,6 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
         if (src && !isPlaceholder(src)) pages.push({ index: i, url: absUrl(baseUrl, src) });
       });
 
-      // Fallback: extract image URLs from inline scripts / JSON embedded in the page.
-      // Catches sites that lazy-load images via JS (e.g. Elftoon).
       if (pages.length === 0) {
         const seen = new Set<string>();
         const imgRe = /https?:\/\/[^\s"'\\]+\.(?:jpe?g|png|webp)(?:[?#][^\s"'\\]*)?/gi;
