@@ -10,260 +10,220 @@ import type {
   MangaSummary,
   SourceTag,
 } from "./types";
-import { absUrl, fetchHtml, makeHttp, fetchJson } from "./scraper-utils";
+import axios, { type AxiosInstance } from "axios";
 
-const BASE_URL = "https://hentaifox.com";
-const http = makeHttp(BASE_URL);
+const BASE = "https://danbooru.donmai.us";
 
-let cachedTags: SourceTag[] | null = null;
-
-// ---------------------------------------------------------------------------
-// Title extraction (Updated Selectors)
-// ---------------------------------------------------------------------------
-function extractTitle($: cheerio.CheerioAPI, $el: cheerio.Cheerio<any>): string {
-  const title = $el.find(".caption h2, .caption h3, .inner h2").first().text().trim();
-  if (title && !/^\d+$/.test(title)) return title;
-
-  const aTitle = $el.find("a").first().attr("title")?.trim();
-  if (aTitle && !/^\d+$/.test(aTitle)) return aTitle;
-
-  return "";
-}
-
-function buildSummary($: cheerio.CheerioAPI, el: any): MangaSummary | null {
-  const $el = $(el);
-  const a = $el.find("a").first();
-  const href = a.attr("href") || "";
-  if (!href) return null;
-  
-  const idMatch = href.match(/\/gallery\/(\d+)/);
-  if (!idMatch) return null;
-  const id = idMatch[1];
-  
-  const title = extractTitle($, $el) || `Gallery ${id}`;
-  const img = $el.find("img");
-  const thumb = img.attr("data-src") || img.attr("src") || "";
-  
-  return {
-    id,
-    title,
-    thumbnail: absUrl(BASE_URL, thumb),
-    type: "Doujinshi",
-    isNsfw: true,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Listing (Fixed to use Homepage for Latest/Popular)
-// ---------------------------------------------------------------------------
-async function fetchStandardList(page: number): Promise<MangaListResponse> {
-  const url = page === 1 ? BASE_URL : `${BASE_URL}/pag/${page}/`;
-  console.log(`[HentaiFox] Fetching list: ${url}`);
-  
-  const { $ } = await fetchHtml(http, url);
-  const items: MangaSummary[] = [];
-  
-  $(".col-6, .gallery, .g-wrap, .item").each((_i, el) => {
-    const s = buildSummary($, el);
-    if (s) items.push(s);
-  });
-  
-  const hasNext = $(".pagination .next, .pagination a:contains('Next')").length > 0;
-  return { items, page, hasNextPage: hasNext };
-}
-
-async function fetchSearchResults(params: Record<string, string>, page: number): Promise<MangaListResponse> {
-  const query = new URLSearchParams(params);
-  query.set("page", String(page));
-  const url = `${BASE_URL}/search/?${query.toString()}`;
-  console.log(`[HentaiFox] Fetching search: ${url}`);
-  const { $ } = await fetchHtml(http, url);
-  const items: MangaSummary[] = [];
-  
-  $(".col-6, .gallery, .g-wrap, .search-results .item").each((_i, el) => {
-    const s = buildSummary($, el);
-    if (s) items.push(s);
-  });
-  
-  const hasNext = $("a.next, .next a, [rel='next']").length > 0;
-  return { items, page, hasNextPage: hasNext };
-}
-
-// ---------------------------------------------------------------------------
-// Brace‑counting JSON extractor
-// ---------------------------------------------------------------------------
-function extractJsonFromScript(html: string, varName: string): any | null {
-  const idx = html.indexOf(varName);
-  if (idx === -1) return null;
-  const start = html.indexOf("{", idx);
-  const bracket = html.indexOf("[", idx);
-  let realStart = start;
-  if (bracket !== -1 && (start === -1 || bracket < start)) realStart = bracket;
-  if (realStart === -1) return null;
-  const char = html[realStart];
-  const close = char === "{" ? "}" : "]";
-  let depth = 0;
-  let end = -1;
-  for (let i = realStart; i < html.length; i++) {
-    if (html[i] === char) depth++;
-    else if (html[i] === close) {
-      depth--;
-      if (depth === 0) { end = i; break; }
-    }
-  }
-  if (end === -1) return null;
+// ── Proxy helper ──────────────────────────────────────────────────────
+function parseProxy(proxyUrl?: string): { host: string; port: number; auth?: { username: string; password: string } } | false {
+  if (!proxyUrl) return false;
   try {
-    return JSON.parse(html.slice(realStart, end + 1));
+    const url = new URL(proxyUrl);
+    const host = url.hostname;
+    const port = parseInt(url.port, 10) || 80;
+    const auth = url.username
+      ? { username: decodeURIComponent(url.username), password: decodeURIComponent(url.password) }
+      : undefined;
+    return { host, port, auth };
   } catch {
-    return null;
+    return false;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Source object
-// ---------------------------------------------------------------------------
-export const HentaiFoxSource: MangaSource = {
-  id: "all.hentaifox",
-  name: "HentaiFox",
+function createClient(): AxiosInstance {
+  const proxyStr = process.env.DANBOORU_PROXY;
+  const proxy = parseProxy(proxyStr);
+
+  return axios.create({
+    baseURL: BASE,
+    timeout: 30000,
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+      Referer: `${BASE}/`,
+    },
+    proxy: proxy ? {
+      protocol: "http",
+      host: proxy.host,
+      port: proxy.port,
+      auth: proxy.auth,
+    } : false,
+  });
+}
+
+async function fetchPage(path: string) {
+  const client = createClient();
+  const res = await client.get(path);
+  if (res.status >= 400) throw new Error(`HTTP ${res.status} for ${path}`);
+  return cheerio.load(res.data as string);
+}
+
+// ── Bulletproof Pool List Scraper ─────────────────────────────────────
+async function scrapePoolList(page: number, searchQuery?: string) {
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  if (searchQuery) params.set("search[name_matches]", `*${searchQuery}*`);
+  const $ = await fetchPage(`/pools?${params.toString()}`);
+
+  const pools: { id: number; name: string; thumb: string }[] = [];
+
+  // Find ANY link that points to a pool, regardless of the HTML layout
+  $("a[href^='/pools/']").each((_i, el) => {
+    const $a = $(el);
+    const href = $a.attr("href") || "";
+    const idMatch = href.match(/\/pools\/(\d+)/);
+    if (!idMatch) return;
+    const id = parseInt(idMatch[1], 10);
+    
+    // Ignore utility links like "Edit", "Show", or purely numbers
+    const name = $a.text().trim();
+    if (!name || name === "Show" || name === "Edit" || name.match(/^\d+$/)) return;
+    
+    // Prevent duplicates
+    if (pools.some(p => p.id === id)) return;
+
+    // Look for an image inside the link, or expand outward to the nearest container
+    const $container = $a.closest("tr, article, div.pool-category-collection, div");
+    const thumb = $container.find("img").first().attr("src") || 
+                  $container.find("img").first().attr("data-src") || "";
+
+    pools.push({ id, name, thumb });
+  });
+
+  const hasNext = $("a.next_page, a.next, [rel='next']").length > 0;
+  return { pools, hasNext };
+}
+
+// ── Pool images ───────────────────────────────────────────────────────
+async function scrapePoolImages(poolId: number): Promise<string[]> {
+  const $ = await fetchPage(`/pools/${poolId}`);
+  const urls: string[] = [];
+
+  $("div.pool > a img, article img, a[href*='/posts/'] img").each((_i, el) => {
+    const src = $(el).attr("src") || $(el).attr("data-file-url") || "";
+    if (src && !src.includes("blank.gif")) {
+      const full = src.replace(/\/\d+x\d+\/__/, "/original/");
+      urls.push(full);
+    }
+  });
+
+  return urls;
+}
+
+function normalizePoolName(s: string): string {
+  return s.replace(/_/g, " ").trim() || "(untitled)";
+}
+
+// ── Source definition ─────────────────────────────────────────────────
+export const DanbooruSource: MangaSource = {
+  id: "all.danbooru",
+  name: "Danbooru",
   lang: "all",
   isNsfw: true,
-  imageReferer: `${BASE_URL}/`,
+  imageReferer: `${BASE}/`,
 
-  async popular(o: ListOptions) {
-    return fetchStandardList(o.page);
-  },
-
-  async latest(o: ListOptions) {
-    return fetchStandardList(o.page);
-  },
-
-  async search(query: string, o: ListOptions) {
-    const params: Record<string, string> = {};
-    if (query) params.q = query;
-    if (o.tagIds?.length) {
-      params.tags = o.tagIds.filter(t => !t.startsWith("-")).join(",");
+  async popular(o: ListOptions): Promise<MangaListResponse> {
+    try {
+      const { pools, hasNext } = await scrapePoolList(o.page);
+      const items: MangaSummary[] = pools.map((p) => ({
+        id: `pool:${p.id}`,
+        title: normalizePoolName(p.name),
+        thumbnail: p.thumb,
+        type: "Collection",
+        isNsfw: true,
+      }));
+      return { items, page: o.page, hasNextPage: hasNext };
+    } catch (e: any) {
+      return { items: [], page: o.page, hasNextPage: false };
     }
-    return fetchSearchResults(params, o.page);
+  },
+
+  async latest(o: ListOptions): Promise<MangaListResponse> {
+    return this.popular(o);
+  },
+
+  async search(query: string, o: ListOptions): Promise<MangaListResponse> {
+    try {
+      const { pools, hasNext } = await scrapePoolList(o.page, query);
+      const items: MangaSummary[] = pools.map((p) => ({
+        id: `pool:${p.id}`,
+        title: normalizePoolName(p.name),
+        thumbnail: p.thumb,
+        type: "Collection",
+        isNsfw: true,
+      }));
+      return { items, page: o.page, hasNextPage: hasNext };
+    } catch (e: any) {
+      return { items: [], page: o.page, hasNextPage: false };
+    }
   },
 
   async tags(): Promise<SourceTag[]> {
-    if (cachedTags) return cachedTags;
-    const tags: SourceTag[] = [];
-    const seen = new Set<string>();
-    try {
-      const { $ } = await fetchHtml(http, `${BASE_URL}/tags/`);
-      $("a[href*='/tag/']").each((_i, el) => {
-        const $el = $(el);
-        const href = $el.attr("href") || "";
-        const m = href.match(/\/tag\/([^/]+)\/?$/);
-        if (!m) return;
-        const slug = m[1];
-        const name = $el.text().trim().replace(/\s*\d+$/, "").trim();
-        if (name && slug && !seen.has(slug)) {
-          seen.add(slug);
-          tags.push({ id: slug, name, group: "Tag" });
-        }
-      });
-    } catch (e) {
-      console.warn("[HentaiFox] /tags/ fetch failed.");
-    }
-    cachedTags = tags;
-    return tags;
+    return [];
   },
 
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
-    const url = `${BASE_URL}/gallery/${id}/`;
-    const { $ } = await fetchHtml(http, url);
-    const title = $("h1, .info h1, .caption h1").first().text().trim()
-      || $("title").text().replace(/\s*[-|].*$/, "").trim();
-    const thumb = $(".cover img, .preview_thumb img").first();
-    const thumbnail = absUrl(BASE_URL, thumb.attr("data-src") || thumb.attr("src") || "");
-    const genres: string[] = [];
-    $("a[href*='/tag/'], a[href*='/category/']").each((_i, el) => {
-      const t = $(el).text().trim().replace(/\s*\d+$/, "").trim();
-      if (t) genres.push(t);
-    });
-    const pageCount = parseInt($(".pages, .info li:contains('Pages')").text().replace(/\D/g, "")) || 0;
+    const poolId = Number(id.replace(/^pool:/, ""));
+    const $ = await fetchPage(`/pools/${poolId}`);
+    const name =
+      $("#pool-name, .pool-name, h1").first().text().trim() ||
+      `Pool ${poolId}`;
+    const description = $(
+      "#pool-description, .pool-description, .description"
+    ).text().trim();
+    const thumbImg = $(".pool-cover img, .pool-thumb img, article img").first();
+    const thumb = thumbImg.attr("src") || thumbImg.attr("data-src") || "";
+
     return {
       id,
-      title: title || `Gallery ${id}`,
-      author: $("a[href*='/artist/']").first().text().trim(),
+      title: normalizePoolName(name),
+      author: "",
       artist: "",
-      synopsis: `${pageCount > 0 ? `${pageCount} pages. ` : ""}${genres.slice(0, 8).join(", ")}`,
+      synopsis: description,
       altTitles: [],
       status: "Completed",
-      type: "Doujinshi",
+      type: "Collection",
       isNsfw: true,
       rating: 0,
-      thumbnail,
-      genres,
+      thumbnail: thumb,
+      genres: [],
       score: "",
       scorePosition: "none",
     };
   },
 
-  async chapters(mangaId: string): Promise<ChapterListResponse> {
-    const url = `${BASE_URL}/gallery/${mangaId}/`;
-    const { $ } = await fetchHtml(http, url);
-    const title = $("h1, .info h1").first().text().trim() || `Gallery ${mangaId}`;
+  async chapters(
+    mangaId: string,
+    _dedupe: boolean
+  ): Promise<ChapterListResponse> {
+    const poolId = Number(mangaId.replace(/^pool:/, ""));
+    const $ = await fetchPage(`/pools/${poolId}`);
+    const name =
+      $("#pool-name, .pool-name, h1").first().text().trim() ||
+      `Pool ${poolId}`;
+
     return {
-      items: [{
-        id: mangaId,
-        number: 1,
-        title,
-        scanlator: "HentaiFox",
-        date: Math.floor(Date.now() / 1000),
-      }],
+      items: [
+        {
+          id: `pool:${poolId}`,
+          number: 1,
+          title: normalizePoolName(name),
+          scanlator: "Danbooru",
+          date: Math.floor(Date.now() / 1000),
+        },
+      ],
     };
   },
 
   async pages(chapterId: string): Promise<PageListResponse> {
-    const galleryUrl = `${BASE_URL}/gallery/${chapterId}/`;
-    try {
-      const apiData = await fetchJson<any>(http, `/api/gallery/${chapterId}`, {
-        headers: { Referer: galleryUrl, "X-Requested-With": "XMLHttpRequest" },
-      });
-      if (apiData && Array.isArray(apiData.images)) {
-        return {
-          chapterId,
-          pages: apiData.images.map((img: string, i: number) => ({ index: i, url: img })),
-        };
-      }
-    } catch (e: any) {}
-
-    const { $, html } = await fetchHtml(http, galleryUrl);
-    for (const varName of ["pages", "rff_imageList", "gallery", "images"]) {
-      const data = extractJsonFromScript(html, varName);
-      if (data && Array.isArray(data) && data.length > 0) {
-        const urls = data.map((item: any) => (typeof item === "string" ? item : item.url || item.src || ""));
-        if (urls[0]) {
-          return { chapterId, pages: urls.map((u: string, i: number) => ({ index: i, url: u })) };
-        }
-      }
-    }
-
-    const cdnRegex = /https?:\/\/[^"'\\\s]*hentaifox\.com\/[^"'\\\s]*\.(?:jpg|png|webp)/gi;
-    const matches = [...html.matchAll(cdnRegex)];
-    if (matches.length > 0) {
-      return { chapterId, pages: matches.map((m, i) => ({ index: i, url: m[0] })) };
-    }
-
-    const coverSrc = $(".cover img").attr("src") || $(".cover img").attr("data-src") || "";
-    if (coverSrc) {
-      const coverBase = coverSrc.replace(/\/cover\.jpg$/, "");
-      const pageCountText = $(".pages, .info li:contains('Pages')").text();
-      const pageCount = parseInt(pageCountText.replace(/\D/g, ""), 10) || 0;
-      if (pageCount > 0) {
-        return {
-          chapterId,
-          pages: Array.from({ length: pageCount }, (_, i) => ({
-            index: i,
-            url: `${coverBase}/${i + 1}.jpg`,
-          })),
-        };
-      }
-    }
-
-    return { chapterId, pages: [] };
+    const poolId = Number(chapterId.replace(/^pool:/, ""));
+    const images = await scrapePoolImages(poolId);
+    return {
+      chapterId,
+      pages: images.map((url, i) => ({ index: i, url })),
+    };
   },
 };
