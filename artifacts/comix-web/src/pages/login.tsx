@@ -23,7 +23,9 @@ export default function LoginPage() {
   // Show immediately from cache — no flicker, no waiting
   const [user, setUser] = useState<CachedUser | null>(() => getCachedUser());
   const [verifying, setVerifying] = useState(true);
+  // Default true — only flip to false if server explicitly says so (not on network errors)
   const [googleConfigured, setGoogleConfigured] = useState(true);
+  const [serverReached, setServerReached] = useState(false);
   const [showSuccess, setShowSuccess] = useState(authResult === "success");
 
   useEffect(() => {
@@ -45,6 +47,7 @@ export default function LoginPage() {
         }
 
         if (statusRes !== null) {
+          setServerReached(true);
           setGoogleConfigured(statusRes.googleConfigured ?? true);
         }
       } finally {
@@ -155,7 +158,7 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              {!googleConfigured ? (
+              {serverReached && !googleConfigured ? (
                 <p className="text-xs text-muted-foreground bg-muted rounded-xl p-3">
                   Google sign-in isn't configured yet.
                 </p>

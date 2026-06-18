@@ -2,17 +2,18 @@ import { Router } from "express";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
+import { getDb, isDbConfigured } from "../db";
+import { users } from "../schema";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
 const SESSION_SECRET = process.env["SESSION_SECRET"] ?? "comihub-dev-secret-change-in-prod";
 
-// Strip trailing slashes so redirect URLs are always clean
 function getFrontendURL() {
   return (process.env["FRONTEND_URL"] ?? "").replace(/\/+$/, "");
 }
 
-// Read fresh each request — so Render deploys pick up new env vars immediately
 function getGoogleCreds() {
   return {
     clientID: process.env["GOOGLE_CLIENT_ID"] ?? "",
@@ -24,14 +25,56 @@ function isConfigured() {
   return !!(clientID && clientSecret);
 }
 
-// ── In-memory user store (swap for DB later) ─────────────────────────────────
+// ── DB helpers ────────────────────────────────────────────────────────────────
+
 interface GoogleUser {
   id: string;
   displayName: string;
   email: string;
   photo: string;
 }
-const users = new Map<string, GoogleUser>();
+
+// Upsert user into Neon so profile survives Render restarts
+async function saveUserToDB(user: GoogleUser) {
+  if (!isDbConfigured()) return;
+  try {
+    const db = getDb();
+    await db.insert(users).values({
+      id: user.id,
+      displayName: user.displayName,
+      email: user.email,
+      photo: user.photo,
+    }).onConflictDoUpdate({
+      target: users.id,
+      set: {
+        displayName: user.displayName,
+        email: user.email,
+        photo: user.photo,
+      },
+    });
+  } catch (err) {
+    console.error("Failed to save user to DB:", err);
+  }
+}
+
+// Load user from Neon by Google ID
+async function loadUserFromDB(id: string): Promise<GoogleUser | null> {
+  if (!isDbConfigured()) return null;
+  try {
+    const db = getDb();
+    const rows = await db.select().from(users).where(eq(users.id, id));
+    if (!rows[0]) return null;
+    return {
+      id: rows[0].id,
+      displayName: rows[0].displayName,
+      email: rows[0].email,
+      photo: rows[0].photo,
+    };
+  } catch (err) {
+    console.error("Failed to load user from DB:", err);
+    return null;
+  }
+}
 
 // ── Session ───────────────────────────────────────────────────────────────────
 router.use(
@@ -42,14 +85,13 @@ router.use(
     cookie: {
       httpOnly: true,
       secure: process.env["NODE_ENV"] === "production",
-      // SameSite=none is required for cross-domain cookies (Vercel → Render)
       sameSite: process.env["NODE_ENV"] === "production" ? "none" : "lax",
       maxAge: 30 * 24 * 3600 * 1000,
     },
   }),
 );
 
-// ── Passport — lazily configure strategy on first request ────────────────────
+// ── Passport ──────────────────────────────────────────────────────────────────
 let strategyRegistered = false;
 function ensureStrategy() {
   if (strategyRegistered) return;
@@ -64,22 +106,33 @@ function ensureStrategy() {
         : "http://localhost:8080/api/auth/google/callback";
 
   passport.use(
-    new GoogleStrategy({ clientID, clientSecret, callbackURL }, (_at, _rt, profile, done) => {
+    new GoogleStrategy({ clientID, clientSecret, callbackURL }, async (_at, _rt, profile, done) => {
       const user: GoogleUser = {
         id: profile.id,
         displayName: profile.displayName,
         email: profile.emails?.[0]?.value ?? "",
         photo: profile.photos?.[0]?.value ?? "",
       };
-      users.set(user.id, user);
+      // Persist to Neon so profile survives server restarts
+      await saveUserToDB(user);
       return done(null, user);
     }),
   );
   strategyRegistered = true;
 }
 
+// serialize: store only the Google ID in the session cookie
 passport.serializeUser((user, done) => done(null, (user as GoogleUser).id));
-passport.deserializeUser((id: string, done) => done(null, users.get(id) ?? null));
+
+// deserialize: load full profile from Neon (not RAM) so restarts don't break sessions
+passport.deserializeUser(async (id: string, done) => {
+  try {
+    const user = await loadUserFromDB(id);
+    done(null, user);
+  } catch (err) {
+    done(err, null);
+  }
+});
 
 router.use(passport.initialize());
 router.use(passport.session());
@@ -87,7 +140,7 @@ router.use(passport.session());
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 router.get("/status", (_req, res) => {
-  res.json({ googleConfigured: isConfigured() });
+  res.json({ googleConfigured: isConfigured(), dbConfigured: isDbConfigured() });
 });
 
 router.get("/me", (req, res) => {
