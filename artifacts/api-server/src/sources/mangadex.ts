@@ -11,7 +11,7 @@ import type {
   MangaSummary,
 } from "./types";
 
-const BASE_URL = "https://asurascans.com";   // Change only if domain dies
+const BASE_URL = "https://asurascans.com";
 const http = makeHttp(BASE_URL);
 
 async function parseList($: any, page: number): Promise<MangaListResponse> {
@@ -39,7 +39,7 @@ async function parseList($: any, page: number): Promise<MangaListResponse> {
   return { items, page, hasNextPage };
 }
 
-export const AsuraSource: MangaSource = {
+export const MangaDexSource: MangaSource = {   // ← Kept the name so registry works
   id: "en.asura",
   name: "Asura Scans",
   lang: "en",
