@@ -7,6 +7,7 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase";
 const router = Router();
 
 const SESSION_SECRET = process.env["SESSION_SECRET"] ?? "comihub-dev-secret-change-in-prod";
+const SESSION_MAX_AGE = 90 * 24 * 3600 * 1000; // 90 days
 
 function getFrontendURL() {
   return (process.env["FRONTEND_URL"] ?? "").replace(/\/+$/, "");
@@ -22,29 +23,27 @@ function isConfigured() {
   return !!(clientID && clientSecret);
 }
 
-// ── User type (matches comihub_users table) ───────────────────────────────────
+// ── User type ─────────────────────────────────────────────────────────────────
 export interface GoogleUser {
   id: string;
   displayName: string;
-  username: string;   // custom app username, defaults to displayName on first login
+  username: string;
   email: string;
   photo: string;
 }
 
-// ── Supabase helpers ──────────────────────────────────────────────────────────
+// ── Supabase user helpers ─────────────────────────────────────────────────────
 
 async function upsertUser(user: GoogleUser): Promise<GoogleUser> {
   const sb = getSupabaseAdmin();
   if (!sb) return user;
 
-  // Check if a user with this email already exists (returning user)
   const { data: existing } = await sb
     .from("comihub_users")
     .select("id, username")
     .eq("email", user.email)
     .maybeSingle();
 
-  // Preserve custom username if they've set one before
   const username = (existing as any)?.username ?? user.displayName;
 
   const { error } = await sb.from("comihub_users").upsert(
@@ -81,7 +80,6 @@ async function loadUserById(id: string): Promise<GoogleUser | null> {
   };
 }
 
-// ── In-memory cache (avoids a DB round-trip per request on same process) ─────
 const memUsers = new Map<string, GoogleUser>();
 
 async function saveUser(user: GoogleUser): Promise<GoogleUser> {
@@ -97,9 +95,127 @@ async function loadUser(id: string): Promise<GoogleUser | null> {
   return fromDb;
 }
 
-// ── Session ───────────────────────────────────────────────────────────────────
+// ── Supabase-backed persistent session store ──────────────────────────────────
+// Keeps sessions alive across Render server restarts so users stay logged in.
+// Falls back to the default MemoryStore when Supabase is not configured.
+
+class SupabaseSessionStore extends session.Store {
+  private tableReady = false;
+
+  // Create the sessions table if it doesn't exist yet.
+  private async ensureTable() {
+    if (this.tableReady) return;
+    const sb = getSupabaseAdmin();
+    if (!sb) return;
+    // Use Supabase REST API to create table via a raw SQL RPC.
+    // If the table already exists this is a no-op.
+    await sb.rpc("exec_sql", {
+      sql: `
+        CREATE TABLE IF NOT EXISTS comihub_sessions (
+          sid  TEXT PRIMARY KEY,
+          data TEXT NOT NULL,
+          expires_at TIMESTAMPTZ NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS comihub_sessions_expires_idx
+          ON comihub_sessions (expires_at);
+      `,
+    }).then(({ error }) => {
+      if (error) {
+        // RPC might not exist — fall back to a direct upsert attempt.
+        // The table may already exist; if not, errors will show on first use.
+        if (!error.message?.includes("already exists")) {
+          console.warn("Sessions table setup warning:", error.message);
+        }
+      } else {
+        this.tableReady = true;
+      }
+    }).catch(() => {});
+    this.tableReady = true; // don't retry even if it failed
+  }
+
+  get(sid: string, callback: (err: any, session?: session.SessionData | null) => void) {
+    const sb = getSupabaseAdmin();
+    if (!sb) return callback(null, null);
+
+    this.ensureTable().then(async () => {
+      try {
+        const { data, error } = await sb
+          .from("comihub_sessions")
+          .select("data, expires_at")
+          .eq("sid", sid)
+          .maybeSingle();
+
+        if (error || !data) return callback(null, null);
+
+        if (new Date((data as any).expires_at) < new Date()) {
+          // Expired — clean up and return nothing
+          await sb.from("comihub_sessions").delete().eq("sid", sid).then(() => {});
+          return callback(null, null);
+        }
+
+        callback(null, JSON.parse((data as any).data));
+      } catch (err) {
+        callback(err);
+      }
+    });
+  }
+
+  set(sid: string, sessionData: session.SessionData, callback?: (err?: any) => void) {
+    const sb = getSupabaseAdmin();
+    if (!sb) return callback?.();
+
+    const expiresAt = (sessionData.cookie?.expires instanceof Date)
+      ? sessionData.cookie.expires
+      : new Date(Date.now() + SESSION_MAX_AGE);
+
+    this.ensureTable().then(async () => {
+      try {
+        await sb.from("comihub_sessions").upsert(
+          { sid, data: JSON.stringify(sessionData), expires_at: expiresAt.toISOString() },
+          { onConflict: "sid" },
+        );
+        callback?.();
+      } catch (err) {
+        callback?.(err);
+      }
+    });
+  }
+
+  destroy(sid: string, callback?: (err?: any) => void) {
+    const sb = getSupabaseAdmin();
+    if (!sb) return callback?.();
+
+    getSupabaseAdmin()!
+      .from("comihub_sessions")
+      .delete()
+      .eq("sid", sid)
+      .then(() => callback?.())
+      .catch((err: any) => callback?.(err));
+  }
+
+  touch(sid: string, sessionData: session.SessionData, callback?: (err?: any) => void) {
+    const sb = getSupabaseAdmin();
+    if (!sb) return callback?.();
+
+    const expiresAt = (sessionData.cookie?.expires instanceof Date)
+      ? sessionData.cookie.expires
+      : new Date(Date.now() + SESSION_MAX_AGE);
+
+    sb.from("comihub_sessions")
+      .update({ expires_at: expiresAt.toISOString() })
+      .eq("sid", sid)
+      .then(() => callback?.())
+      .catch((err: any) => callback?.(err));
+  }
+}
+
+// ── Session middleware ─────────────────────────────────────────────────────────
+// Use Supabase-backed store when configured; memory store in dev without Supabase.
+const sessionStore = isSupabaseConfigured() ? new SupabaseSessionStore() : undefined;
+
 router.use(
   session({
+    store: sessionStore,
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -107,7 +223,7 @@ router.use(
       httpOnly: true,
       secure: process.env["NODE_ENV"] === "production",
       sameSite: process.env["NODE_ENV"] === "production" ? "none" : "lax",
-      maxAge: 30 * 24 * 3600 * 1000,
+      maxAge: SESSION_MAX_AGE,
     },
   }),
 );
@@ -131,7 +247,7 @@ function ensureStrategy() {
       const raw: GoogleUser = {
         id: profile.id,
         displayName: profile.displayName,
-        username: profile.displayName, // will be overwritten by upsertUser if returning user
+        username: profile.displayName,
         email: profile.emails?.[0]?.value ?? "",
         photo: profile.photos?.[0]?.value ?? "",
       };
@@ -169,7 +285,6 @@ router.get("/me", (req, res) => {
   }
 });
 
-// Update custom username (profile edit)
 router.put("/profile", async (req, res) => {
   if (!req.isAuthenticated() || !req.user) {
     res.status(401).json({ error: "Not signed in" });
@@ -195,7 +310,6 @@ router.put("/profile", async (req, res) => {
     }
   }
 
-  // Update memory cache + session
   const updated: GoogleUser = { ...currentUser, username: trimmed };
   memUsers.set(updated.id, updated);
   (req.user as any).username = trimmed;

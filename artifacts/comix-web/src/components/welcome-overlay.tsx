@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { X, Download, CheckCircle2 } from "lucide-react";
 import { usePwa } from "@/lib/pwa-context";
 import { apiUrl } from "@/lib/api-url";
-import { setCachedUser, clearCachedUser, getCachedUser } from "@/lib/auth-cache";
+import { setCachedUser, getCachedUser } from "@/lib/auth-cache";
 
 const STORAGE_KEY = "comihub-welcome-v1";
 
@@ -40,30 +40,36 @@ export function WelcomeOverlay() {
   }, [showSuccess]);
 
   useEffect(() => {
-    // Always verify session with server on mount.
-    // • If server confirms user → cache them and mark done.
-    // • If server says no user → clear any stale cache so the app
-    //   reflects the real (logged-out) state everywhere.
-    // • If server is unreachable → trust the local cache (offline mode).
+    // Verify session with server on mount.
+    // ✅ If server confirms user → refresh cache + mark done.
+    // ⚠️  If server says no user (session lost due to server restart, etc.)
+    //     → do NOT clear localStorage. Keep the local cache so the UI stays
+    //     in the logged-in state. The server session can be restored on the
+    //     next explicit auth action.
+    // ✅ If server is unreachable → keep cache (offline mode).
     fetch(apiUrl("/api/auth/me"), { credentials: "include" })
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error("non-ok"); // treat errors as offline
+        return r.json();
+      })
       .then(data => {
         if (data?.user) {
           setCachedUser(data.user);
           markStep("done");
           setStep("done");
         } else {
-          // Session expired or never existed — evict stale cache.
-          clearCachedUser();
-          // Only show the overlay if not already dismissed.
-          if (getInitialStep() === "done") {
-            markStep("install");
-            setStep("install");
+          // Server has no session (server restart, cookie expired, etc.)
+          // Keep the local cache — don't evict it here.
+          // Only show the overlay if the user never completed onboarding.
+          if (getCachedUser()) {
+            // Already "logged in" locally — skip overlay
+            markStep("done");
+            setStep("done");
           }
         }
       })
       .catch(() => {
-        // Network error / offline — keep whatever is in localStorage.
+        // Network error / server down — trust local cache
         if (getCachedUser()) {
           markStep("done");
           setStep("done");

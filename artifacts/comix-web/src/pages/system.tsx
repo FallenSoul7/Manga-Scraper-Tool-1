@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { Settings, Download, BarChart3, Info, FolderOpen, Sparkles, Shield, Trash2, AppWindow, LogIn, UserCircle } from "lucide-react";
-import { getCachedUser, onAuthChanged } from "@/lib/auth-cache";
+import {
+  Settings, Download, BarChart3, Info, FolderOpen, Sparkles,
+  Shield, Trash2, AppWindow, LogIn, UserCircle,
+} from "lucide-react";
+import { getCachedUser, onAuthChanged, type CachedUser } from "@/lib/auth-cache";
 
 interface SystemBlock {
   href?: string;
@@ -11,6 +14,8 @@ interface SystemBlock {
   comingSoon?: boolean;
   highlight?: boolean;
   disabled?: boolean;
+  /** Extra slot rendered below the description */
+  extra?: React.ReactNode;
 }
 
 function Block({ block }: { block: SystemBlock }) {
@@ -34,7 +39,7 @@ function Block({ block }: { block: SystemBlock }) {
       }`}>
         <Icon className="h-5 w-5" />
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1 flex-1">
         <h3 className="font-serif font-bold text-lg text-foreground flex items-center gap-2">
           {block.label}
           {block.highlight && (
@@ -49,6 +54,7 @@ function Block({ block }: { block: SystemBlock }) {
           )}
         </h3>
         <p className="text-sm text-muted-foreground leading-relaxed">{block.description}</p>
+        {block.extra}
       </div>
     </div>
   );
@@ -63,14 +69,38 @@ function Block({ block }: { block: SystemBlock }) {
   return inner;
 }
 
+function ProfileExtra({ user }: { user: CachedUser }) {
+  return (
+    <div className="mt-2 flex items-center gap-2.5">
+      {user.photo ? (
+        <img
+          src={user.photo}
+          alt={user.displayName}
+          referrerPolicy="no-referrer"
+          className="w-8 h-8 rounded-full border border-border shrink-0"
+        />
+      ) : (
+        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+          <span className="text-xs font-bold text-primary">
+            {(user.username?.[0] ?? user.displayName?.[0] ?? "?").toUpperCase()}
+          </span>
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-foreground truncate">
+          {user.username || user.displayName}
+        </p>
+        <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function SystemPage() {
   const [user, setUser] = useState(() => getCachedUser());
 
   useEffect(() => {
-    // Read fresh cache on mount
     setUser(getCachedUser());
-
-    // Re-render whenever any component calls setCachedUser or clearCachedUser
     const unsubscribe = onAuthChanged(() => setUser(getCachedUser()));
     return unsubscribe;
   }, []);
@@ -127,23 +157,23 @@ export default function SystemPage() {
       description: "Add ComiHub to your home screen for offline use.",
       icon: AppWindow,
     },
+    // Profile is ALWAYS shown — description and extra slot depend on login state
     {
       href: "/profile",
       label: "Profile",
       description: loggedIn
-        ? "Edit your username and view your Google account."
-        : "Sign in to view your profile.",
+        ? "Tap to edit your username or sign out."
+        : "Sign in to back up your library across devices.",
       icon: UserCircle,
+      extra: loggedIn && user ? <ProfileExtra user={user} /> : undefined,
     },
-    {
-      href: loggedIn ? undefined : "/login",
+    // Login block is only shown when NOT logged in
+    ...(!loggedIn ? [{
+      href: "/login",
       label: "Login",
-      description: loggedIn
-        ? "You're signed in. Visit Profile to manage your account."
-        : "Sign in with Google to sync your library across devices.",
+      description: "Sign in with Google to sync your library across devices.",
       icon: LogIn,
-      disabled: loggedIn,
-    },
+    }] : []),
     {
       label: "About",
       description: "Version, changelog, credits.",
