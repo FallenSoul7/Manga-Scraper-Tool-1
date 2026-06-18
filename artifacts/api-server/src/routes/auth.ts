@@ -7,6 +7,11 @@ const router = Router();
 
 const SESSION_SECRET = process.env["SESSION_SECRET"] ?? "comihub-dev-secret-change-in-prod";
 
+// Strip trailing slashes so redirect URLs are always clean
+function getFrontendURL() {
+  return (process.env["FRONTEND_URL"] ?? "").replace(/\/+$/, "");
+}
+
 // Read fresh each request — so Render deploys pick up new env vars immediately
 function getGoogleCreds() {
   return {
@@ -107,7 +112,7 @@ router.get("/google", (req, res, next) => {
 });
 
 router.get("/google/callback", (req, res, next) => {
-  const frontendURL = process.env["FRONTEND_URL"] ?? "";
+  const frontendURL = getFrontendURL();
   passport.authenticate("google", {
     failureRedirect: `${frontendURL}/?auth=error`,
   })(req, res, () => {
