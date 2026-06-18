@@ -122,7 +122,7 @@ export interface MangaScraper {
 }
 
 // Import your scrapers here
-import { XkcdScraper } from "./source/xkcd";
+import { XkcdScraper } from "./xkcd";
 
 const registeredScrapers: Record<string, new (http: AxiosInstance) => MangaScraper> = {
   xkcd: XkcdScraper,
