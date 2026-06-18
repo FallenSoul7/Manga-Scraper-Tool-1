@@ -18,15 +18,36 @@ const html = makeHttp(BASE);
 const api  = makeHttp(BASE, { Accept: "application/json" });
 
 // ---------------------------------------------------------------------------
-// NSFW detection
+// Helpers & Sanitization
 // ---------------------------------------------------------------------------
 const NSFW_GENRES = new Set(["adult","mature","hentai","18+","ecchi","smut","doujinshi","yaoi","yuri","gore","sexual violence"]);
 function checkNsfw(genres: string[]): boolean {
   return genres.some(g => NSFW_GENRES.has(g.toLowerCase()));
 }
 
+/**
+ * Normalizes and secures scraped image URLs to prevent iOS Mixed Content blocks
+ */
+function sanitizeImageUrl(url: string): string {
+  if (!url) return "";
+  let cleanUrl = url.replace(/\\/g, "").trim();
+  
+  if (cleanUrl.startsWith("//")) {
+    cleanUrl = "https:" + cleanUrl;
+  } else if (cleanUrl.startsWith("/")) {
+    cleanUrl = `${BASE}${cleanUrl}`;
+  } else if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+    cleanUrl = "https://" + cleanUrl;
+  }
+  
+  if (cleanUrl.startsWith("http://")) {
+    cleanUrl = cleanUrl.replace("http://", "https://");
+  }
+  return cleanUrl;
+}
+
 // ---------------------------------------------------------------------------
-// Grid parser — used by all listing pages
+// Grid & Value Parsers
 // ---------------------------------------------------------------------------
 function parseGrid($: ReturnType<typeof cheerio.load>): MangaSummary[] {
   const items: MangaSummary[] = [];
@@ -42,7 +63,7 @@ function parseGrid($: ReturnType<typeof cheerio.load>): MangaSummary[] {
 
     const img   = $(el).find("img").first();
     const title = (img.attr("alt") ?? img.attr("title") ?? "").trim();
-    const thumbnail = img.attr("src") ?? "";
+    const thumbnail = sanitizeImageUrl(img.attr("src") ?? "");
 
     if (!title || !thumbnail || thumbnail.includes("logo.png")) return;
 
@@ -72,7 +93,7 @@ function getValue($: ReturnType<typeof cheerio.load>, label: string): string | n
 }
 
 // ---------------------------------------------------------------------------
-// Chapter API types
+// Chapter ID Encoding/Decoding
 // ---------------------------------------------------------------------------
 interface CfChapter {
   hash_id:      string;
@@ -97,7 +118,7 @@ function decodeChapterId(id: string): { slug: string; chapter: string; hashId: s
 let cachedTags: SourceTag[] | null = null;
 
 // ---------------------------------------------------------------------------
-// Source
+// Main Source Implementation
 // ---------------------------------------------------------------------------
 export const ComickFanSource: MangaSource = {
   id:           "en.comickfan",
@@ -183,10 +204,10 @@ export const ComickFanSource: MangaSource = {
     synopsis = synopsis.replace(/^[^A-Za-z.!?'"(]+(?=[A-Z])/, "");
     synopsis = synopsis.trim();
 
-    const thumbnail =
+    const thumbnail = sanitizeImageUrl(
       $("div.thumb-cover img").first().attr("src") ??
-      $("meta[property='og:image']").attr("content") ??
-      "";
+      $("meta[property='og:image']").attr("content") ?? ""
+    );
 
     const genres: string[] = [];
     const sourceTags: Array<{ id: string; name: string; group: string }> = [];
@@ -273,39 +294,34 @@ export const ComickFanSource: MangaSource = {
     };
   },
 
-  // ---- Pages (Fixed & Reinforced) -------------------------------------------
+  // ---- Pages (Fixed Image Protocol Sanitization) -----------------------------
   async pages(chapterId: string): Promise<PageListResponse> {
     const decoded = decodeChapterId(chapterId);
     if (!decoded) throw new Error(`ComicKFan: invalid chapter ID "${chapterId}"`);
     const { slug, chapter, hashId } = decoded;
 
-    // --- Attempt 1: JSON API variations ---
-    const apiEndpoints = [
-      `/api/chapters/${hashId}/`,
-      `/api/chapter/${hashId}`,
-    ];
-
+    // --- Attempt 1: API Endpoints ---
+    const apiEndpoints = [`/api/chapters/${hashId}/`, `/api/chapter/${hashId}`];
     for (const endpoint of apiEndpoints) {
       try {
-        const apiRes = await api.get<any>(endpoint, { 
-          headers: { Referer: `${BASE}/manga/${slug}` } 
-        });
+        const apiRes = await api.get<any>(endpoint, { headers: { Referer: `${BASE}/manga/${slug}` } });
         const data = apiRes.data;
         const images = data?.images ?? data?.chapter?.images ?? [];
         if (images.length > 0) {
           const pageUrls = images
             .map((img: any) => img.url ?? (img.b2_key ? `https://meo.cdncmk.com/${img.b2_key}` : ""))
+            .map((url: string) => sanitizeImageUrl(url))
             .filter(Boolean);
           if (pageUrls.length > 0) {
-            return { chapterId, pages: pageUrls.map((url: string, i: number) => ({ index: i, url })) };
+            return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
           }
         }
       } catch {
-        // continue to next path
+        // continue to next variation
       }
     }
 
-    // --- Attempt 2: Alternate API Path ---
+    // --- Attempt 2: Alternative JSON Path ---
     try {
       const apiRes2 = await api.get<{ pages?: Array<{ url?: string }> }>(
         `/api/comics/${slug}/chapters/${chapter}/pages`,
@@ -313,7 +329,7 @@ export const ComickFanSource: MangaSource = {
       );
       const pages = apiRes2.data?.pages ?? [];
       if (pages.length > 0) {
-        const pageUrls = pages.map(p => p.url ?? "").filter(Boolean);
+        const pageUrls = pages.map(p => sanitizeImageUrl(p.url ?? "")).filter(Boolean);
         if (pageUrls.length > 0) {
           return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
         }
@@ -322,16 +338,14 @@ export const ComickFanSource: MangaSource = {
       // fall through
     }
 
-    // --- Attempt 3: Enhanced HTML Reader / Script Scrape ---
+    // --- Attempt 3: Native HTML Content Extract & Regular Expressions ---
     const readingUrl = `/manga/${slug}/chapter-${chapter}-${hashId}`;
-    const res = await html.get(readingUrl, {
-      headers: { Referer: `${BASE}/manga/${slug}` },
-    });
+    const res = await html.get(readingUrl, { headers: { Referer: `${BASE}/manga/${slug}` } });
     if (res.status >= 400) throw new Error(`ComicKFan pages error ${res.status} for ${readingUrl}`);
 
     const rawHtml = res.data as string;
 
-    // 1. Direct window block parsing (Most reliable for hydrated layouts)
+    // Process hydration script tags directly if present
     const chapterDataMatch = rawHtml.match(/window\.chapter_data\s*=\s*({.+?});/);
     if (chapterDataMatch) {
       try {
@@ -340,30 +354,25 @@ export const ComickFanSource: MangaSource = {
         if (images.length > 0) {
           const pageUrls = images.map((img: any) => {
             const path = img.url ?? img.b2_key ?? "";
-            if (!path) return "";
-            return path.startsWith("http") ? path : `https://meo.cdncmk.com/${path}`;
+            return sanitizeImageUrl(path.startsWith("http") ? path : `https://meo.cdncmk.com/${path}`);
           }).filter(Boolean);
-
           if (pageUrls.length > 0) {
-            return { chapterId, pages: pageUrls.map((url: string, i: number) => ({ index: i, url })) };
+            return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
           }
         }
       } catch {
-        // block syntax error, fallback to regex
+        // fallback to regex extraction
       }
     }
 
-    // 2. Escape-Safe Regular Expression Extraction
-    // Matches patterns even when forward slashes are json-escaped (\/)
+    // Escape-proof Regular Expression parsing
     const cdnRegex = /https?:\\?\/\\?\/meo\d*\.cdncmk\.com\\?\/[^"\s>]+?\.(?:webp|jpg|jpeg|png|avif)/gi;
     const matches = rawHtml.match(cdnRegex) ?? [];
-    
-    // Clean backslashes from URLs
-    const allCdnUrls = [...new Set(matches.map(url => url.replace(/\\/g, "")))];
+    const allCdnUrls = [...new Set(matches.map(url => sanitizeImageUrl(url)))];
 
     let thumbnailUrl = "";
     const thumbMatch = rawHtml.match(/"thumbnail"\s*:\s*"([^"]+)"/);
-    if (thumbMatch) thumbnailUrl = thumbMatch[1].replace(/\\/g, "");
+    if (thumbMatch) thumbnailUrl = sanitizeImageUrl(thumbMatch[1]);
 
     const pageUrls = allCdnUrls.filter(url =>
       url !== thumbnailUrl &&
@@ -376,22 +385,18 @@ export const ComickFanSource: MangaSource = {
       return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
     }
 
-    // 3. Cheerio Dom Fallback
+    // Cheerio fallback layout extraction
     const $ = cheerio.load(rawHtml);
     const fallbackUrls: string[] = [];
     const seen = new Set<string>();
-    const selectors = [
-      "div.w-full img",
-      ".reading-content img",
-      "img[src*='meo']",
-      "img[data-src]"
-    ];
+    const selectors = ["div.w-full img", ".reading-content img", "img[src*='meo']", "img[data-src]"];
+    
     for (const sel of selectors) {
       $(sel).each((_i, el) => {
         const src = $(el).attr("src") ?? $(el).attr("data-src") ?? "";
         if (!src || seen.has(src) || src.startsWith("data:")) return;
         seen.add(src);
-        fallbackUrls.push(src.replace(/\\/g, ""));
+        fallbackUrls.push(sanitizeImageUrl(src));
       });
       if (fallbackUrls.length > 0) break;
     }
@@ -402,95 +407,62 @@ export const ComickFanSource: MangaSource = {
     };
   },
 
+  // ---- Tags (Fully Automated & Dynamic Fetching) ----------------------------
   async tags(): Promise<SourceTag[]> {
     if (cachedTags) return cachedTags;
-    const genres: Array<{ id: string; name: string; group: string }> = [
-      { id: "award-winning",   name: "Award Winning",   group: "Format" },
-      { id: "long-strip",      name: "Long Strip",      group: "Format" },
-      { id: "official-colored",name: "Official Colored",group: "Format" },
-      { id: "fan-colored",     name: "Fan Colored",     group: "Format" },
-      { id: "anthology",       name: "Anthology",        group: "Format" },
-      { id: "full-color",      name: "Full Color",       group: "Format" },
-      { id: "4-koma",          name: "4-Koma",           group: "Format" },
-      { id: "user-created",    name: "User Created",     group: "Format" },
-      { id: "adaptation",      name: "Adaptation",       group: "Format" },
-      { id: "web-comic",       name: "Web Comic",        group: "Format" },
-      { id: "oneshot",         name: "Oneshot",          group: "Format" },
-      { id: "doujinshi",       name: "Doujinshi",        group: "Format" },
-      { id: "sexual-violence", name: "Sexual Violence",  group: "Content" },
-      { id: "gore",            name: "Gore",             group: "Content" },
-      { id: "smut",            name: "Smut",             group: "Content" },
-      { id: "ecchi",           name: "Ecchi",            group: "Content" },
-      { id: "ninja",           name: "Ninja",            group: "Theme" },
-      { id: "virtual-reality", name: "Virtual Reality",  group: "Theme" },
-      { id: "police",          name: "Police",           group: "Theme" },
-      { id: "magic",           name: "Magic",            group: "Theme" },
-      { id: "villainess",      name: "Villainess",       group: "Theme" },
-      { id: "traditional-games",name:"Traditional Games",group: "Theme" },
-      { id: "reincarnation",   name: "Reincarnation",    group: "Theme" },
-      { id: "zombies",         name: "Zombies",          group: "Theme" },
-      { id: "loli",            name: "Loli",             group: "Theme" },
-      { id: "time-travel",     name: "Time Travel",      group: "Theme" },
-      { id: "mafia",           name: "Mafia",            group: "Theme" },
-      { id: "music",           name: "Music",            group: "Theme" },
-      { id: "monsters",        name: "Monsters",         group: "Theme" },
-      { id: "post-apocalyptic",name: "Post-Apocalyptic", group: "Theme" },
-      { id: "office-workers",  name: "Office Workers",   group: "Theme" },
-      { id: "monster-girls",   name: "Monster Girls",    group: "Theme" },
-      { id: "cooking",         name: "Cooking",          group: "Theme" },
-      { id: "video-games",     name: "Video Games",      group: "Theme" },
-      { id: "reverse-harem",   name: "Reverse Harem",    group: "Theme" },
-      { id: "demons",          name: "Demons",           group: "Theme" },
-      { id: "harem",           name: "Harem",            group: "Theme" },
-      { id: "vampires",        name: "Vampires",         group: "Theme" },
-      { id: "shota",           name: "Shota",            group: "Theme" },
-      { id: "incest",          name: "Incest",           group: "Theme" },
-      { id: "delinquents",     name: "Delinquents",      group: "Theme" },
-      { id: "gyaru",           name: "Gyaru",            group: "Theme" },
-      { id: "animals",         name: "Animals",          group: "Theme" },
-      { id: "military",        name: "Military",         group: "Theme" },
-      { id: "aliens",          name: "Aliens",           group: "Theme" },
-      { id: "survival",        name: "Survival",         group: "Theme" },
-      { id: "ghosts",          name: "Ghosts",           group: "Theme" },
-      { id: "crossdressing",   name: "Crossdressing",    group: "Theme" },
-      { id: "school-life",     name: "School Life",      group: "Theme" },
-      { id: "martial-arts",    name: "Martial Arts",     group: "Theme" },
-      { id: "samurai",         name: "Samurai",          group: "Theme" },
-      { id: "genderswap",      name: "Genderswap",       group: "Theme" },
-      { id: "supernatural",    name: "Supernatural",     group: "Theme" },
-      { id: "fantasy",         name: "Fantasy",          group: "Genre" },
-      { id: "wuxia",           name: "Wuxia",            group: "Genre" },
-      { id: "drama",           name: "Drama",            group: "Genre" },
-      { id: "sports",          name: "Sports",           group: "Genre" },
-      { id: "psychological",   name: "Psychological",    group: "Genre" },
-      { id: "medical",         name: "Medical",          group: "Genre" },
-      { id: "superhero",       name: "Superhero",        group: "Genre" },
-      { id: "gender-bender",   name: "Gender Bender",    group: "Genre" },
-      { id: "romance",         name: "Romance",          group: "Genre" },
-      { id: "shoujo-ai",       name: "Shoujo Ai",        group: "Genre" },
-      { id: "tragedy",         name: "Tragedy",          group: "Genre" },
-      { id: "slice-of-life",   name: "Slice of Life",    group: "Genre" },
-      { id: "shounen-ai",      name: "Shounen Ai",       group: "Genre" },
-      { id: "isekai",          name: "Isekai",           group: "Genre" },
-      { id: "mecha",           name: "Mecha",            group: "Genre" },
-      { id: "adult",           name: "Adult",            group: "Genre" },
-      { id: "magical-girls",   name: "Magical Girls",    group: "Genre" },
-      { id: "philosophical",   name: "Philosophical",    group: "Genre" },
-      { id: "sci-fi",          name: "Sci-Fi",           group: "Genre" },
-      { id: "thriller",        name: "Thriller",         group: "Genre" },
-      { id: "historical",      name: "Historical",       group: "Genre" },
-      { id: "yaoi",            name: "Yaoi",             group: "Genre" },
-      { id: "mature",          name: "Mature",           group: "Genre" },
-      { id: "mystery",         name: "Mystery",          group: "Genre" },
-      { id: "adventure",       name: "Adventure",        group: "Genre" },
-      { id: "yuri",            name: "Yuri",             group: "Genre" },
-      { id: "comedy",          name: "Comedy",           group: "Genre" },
-      { id: "horror",          name: "Horror",           group: "Genre" },
-      { id: "others",          name: "Others",           group: "Genre" },
-      { id: "crime",           name: "Crime",            group: "Genre" },
-      { id: "action",          name: "Action",           group: "Genre" },
-    ];
-    cachedTags = genres.map(g => ({ ...g, count: undefined }));
+    
+    const tags: SourceTag[] = [];
+    const seen = new Set<string>();
+
+    try {
+      // Scrapes category items right off the server-rendered homepage shell navigation layout
+      const res = await html.get("/");
+      if (res.status < 400) {
+        const $ = cheerio.load(res.data as string);
+        
+        $("a[href*='/manga-list/']").each((_i, el) => {
+          const name = $(el).text().trim();
+          const href = $(el).attr("href") ?? "";
+          const id = (href.split("/manga-list/")[1] ?? "").replace(/[/?#].*$/, "").trim();
+          
+          if (name && id && !seen.has(id) && id !== "all" && id !== "list") {
+            seen.add(id);
+            
+            // Deduce structural categorization groups dynamically
+            let group = "Genre";
+            if (["long-strip", "full-color", "official-colored", "oneshot", "doujinshi", "4-koma"].includes(id)) {
+              group = "Format";
+            } else if (["gore", "sexual-violence", "smut", "ecchi"].includes(id)) {
+              group = "Content";
+            } else if (["ninja", "magic", "vampires", "school-life", "military"].includes(id)) {
+              group = "Theme";
+            }
+            
+            tags.push({ id, name, group });
+          }
+        });
+      }
+    } catch {
+      // safe fallback block execution
+    }
+
+    // Absolute fallback safety list in case layout breaks entirely
+    if (tags.length === 0) {
+      const defaultGenres = [
+        { id: "action", name: "Action", group: "Genre" },
+        { id: "adventure", name: "Adventure", group: "Genre" },
+        { id: "comedy", name: "Comedy", group: "Genre" },
+        { id: "drama", name: "Drama", group: "Genre" },
+        { id: "fantasy", name: "Fantasy", group: "Genre" },
+        { id: "romance", name: "Romance", group: "Genre" },
+        { id: "isekai", name: "Isekai", group: "Genre" },
+        { id: "full-color", name: "Full Color", group: "Format" },
+        { id: "long-strip", name: "Long Strip", group: "Format" },
+      ];
+      for (const g of defaultGenres) tags.push(g);
+    }
+
+    cachedTags = tags;
     return cachedTags;
   },
 };
