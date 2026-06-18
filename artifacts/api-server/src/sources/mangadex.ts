@@ -14,8 +14,7 @@ const API_URL = "https://api.mangadex.org";
 const COVER_URL = "https://uploads.mangadex.org/covers";
 const PER_PAGE = 32;
 
-/** Custom param serialiser so arrays become `key[]=a&key[]=b` and nested
- *  objects become `key[sub]=val` — exactly what the MangaDex API expects. */
+/** Custom param serialiser */
 function serializeParams(params: Record<string, unknown>): string {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -150,7 +149,6 @@ function buildListParams(
     order,
   };
 
-  // Tag filtering: IDs prefixed with "-" are excluded, the rest included.
   if (opts.tagIds && opts.tagIds.length > 0) {
     const included = opts.tagIds.filter((t) => !t.startsWith("-"));
     const excluded = opts.tagIds.filter((t) => t.startsWith("-")).map((t) => t.slice(1));
@@ -161,7 +159,6 @@ function buildListParams(
   return params;
 }
 
-// Cache tags so we don't hammer the endpoint.
 let cachedMdTags: SourceTag[] | null = null;
 
 export const MangaDexSource: MangaSource = {
@@ -316,21 +313,37 @@ export const MangaDexSource: MangaSource = {
     };
   },
 
-  async pages(chapterId): Promise<PageListResponse> {
-    const res = await client.get<{
-      result: string;
-      baseUrl: string;
-      chapter: { hash: string; data: string[]; dataSaver: string[] };
-    }>(`/at-home/server/${chapterId}`);
-    if (res.status >= 400 || !res.data?.chapter)
-      throw new Error(`MangaDex chapter error ${res.status}`);
-    const { baseUrl, chapter } = res.data;
-    return {
-      chapterId,
-      pages: chapter.data.map((file, i) => ({
-        index: i,
-        url: `${baseUrl}/data/${chapter.hash}/${file}`,
-      })),
-    };
+  // ────── FIXED PAGES FUNCTION ──────
+  async pages(chapterId: string): Promise<PageListResponse> {
+    try {
+      const res = await client.get<{
+        result: string;
+        baseUrl: string;
+        chapter: { hash: string; data: string[]; dataSaver: string[] };
+      }>(`/at-home/server/${chapterId}`, {
+        headers: { Referer: "https://mangadex.org/" },
+      });
+
+      if (res.status >= 400 || !res.data?.chapter) {
+        throw new Error(`MangaDex chapter error ${res.status}`);
+      }
+
+      const { baseUrl, chapter } = res.data;
+
+      const useDataSaver = chapter.data.length === 0;
+      const files = useDataSaver ? chapter.dataSaver : chapter.data;
+      const quality = useDataSaver ? "data-saver" : "data";
+
+      return {
+        chapterId,
+        pages: files.map((file, i) => ({
+          index: i,
+          url: `${baseUrl}/${quality}/${chapter.hash}/${file}`,
+        })),
+      };
+    } catch (err) {
+      console.error("[MangaDex] pages failed:", err);
+      throw err;
+    }
   },
 };
