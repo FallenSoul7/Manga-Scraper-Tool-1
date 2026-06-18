@@ -29,16 +29,29 @@ export function WelcomeOverlay() {
   const [authStatus, setAuthStatus] = useState<{ googleConfigured: boolean } | null>(null);
 
   useEffect(() => {
-    if (step !== "done") {
-      const t = setTimeout(() => setVisible(true), 600);
-      return () => clearTimeout(t);
-    }
-  }, [step]);
+    // If user is already logged in, never show the popup
+    fetch(apiUrl("/api/auth/me"), { credentials: "include" })
+      .then(r => r.json())
+      .then(data => {
+        if (data?.user) {
+          markStep("done");
+          setStep("done");
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch(apiUrl("/api/auth/status"), { credentials: "include" })
       .then(r => r.json()).then(setAuthStatus).catch(() => setAuthStatus(null));
   }, []);
+
+  useEffect(() => {
+    if (step !== "done") {
+      const t = setTimeout(() => setVisible(true), 600);
+      return () => clearTimeout(t);
+    }
+  }, [step]);
 
   if (step === "done" || !visible) return null;
   if (isStandalone && step === "install") {
@@ -84,7 +97,6 @@ export function WelcomeOverlay() {
 
         {step === "install" && (
           <>
-            {/* Gradient hero */}
             <div className="relative h-48 bg-gradient-to-br from-primary/30 via-primary/10 to-background flex items-center justify-center">
               <div className="w-24 h-24 rounded-3xl bg-background shadow-lg flex items-center justify-center overflow-hidden border border-border">
                 <img src="/icon-source.jpg" alt="ComiHub" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
@@ -136,6 +148,7 @@ export function WelcomeOverlay() {
               ) : (
                 <a
                   href={apiUrl("/api/auth/google")}
+                  onClick={dismiss}
                   className="w-full flex items-center justify-center gap-3 border border-border rounded-xl py-3 font-semibold text-base mb-3 hover:bg-muted transition-colors"
                 >
                   <GoogleIcon className="h-5 w-5" />

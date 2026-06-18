@@ -29,11 +29,14 @@ export default function LoginPage() {
   useEffect(() => {
     Promise.all([
       fetch(apiUrl("/api/auth/me"), { credentials: "include" }).then(r => r.json()).catch(() => ({ user: null })),
-      fetch(apiUrl("/api/auth/status"), { credentials: "include" }).then(r => r.json()).catch(() => ({ googleConfigured: false })),
+      fetch(apiUrl("/api/auth/status"), { credentials: "include" }).then(r => r.json()).catch(() => null),
       fetch(apiUrl("/api/library/status"), { credentials: "include" }).then(r => r.json()).catch(() => ({ dbConfigured: false })),
     ]).then(([meData, statusData, libStatus]) => {
       setUser(meData.user ?? null);
-      setGoogleConfigured(statusData.googleConfigured ?? false);
+      // Only mark as not configured if the API explicitly says so — don't assume on failure
+      if (statusData !== null) {
+        setGoogleConfigured(statusData.googleConfigured ?? true);
+      }
       setDbConfigured(libStatus.dbConfigured ?? false);
       setLoading(false);
     });
@@ -64,20 +67,22 @@ export default function LoginPage() {
         </div>
       ) : user ? (
         <div className="w-full">
-          {/* Profile */}
-          <div className="flex flex-col items-center mb-6">
-            <div className="relative mb-3">
+          {/* Already logged in banner */}
+          <div className="w-full rounded-2xl border border-green-500/30 bg-green-500/10 px-4 py-3 flex items-center gap-3 mb-6">
+            <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 border border-green-500/20">
               {user.photo ? (
-                <img src={user.photo} alt={user.displayName} className="w-20 h-20 rounded-full shadow-md" referrerPolicy="no-referrer" />
+                <img src={user.photo} alt={user.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
-                <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center">
-                  <User className="h-10 w-10 text-primary-foreground" />
+                <div className="w-full h-full bg-primary flex items-center justify-center">
+                  <User className="h-4 w-4 text-primary-foreground" />
                 </div>
               )}
-              <span className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-full bg-green-500 border-2 border-background" />
             </div>
-            <h2 className="text-xl font-bold">{user.displayName}</h2>
-            <p className="text-sm text-muted-foreground">{user.email}</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-green-700 dark:text-green-400 leading-tight">You're already logged in</p>
+              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+            </div>
+            <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0 ml-auto" />
           </div>
 
           {/* Library sync */}
@@ -157,13 +162,22 @@ export default function LoginPage() {
               </span>
             </div>
           ) : (
-            <a
-              href={apiUrl("/api/auth/google")}
-              className="w-full flex items-center justify-center gap-3 border border-border rounded-xl py-3.5 font-semibold text-base hover:bg-muted transition-colors"
-            >
-              <GoogleIcon />
-              Sign in with Google
-            </a>
+            <div className="flex flex-col gap-3">
+              <a
+                href={apiUrl("/api/auth/google")}
+                className="w-full flex items-center justify-center gap-3 bg-primary text-primary-foreground rounded-xl py-3.5 font-semibold text-base hover:bg-primary/90 transition-colors"
+              >
+                <GoogleIcon />
+                Sign up with Google
+              </a>
+              <a
+                href={apiUrl("/api/auth/google")}
+                className="w-full flex items-center justify-center gap-3 border border-border rounded-xl py-3.5 font-semibold text-base hover:bg-muted transition-colors"
+              >
+                <GoogleIcon />
+                Sign in with Google
+              </a>
+            </div>
           )}
         </div>
       )}
