@@ -29,13 +29,8 @@ function sanitizeImageUrl(url: string): string {
   if (!url) return "";
   let cleanUrl = url.replace(/\\/g, "").trim();
   
-  // 🛠️ FIX: Un-wrap hidden original URLs out of Next.js image optimization routes
-  if (cleanUrl.includes("_next/image") && cleanUrl.includes("url=")) {
-    const urlParam = cleanUrl.split(/[?&]url=/)[1];
-    if (urlParam) {
-      cleanUrl = decodeURIComponent(urlParam.split("&")[0]);
-    }
-  }
+  // Skip processing inline base64 image placeholders completely
+  if (cleanUrl.startsWith("data:")) return cleanUrl;
   
   if (cleanUrl.startsWith("//")) {
     cleanUrl = "https:" + cleanUrl;
@@ -70,7 +65,7 @@ function parseGrid($: ReturnType<typeof cheerio.load>): MangaSummary[] {
     const title = (img.attr("alt") ?? img.attr("title") ?? "").trim();
     const thumbnail = sanitizeImageUrl(img.attr("src") ?? "");
 
-    if (!title || !thumbnail || thumbnail.includes("logo.png")) return;
+    if (!title || !thumbnail || thumbnail.includes("logo.png") || thumbnail.startsWith("data:")) return;
 
     seen.add(slug);
     items.push({ id: slug, title, thumbnail, type: "manga", isNsfw: false });
@@ -287,14 +282,56 @@ export const ComickFanSource: MangaSource = {
     const $ = cheerio.load(res.data as string);
     const pageUrls: string[] = [];
 
-    // 🛠️ FIX: Strict immediate child combinator (>) to prevent harvesting site icons/logos
-    $("div.w-full > img[loading=lazy], div.w-full > img").each((_i, el) => {
-      const src = $(el).attr("src") ?? $(el).attr("data-src") ?? "";
-      const formattedUrl = sanitizeImageUrl(src);
-      if (formattedUrl && !formattedUrl.includes("logo.png") && !formattedUrl.includes("thumb-")) {
-        pageUrls.push(formattedUrl);
+    // 🚀 METHOD 1: Primary Next.js State Core Mining (__NEXT_DATA__)
+    const nextDataScript = $("#__NEXT_DATA__").html();
+    if (nextDataScript) {
+      try {
+        const parsedJson = JSON.parse(nextDataScript);
+        const pageProps = parsedJson.props?.pageProps;
+        if (pageProps) {
+          const targetNode = pageProps.chapter ?? pageProps.data;
+          const rawImages = targetNode?.images ?? pageProps.images ?? targetNode?.body?.images;
+          
+          if (Array.isArray(rawImages)) {
+            for (const img of rawImages) {
+              const path = typeof img === "string" ? img : (img.url ?? img.path ?? img.src);
+              const formatted = sanitizeImageUrl(path);
+              if (formatted && !formatted.startsWith("data:") && !pageUrls.includes(formatted)) {
+                pageUrls.push(formatted);
+              }
+            }
+          }
+        }
+      } catch {
+        // Drop down to fallback DOM execution if script node parsing fails
       }
-    });
+    }
+
+    // 🛠️ METHOD 2: Secondary DOM Fallback (Scans src, data-src, and multi-resolution srcsets)
+    if (pageUrls.length === 0) {
+      $("div.w-full img, main img, article img").each((_i, el) => {
+        const targetAttr = $(el).attr("data-src") ?? $(el).attr("src") ?? $(el).attr("srcset") ?? "";
+        if (!targetAttr) return;
+
+        let selectedUrl = targetAttr;
+        if (selectedUrl.includes(" ")) {
+          const segments = selectedUrl.split(",");
+          const ultimateSegment = segments[segments.length - 1].trim();
+          selectedUrl = ultimateSegment.split(" ")[0];
+        }
+
+        const formattedUrl = sanitizeImageUrl(selectedUrl);
+        if (
+          formattedUrl && 
+          !formattedUrl.startsWith("data:") && 
+          !formattedUrl.includes("logo.png") && 
+          !formattedUrl.includes("avatar") &&
+          !pageUrls.includes(formattedUrl)
+        ) {
+          pageUrls.push(formattedUrl);
+        }
+      });
+    }
 
     if (pageUrls.length > 0) {
       return {
