@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Settings, Download, BarChart3, Database, Info, FolderOpen, Sparkles, Shield, Trash2, AppWindow } from "lucide-react";
+import { Settings, Download, BarChart3, Info, FolderOpen, Sparkles, Shield, Trash2, AppWindow, LogIn } from "lucide-react";
 
 interface SystemBlock {
   href?: string;
@@ -59,6 +59,12 @@ const blocks: SystemBlock[] = [
     label: "Install",
     description: "Add ComiHub to your home screen for offline use.",
     icon: AppWindow,
+  },
+  {
+    href: "/login",
+    label: "Login",
+    description: "Sign in with Google to sync your library across devices.",
+    icon: LogIn,
   },
   {
     label: "About",
