@@ -1,5 +1,5 @@
 import { type AxiosInstance } from "axios";
-import { fetchHtml, absUrl, imgAttr, type MangaScraper } from "../scraper.util";
+import { fetchHtml, absUrl, imgAttr, type MangaScraper } from "./scraper-util";
 
 export class XkcdScraper implements MangaScraper {
   readonly name = "xkcd";
