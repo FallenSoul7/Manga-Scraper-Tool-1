@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Link } from "wouter";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -10,7 +11,7 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, GripVertical, ArrowLeft } from "lucide-react";
 
 export default function CategoriesPage() {
   const categories = useStore(s => s.categories);
@@ -52,6 +53,10 @@ export default function CategoriesPage() {
 
   return (
     <main className="container mx-auto px-4 pt-4 pb-8 max-w-xl animate-in fade-in duration-300">
+      <Link href="/system" className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit mb-4">
+        <ArrowLeft className="h-4 w-4" />
+        System
+      </Link>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-foreground">Categories</h1>
         <Button size="sm" onClick={() => setIsNewOpen(true)} className="gap-1.5">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Download } from "lucide-react";
+import { X, Download, CheckCircle2 } from "lucide-react";
 import { usePwa } from "@/lib/pwa-context";
 import { apiUrl } from "@/lib/api-url";
 
@@ -27,6 +27,16 @@ export function WelcomeOverlay() {
   const [step, setStep] = useState<Step>(() => getInitialStep());
   const [visible, setVisible] = useState(false);
   const [authStatus, setAuthStatus] = useState<{ googleConfigured: boolean } | null>(null);
+
+  // Show green success flash when returning from Google OAuth
+  const authResult = new URLSearchParams(window.location.search).get("auth");
+  const [showSuccess, setShowSuccess] = useState(authResult === "success");
+  useEffect(() => {
+    if (showSuccess) {
+      const t = setTimeout(() => setShowSuccess(false), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [showSuccess]);
 
   useEffect(() => {
     // If user is already logged in, never show the popup
@@ -83,8 +93,31 @@ export function WelcomeOverlay() {
     advanceToLogin();
   }
 
+  // Show success banner standalone (no overlay card) when returning from OAuth
+  if (showSuccess && (step === "done" || !visible)) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none">
+        <div className="bg-green-500 text-white rounded-2xl px-6 py-4 flex items-center gap-3 text-base font-semibold shadow-xl">
+          <CheckCircle2 className="h-6 w-6" />
+          Signed in successfully!
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+
+      {/* Success flash inside overlay */}
+      {showSuccess && (
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+          <div className="bg-green-500 text-white rounded-2xl px-6 py-4 flex items-center gap-3 text-base font-semibold shadow-xl">
+            <CheckCircle2 className="h-6 w-6" />
+            Signed in successfully!
+          </div>
+        </div>
+      )}
+
       <div className="relative w-full max-w-sm mx-4 rounded-2xl bg-background overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
 
         {/* X close */}
