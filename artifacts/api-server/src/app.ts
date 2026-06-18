@@ -30,7 +30,23 @@ app.use(
     },
   }),
 );
-app.use(cors());
+const allowedOrigins = [
+  "http://localhost:19597",
+  "http://localhost:8080",
+  ...(process.env["FRONTEND_URL"] ? [process.env["FRONTEND_URL"]] : []),
+];
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // allow same-origin (no origin header) + server-to-server calls
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      cb(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

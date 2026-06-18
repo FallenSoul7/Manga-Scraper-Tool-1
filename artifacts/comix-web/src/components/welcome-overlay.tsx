@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { X, Download, Chrome } from "lucide-react";
+import { X, Download } from "lucide-react";
 import { usePwa } from "@/lib/pwa-context";
+import { apiUrl } from "@/lib/api-url";
 
 const STORAGE_KEY = "comihub-welcome-v1";
 
@@ -35,7 +36,8 @@ export function WelcomeOverlay() {
   }, [step]);
 
   useEffect(() => {
-    fetch("/api/auth/status").then(r => r.json()).then(setAuthStatus).catch(() => setAuthStatus(null));
+    fetch(apiUrl("/api/auth/status"), { credentials: "include" })
+      .then(r => r.json()).then(setAuthStatus).catch(() => setAuthStatus(null));
   }, []);
 
   if (step === "done" || !visible) return null;
@@ -133,7 +135,7 @@ export function WelcomeOverlay() {
                 </p>
               ) : (
                 <a
-                  href="/api/auth/google"
+                  href={apiUrl("/api/auth/google")}
                   className="w-full flex items-center justify-center gap-3 border border-border rounded-xl py-3 font-semibold text-base mb-3 hover:bg-muted transition-colors"
                 >
                   <GoogleIcon className="h-5 w-5" />

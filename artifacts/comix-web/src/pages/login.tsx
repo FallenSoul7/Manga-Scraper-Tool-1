@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearch } from "wouter";
 import { LogOut, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { apiUrl, API_BASE } from "@/lib/api-url";
 
 interface GoogleUser {
   id: string;
@@ -21,8 +22,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/auth/me").then(r => r.json()).catch(() => ({ user: null })),
-      fetch("/api/auth/status").then(r => r.json()).catch(() => ({ googleConfigured: false })),
+      fetch(apiUrl("/api/auth/me"), { credentials: "include" }).then(r => r.json()).catch(() => ({ user: null })),
+      fetch(apiUrl("/api/auth/status"), { credentials: "include" }).then(r => r.json()).catch(() => ({ googleConfigured: false })),
     ]).then(([meData, statusData]) => {
       setUser(meData.user ?? null);
       setGoogleConfigured(statusData.googleConfigured ?? false);
@@ -39,7 +40,7 @@ export default function LoginPage() {
   }, [authResult]);
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await fetch(apiUrl("/api/auth/logout"), { method: "POST", credentials: "include" });
     setUser(null);
     toast({ title: "Signed out" });
   }
@@ -95,7 +96,7 @@ export default function LoginPage() {
             </div>
           ) : (
             <a
-              href="/api/auth/google"
+              href={apiUrl("/api/auth/google")}
               className="w-full flex items-center justify-center gap-3 border border-border rounded-xl py-3.5 font-semibold text-base hover:bg-muted transition-colors"
             >
               <GoogleIcon />

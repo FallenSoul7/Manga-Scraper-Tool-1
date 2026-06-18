@@ -37,6 +37,8 @@ router.use(
     cookie: {
       httpOnly: true,
       secure: process.env["NODE_ENV"] === "production",
+      // SameSite=none is required for cross-domain cookies (Vercel → Render)
+      sameSite: process.env["NODE_ENV"] === "production" ? "none" : "lax",
       maxAge: 30 * 24 * 3600 * 1000,
     },
   }),
@@ -105,8 +107,11 @@ router.get("/google", (req, res, next) => {
 });
 
 router.get("/google/callback", (req, res, next) => {
-  passport.authenticate("google", { failureRedirect: "/?auth=error" })(req, res, () => {
-    res.redirect("/?auth=success");
+  const frontendURL = process.env["FRONTEND_URL"] ?? "";
+  passport.authenticate("google", {
+    failureRedirect: `${frontendURL}/?auth=error`,
+  })(req, res, () => {
+    res.redirect(`${frontendURL}/?auth=success`);
   });
 });
 
