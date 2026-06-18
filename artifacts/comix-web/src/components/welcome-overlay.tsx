@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { X, Download, CheckCircle2 } from "lucide-react";
 import { usePwa } from "@/lib/pwa-context";
 import { apiUrl } from "@/lib/api-url";
+import { setCachedUser, clearCachedUser, getCachedUser } from "@/lib/auth-cache";
 
 const STORAGE_KEY = "comihub-welcome-v1";
 
@@ -39,16 +40,23 @@ export function WelcomeOverlay() {
   }, [showSuccess]);
 
   useEffect(() => {
-    // If user is already logged in, never show the popup
+    // Fetch user — cache it if present, and skip popup if already logged in
     fetch(apiUrl("/api/auth/me"), { credentials: "include" })
       .then(r => r.json())
       .then(data => {
         if (data?.user) {
+          setCachedUser(data.user);
           markStep("done");
           setStep("done");
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        // If server unreachable, still skip popup if we have a cached user
+        if (getCachedUser()) {
+          markStep("done");
+          setStep("done");
+        }
+      });
   }, []);
 
   useEffect(() => {
