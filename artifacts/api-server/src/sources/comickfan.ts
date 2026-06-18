@@ -25,9 +25,6 @@ function checkNsfw(genres: string[]): boolean {
   return genres.some(g => NSFW_GENRES.has(g.toLowerCase()));
 }
 
-/**
- * Normalizes and secures scraped image URLs to prevent iOS Mixed Content blocks
- */
 function sanitizeImageUrl(url: string): string {
   if (!url) return "";
   let cleanUrl = url.replace(/\\/g, "").trim();
@@ -53,7 +50,7 @@ function parseGrid($: ReturnType<typeof cheerio.load>): MangaSummary[] {
   const items: MangaSummary[] = [];
   const seen  = new Set<string>();
 
-  const cards = $("div:has(> form) + div.grid > a, div.grid > a[href*='comickfan.com/manga/']");
+  const cards = $("div:has(> form) + div.grid > a");
 
   cards.each((_i, el) => {
     const href = $(el).attr("href") ?? "";
@@ -75,7 +72,7 @@ function parseGrid($: ReturnType<typeof cheerio.load>): MangaSummary[] {
 }
 
 function hasNext($: ReturnType<typeof cheerio.load>): boolean {
-  return $("a:has(img[alt='Next']), a:has(img[alt=Next])").length > 0;
+  return document.selectFirst("a:has(img[alt=Next])") !== null || $("a:has(img[alt='Next'])").length > 0;
 }
 
 function getValue($: ReturnType<typeof cheerio.load>, label: string): string | null {
@@ -93,13 +90,12 @@ function getValue($: ReturnType<typeof cheerio.load>, label: string): string | n
 }
 
 // ---------------------------------------------------------------------------
-// Chapter ID Encoding/Decoding
+// Chapter ID Processing
 // ---------------------------------------------------------------------------
 interface CfChapter {
   hash_id:      string;
   chapter:      string;
   title?:       string | null;
-  volume?:      string | null;
   group_names?: string[];
   published_at?: string | null;
   created_at?:  string | null;
@@ -118,7 +114,7 @@ function decodeChapterId(id: string): { slug: string; chapter: string; hashId: s
 let cachedTags: SourceTag[] | null = null;
 
 // ---------------------------------------------------------------------------
-// Main Source Implementation
+// Source Core Implementation
 // ---------------------------------------------------------------------------
 export const ComickFanSource: MangaSource = {
   id:           "en.comickfan",
@@ -136,17 +132,12 @@ export const ComickFanSource: MangaSource = {
 
   async popular(opts: ListOptions): Promise<MangaListResponse> {
     const included = (opts.tagIds ?? []).filter(t => !t.startsWith("-"));
-    if (included.length > 0) {
-      const res = await html.get(`/manga-list/${included[0]}`, {
-        params: { page: opts.page, ...(opts.sort ? { sort: opts.sort } : {}) },
-      });
-      if (res.status >= 400) throw new Error(`ComicKFan manga-list error ${res.status}`);
-      const $ = cheerio.load(res.data as string);
-      return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
-    }
-    const res = await html.get("/advanced-search", {
-      params: { page: opts.page, sort: opts.sort ?? "rating" },
-    });
+    const params: Record<string, string | number> = {
+      page: opts.page,
+      sort: opts.sort ?? "rating",
+      genres: included.join("_")
+    };
+    const res = await html.get("/advanced-search", { params });
     if (res.status >= 400) throw new Error(`ComicKFan popular error ${res.status}`);
     const $ = cheerio.load(res.data as string);
     return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
@@ -154,17 +145,12 @@ export const ComickFanSource: MangaSource = {
 
   async latest(opts: ListOptions): Promise<MangaListResponse> {
     const included = (opts.tagIds ?? []).filter(t => !t.startsWith("-"));
-    if (included.length > 0) {
-      const res = await html.get(`/manga-list/${included[0]}`, {
-        params: { page: opts.page, sort: "latest" },
-      });
-      if (res.status >= 400) throw new Error(`ComicKFan manga-list error ${res.status}`);
-      const $ = cheerio.load(res.data as string);
-      return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
-    }
-    const res = await html.get("/advanced-search", {
-      params: { page: opts.page, sort: "latest" },
-    });
+    const params: Record<string, string | number> = {
+      page: opts.page,
+      sort: "latest",
+      genres: included.join("_")
+    };
+    const res = await html.get("/advanced-search", { params });
     if (res.status >= 400) throw new Error(`ComicKFan latest error ${res.status}`);
     const $ = cheerio.load(res.data as string);
     return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
@@ -172,18 +158,11 @@ export const ComickFanSource: MangaSource = {
 
   async search(query: string, opts: ListOptions): Promise<MangaListResponse> {
     const included = (opts.tagIds ?? []).filter(t => !t.startsWith("-"));
-    if (included.length > 0 && !query) {
-      const res = await html.get(`/manga-list/${included[0]}`, {
-        params: { page: opts.page, ...(opts.sort ? { sort: opts.sort } : {}) },
-      });
-      if (res.status >= 400) throw new Error(`ComicKFan manga-list error ${res.status}`);
-      const $ = cheerio.load(res.data as string);
-      return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
-    }
     const params: Record<string, string | number> = { page: opts.page };
     if (query)    params.name = query;
     if (opts.sort) params.sort = opts.sort;
     if (included.length > 0) params.genres = included.join("_");
+    
     const res = await html.get("/advanced-search", { params });
     if (res.status >= 400) throw new Error(`ComicKFan search error ${res.status}`);
     const $ = cheerio.load(res.data as string);
@@ -196,13 +175,7 @@ export const ComickFanSource: MangaSource = {
     const $ = cheerio.load(res.data as string);
 
     const title = $("h1").first().text().trim() || slug;
-
-    let synopsis = $("div.comic-content.desk").first().text().trim();
-    synopsis = synopsis.replace(/^Read\s+\S+\s+/, "");
-    if (title && synopsis.startsWith(title)) synopsis = synopsis.slice(title.length);
-    synopsis = synopsis.replace(/^\s*\/\s*/, "");
-    synopsis = synopsis.replace(/^[^A-Za-z.!?'"(]+(?=[A-Z])/, "");
-    synopsis = synopsis.trim();
+    const description = $("div.comic-content.desk").first().text().trim();
 
     const thumbnail = sanitizeImageUrl(
       $("div.thumb-cover img").first().attr("src") ??
@@ -211,11 +184,11 @@ export const ComickFanSource: MangaSource = {
 
     const genres: string[] = [];
     const sourceTags: Array<{ id: string; name: string; group: string }> = [];
-    $("a[href*='comickfan.com/manga-list/'], a[href^='/manga-list/']").each((_i, el) => {
+    $("div.font-medium:contains(Genres) + div a").each((_i, el) => {
       const name = $(el).text().trim();
       const href = $(el).attr("href") ?? "";
       const genreSlug = (href.split("/manga-list/")[1] ?? "").replace(/[/?#].*$/, "");
-      if (name && genreSlug && !genres.includes(name)) {
+      if (name && genreSlug) {
         genres.push(name);
         sourceTags.push({ id: genreSlug, name, group: "Genre" });
       }
@@ -230,7 +203,6 @@ export const ComickFanSource: MangaSource = {
       statusRaw.toLowerCase() === "ongoing"   ? "Ongoing"   :
       statusRaw.toLowerCase() === "completed" ? "Completed" :
       statusRaw.toLowerCase() === "hiatus"    ? "Hiatus"    :
-      statusRaw.toLowerCase() === "cancelled" ? "Cancelled" :
       "Unknown";
 
     const type =
@@ -243,7 +215,7 @@ export const ComickFanSource: MangaSource = {
       title,
       author: author || "_",
       artist,
-      synopsis,
+      synopsis: description,
       altTitles: [],
       status,
       type,
@@ -278,7 +250,6 @@ export const ComickFanSource: MangaSource = {
         const num     = parseFloat(chapStr) || 0;
         const numLabel = chapStr.replace(/\.0$/, "");
         let chTitle = `Chapter ${numLabel}`;
-        if (ch.volume?.trim()) chTitle = `Vol.${ch.volume.trim()} ${chTitle}`;
         if (ch.title?.trim())  chTitle += `: ${ch.title.trim()}`;
         const scanlator = (ch.group_names ?? []).filter(Boolean).join(", ") || "Unknown";
         const dateStr   = ch.published_at ?? ch.created_at ?? "";
@@ -294,120 +265,42 @@ export const ComickFanSource: MangaSource = {
     };
   },
 
-  // ---- Pages (Fixed Image Protocol Sanitization) -----------------------------
+  // ---- Pages (Aligned 1:1 with Tachiyomi's pageListParse Layout Scraper) -----
   async pages(chapterId: string): Promise<PageListResponse> {
     const decoded = decodeChapterId(chapterId);
     if (!decoded) throw new Error(`ComicKFan: invalid chapter ID "${chapterId}"`);
     const { slug, chapter, hashId } = decoded;
 
-    // --- Attempt 1: API Endpoints ---
-    const apiEndpoints = [`/api/chapters/${hashId}/`, `/api/chapter/${hashId}`];
-    for (const endpoint of apiEndpoints) {
-      try {
-        const apiRes = await api.get<any>(endpoint, { headers: { Referer: `${BASE}/manga/${slug}` } });
-        const data = apiRes.data;
-        const images = data?.images ?? data?.chapter?.images ?? [];
-        if (images.length > 0) {
-          const pageUrls = images
-            .map((img: any) => img.url ?? (img.b2_key ? `https://meo.cdncmk.com/${img.b2_key}` : ""))
-            .map((url: string) => sanitizeImageUrl(url))
-            .filter(Boolean);
-          if (pageUrls.length > 0) {
-            return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
-          }
-        }
-      } catch {
-        // continue to next variation
-      }
-    }
-
-    // --- Attempt 2: Alternative JSON Path ---
-    try {
-      const apiRes2 = await api.get<{ pages?: Array<{ url?: string }> }>(
-        `/api/comics/${slug}/chapters/${chapter}/pages`,
-        { headers: { Referer: `${BASE}/manga/${slug}` } },
-      );
-      const pages = apiRes2.data?.pages ?? [];
-      if (pages.length > 0) {
-        const pageUrls = pages.map(p => sanitizeImageUrl(p.url ?? "")).filter(Boolean);
-        if (pageUrls.length > 0) {
-          return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
-        }
-      }
-    } catch {
-      // fall through
-    }
-
-    // --- Attempt 3: Native HTML Content Extract & Regular Expressions ---
+    // Pull directly from the server-rendered HTML layout
     const readingUrl = `/manga/${slug}/chapter-${chapter}-${hashId}`;
-    const res = await html.get(readingUrl, { headers: { Referer: `${BASE}/manga/${slug}` } });
+    const res = await html.get(readingUrl, {
+      headers: { Referer: `${BASE}/manga/${slug}` },
+    });
     if (res.status >= 400) throw new Error(`ComicKFan pages error ${res.status} for ${readingUrl}`);
 
-    const rawHtml = res.data as string;
+    const $ = cheerio.load(res.data as string);
+    const pageUrls: string[] = [];
 
-    // Process hydration script tags directly if present
-    const chapterDataMatch = rawHtml.match(/window\.chapter_data\s*=\s*({.+?});/);
-    if (chapterDataMatch) {
-      try {
-        const parsedData = JSON.parse(chapterDataMatch[1]);
-        const images = parsedData.images ?? parsedData.chapter?.images ?? [];
-        if (images.length > 0) {
-          const pageUrls = images.map((img: any) => {
-            const path = img.url ?? img.b2_key ?? "";
-            return sanitizeImageUrl(path.startsWith("http") ? path : `https://meo.cdncmk.com/${path}`);
-          }).filter(Boolean);
-          if (pageUrls.length > 0) {
-            return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
-          }
-        }
-      } catch {
-        // fallback to regex extraction
+    // Official selector rule: div.w-full > img[loading=lazy]
+    $("div.w-full > img[loading=lazy], div.w-full img").each((_i, el) => {
+      const src = $(el).attr("src") ?? $(el).attr("data-src") ?? "";
+      const formattedUrl = sanitizeImageUrl(src);
+      if (formattedUrl && !formattedUrl.includes("logo.png") && !formattedUrl.includes("thumb-")) {
+        pageUrls.push(formattedUrl);
       }
-    }
-
-    // Escape-proof Regular Expression parsing
-    const cdnRegex = /https?:\\?\/\\?\/meo\d*\.cdncmk\.com\\?\/[^"\s>]+?\.(?:webp|jpg|jpeg|png|avif)/gi;
-    const matches = rawHtml.match(cdnRegex) ?? [];
-    const allCdnUrls = [...new Set(matches.map(url => sanitizeImageUrl(url)))];
-
-    let thumbnailUrl = "";
-    const thumbMatch = rawHtml.match(/"thumbnail"\s*:\s*"([^"]+)"/);
-    if (thumbMatch) thumbnailUrl = sanitizeImageUrl(thumbMatch[1]);
-
-    const pageUrls = allCdnUrls.filter(url =>
-      url !== thumbnailUrl &&
-      !url.includes("thumb-default") &&
-      !url.includes("thumb-cover") &&
-      !url.includes("logo.png")
-    );
+    });
 
     if (pageUrls.length > 0) {
-      return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
+      return {
+        chapterId,
+        pages: pageUrls.map((url, i) => ({ index: i, url })),
+      };
     }
 
-    // Cheerio fallback layout extraction
-    const $ = cheerio.load(rawHtml);
-    const fallbackUrls: string[] = [];
-    const seen = new Set<string>();
-    const selectors = ["div.w-full img", ".reading-content img", "img[src*='meo']", "img[data-src]"];
-    
-    for (const sel of selectors) {
-      $(sel).each((_i, el) => {
-        const src = $(el).attr("src") ?? $(el).attr("data-src") ?? "";
-        if (!src || seen.has(src) || src.startsWith("data:")) return;
-        seen.add(src);
-        fallbackUrls.push(sanitizeImageUrl(src));
-      });
-      if (fallbackUrls.length > 0) break;
-    }
-
-    return {
-      chapterId,
-      pages: fallbackUrls.map((url, i) => ({ index: i, url })),
-    };
+    throw new Error("ComicKFan: No reader pages could be found in the document shell.");
   },
 
-  // ---- Tags (Fully Automated & Dynamic Fetching) ----------------------------
+  // ---- Tags (Fully Dynamic Framework Layout Fetcher) ------------------------
   async tags(): Promise<SourceTag[]> {
     if (cachedTags) return cachedTags;
     
@@ -415,26 +308,35 @@ export const ComickFanSource: MangaSource = {
     const seen = new Set<string>();
 
     try {
-      // Scrapes category items right off the server-rendered homepage shell navigation layout
-      const res = await html.get("/");
+      // Scrape available filters dynamically right off the search panel layout
+      const res = await html.get("/advanced-search");
       if (res.status < 400) {
         const $ = cheerio.load(res.data as string);
         
-        $("a[href*='/manga-list/']").each((_i, el) => {
-          const name = $(el).text().trim();
-          const href = $(el).attr("href") ?? "";
-          const id = (href.split("/manga-list/")[1] ?? "").replace(/[/?#].*$/, "").trim();
+        // Scan for genre links or option lists embedded inside the advanced query forms
+        $("a[href*='/manga-list/'], form input[type='checkbox']").each((_i, el) => {
+          let id = "";
+          let name = "";
           
-          if (name && id && !seen.has(id) && id !== "all" && id !== "list") {
+          if ($(el).is("input")) {
+            id = $(el).attr("value") ?? "";
+            name = $(el).attr("id") ?? $(el).parent().text().trim();
+          } else {
+            const href = $(el).attr("href") ?? "";
+            id = (href.split("/manga-list/")[1] ?? "").replace(/[/?#].*$/, "").trim();
+            name = $(el).text().trim();
+          }
+          
+          if (name && id && !seen.has(id) && id !== "all" && id !== "list" && id.length > 1) {
             seen.add(id);
             
-            // Deduce structural categorization groups dynamically
+            // Auto-deduce group categories dynamically based on item matching structures
             let group = "Genre";
-            if (["long-strip", "full-color", "official-colored", "oneshot", "doujinshi", "4-koma"].includes(id)) {
+            if (["long-strip", "full-color", "official-colored", "fan-colored", "oneshot", "doujinshi", "4-koma", "adaptation", "anthology", "user-created", "web-comic"].includes(id)) {
               group = "Format";
             } else if (["gore", "sexual-violence", "smut", "ecchi"].includes(id)) {
               group = "Content";
-            } else if (["ninja", "magic", "vampires", "school-life", "military"].includes(id)) {
+            } else if (["ninja", "magic", "vampires", "school-life", "military", "reincarnation", "time-travel", "mafia", "zombies", "harem", "reverse-harem", "crossdressing", "martial-arts"].includes(id)) {
               group = "Theme";
             }
             
@@ -443,12 +345,12 @@ export const ComickFanSource: MangaSource = {
         });
       }
     } catch {
-      // safe fallback block execution
+      // recovery block
     }
 
-    // Absolute fallback safety list in case layout breaks entirely
+    // Baseline fallbacks if site layout structural access goes blind temporarily
     if (tags.length === 0) {
-      const defaultGenres = [
+      const fallbackList = [
         { id: "action", name: "Action", group: "Genre" },
         { id: "adventure", name: "Adventure", group: "Genre" },
         { id: "comedy", name: "Comedy", group: "Genre" },
@@ -459,10 +361,10 @@ export const ComickFanSource: MangaSource = {
         { id: "full-color", name: "Full Color", group: "Format" },
         { id: "long-strip", name: "Long Strip", group: "Format" },
       ];
-      for (const g of defaultGenres) tags.push(g);
+      fallbackList.forEach(t => tags.push(t));
     }
 
-    cachedTags = tags;
+    cachedTags = tags.map(t => ({ ...t, count: undefined }));
     return cachedTags;
   },
 };
