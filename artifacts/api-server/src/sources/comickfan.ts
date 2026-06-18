@@ -71,8 +71,9 @@ function parseGrid($: ReturnType<typeof cheerio.load>): MangaSummary[] {
   return items;
 }
 
+// 🐛 FIX: Removed the Kotlin 'document' variable and strictly used Cheerio's '$'
 function hasNext($: ReturnType<typeof cheerio.load>): boolean {
-  return document.selectFirst("a:has(img[alt=Next])") !== null || $("a:has(img[alt='Next'])").length > 0;
+  return $("a:has(img[alt='Next']), a:has(img[alt=Next])").length > 0;
 }
 
 function getValue($: ReturnType<typeof cheerio.load>, label: string): string | null {
@@ -265,13 +266,11 @@ export const ComickFanSource: MangaSource = {
     };
   },
 
-  // ---- Pages (Aligned 1:1 with Tachiyomi's pageListParse Layout Scraper) -----
   async pages(chapterId: string): Promise<PageListResponse> {
     const decoded = decodeChapterId(chapterId);
     if (!decoded) throw new Error(`ComicKFan: invalid chapter ID "${chapterId}"`);
     const { slug, chapter, hashId } = decoded;
 
-    // Pull directly from the server-rendered HTML layout
     const readingUrl = `/manga/${slug}/chapter-${chapter}-${hashId}`;
     const res = await html.get(readingUrl, {
       headers: { Referer: `${BASE}/manga/${slug}` },
@@ -281,7 +280,6 @@ export const ComickFanSource: MangaSource = {
     const $ = cheerio.load(res.data as string);
     const pageUrls: string[] = [];
 
-    // Official selector rule: div.w-full > img[loading=lazy]
     $("div.w-full > img[loading=lazy], div.w-full img").each((_i, el) => {
       const src = $(el).attr("src") ?? $(el).attr("data-src") ?? "";
       const formattedUrl = sanitizeImageUrl(src);
@@ -300,7 +298,6 @@ export const ComickFanSource: MangaSource = {
     throw new Error("ComicKFan: No reader pages could be found in the document shell.");
   },
 
-  // ---- Tags (Fully Dynamic Framework Layout Fetcher) ------------------------
   async tags(): Promise<SourceTag[]> {
     if (cachedTags) return cachedTags;
     
@@ -308,12 +305,10 @@ export const ComickFanSource: MangaSource = {
     const seen = new Set<string>();
 
     try {
-      // Scrape available filters dynamically right off the search panel layout
       const res = await html.get("/advanced-search");
       if (res.status < 400) {
         const $ = cheerio.load(res.data as string);
         
-        // Scan for genre links or option lists embedded inside the advanced query forms
         $("a[href*='/manga-list/'], form input[type='checkbox']").each((_i, el) => {
           let id = "";
           let name = "";
@@ -330,7 +325,6 @@ export const ComickFanSource: MangaSource = {
           if (name && id && !seen.has(id) && id !== "all" && id !== "list" && id.length > 1) {
             seen.add(id);
             
-            // Auto-deduce group categories dynamically based on item matching structures
             let group = "Genre";
             if (["long-strip", "full-color", "official-colored", "fan-colored", "oneshot", "doujinshi", "4-koma", "adaptation", "anthology", "user-created", "web-comic"].includes(id)) {
               group = "Format";
@@ -345,10 +339,9 @@ export const ComickFanSource: MangaSource = {
         });
       }
     } catch {
-      // recovery block
+      // Recovery Block
     }
 
-    // Baseline fallbacks if site layout structural access goes blind temporarily
     if (tags.length === 0) {
       const fallbackList = [
         { id: "action", name: "Action", group: "Genre" },
