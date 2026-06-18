@@ -110,7 +110,7 @@ export function proxifyImage(originalUrl: string, referer: string, useProxy: boo
 }
 
 // ==========================================
-// NEW: Unified Extension Framework
+// Unified Extension Framework
 // ==========================================
 
 export interface MangaScraper {
@@ -121,23 +121,20 @@ export interface MangaScraper {
   getPages(chapterUrl: string): Promise<{ images: string[]; alt_text?: string }>;
 }
 
-// Import your scrapers here
+// Fixed absolute side-by-side relative path
 import { XkcdScraper } from "./xkcd";
 
 const registeredScrapers: Record<string, new (http: AxiosInstance) => MangaScraper> = {
   xkcd: XkcdScraper,
-  // webtoons: WebtoonsScraper, <-- When ready, drop it right here
 };
 
 export class ScraperEngine {
-  /** Resolves and runs a specific scraper instance with a configured Axios pipe */
   private static getSource(sourceKey: string): MangaScraper {
     const ScraperClass = registeredScrapers[sourceKey.toLowerCase()];
     if (!ScraperClass) {
       throw new Error(`Extension source '${sourceKey}' is not registered.`);
     }
     
-    // Create an instance and pass down an isolated HTTP client configured for that source
     const dummyInstance = new ScraperClass(axios.create());
     const configuredHttp = makeHttp(dummyInstance.baseUrl);
     
