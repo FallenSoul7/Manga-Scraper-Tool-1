@@ -1,3 +1,4 @@
+import * as cheerio from "cheerio";
 import type {
   MangaSource,
   ListOptions,
@@ -7,24 +8,23 @@ import type {
   ChapterListResponse,
   PageListResponse,
   MangaSummary,
+  ChapterSummary,
+  PageInfo,
   SourceTag,
 } from "./types";
-import { absUrl, fetchHtml, imgAttr, makeHttp } from "./scraper-utils";
+import { makeHttp, fetchHtml, absUrl, imgAttr } from "./scraper-utils";
 
 const BASE_URL = "https://xkcd.com";
 const http = makeHttp(BASE_URL);
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-// Convert scraper chapter object to ChapterSummary
-function scraperChapterToSummary(ch: any): any {
-  return {
-    id: ch.url,   // use the absolute URL as unique ID
-    number: ch.chapter_number,
-    title: ch.name,
-    scanlator: "xkcd",
-    date: ch.date_upload ? new Date(ch.date_upload).getTime() / 1000 : 0,
-  };
+/** Parse date strings like "2026-1-9" into a Unix timestamp */
+function parseXkcdDate(dateStr: string): number {
+  if (!dateStr) return Math.floor(Date.now() / 1000);
+  const normalized = dateStr.split("-").map((p, i) => (i === 1 || i === 2) ? p.padStart(2, "0") : p).join("-");
+  const ts = Date.parse(normalized);
+  return isNaN(ts) ? 0 : Math.floor(ts / 1000);
 }
 
 // ── Source definition ──────────────────────────────────────────────────────
@@ -36,41 +36,40 @@ export const XkcdSource: MangaSource = {
   isNsfw: false,
   imageReferer: `${BASE_URL}/`,
 
-  // ── Browse methods (minimal — xkcd doesn’t have popular/latest/search) ──
-  async popular(o: ListOptions): Promise<MangaListResponse> {
-    // Return a static single “manga” entry for xkcd
+  // ── Browse methods (xkcd is a single "manga") ─────────────────────────
+  async popular(_o: ListOptions): Promise<MangaListResponse> {
+    // Return a single "manga" entry for the entire xkcd archive
     const summary: MangaSummary = {
       id: "xkcd-main",
       title: "xkcd",
-      thumbnail: "https://xkcd.com/s/0b7742.png",
+      thumbnail: "https://xkcd.com/s/0b7742.png",  // official xkcd logo
       type: "Comic",
       isNsfw: false,
     };
     return { items: [summary], page: 1, hasNextPage: false };
   },
 
-  async latest(o: ListOptions): Promise<MangaListResponse> {
-    return this.popular(o);   // same as popular
+  async latest(_o: ListOptions): Promise<MangaListResponse> {
+    return this.popular(_o);
   },
 
-  async search(query: string, o: ListOptions): Promise<MangaListResponse> {
-    // xkcd has no search; return empty
+  async search(_query: string, _o: ListOptions): Promise<MangaListResponse> {
+    // xkcd has no search – return empty
     return { items: [], page: 1, hasNextPage: false };
   },
 
-  // ── Tags ─────────────────────────────────────────────────────────────
+  // ── Tags (none) ─────────────────────────────────────────────────────────
   async tags(): Promise<SourceTag[]> {
-    return [];   // no tags
+    return [];
   },
 
-  // ── Details ───────────────────────────────────────────────────────────
-  async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
-    // Since there's only one xkcd, ignore the ID and return static details
+  // ── Manga details (static) ──────────────────────────────────────────────
+  async details(_id: string, _opts: DetailOptions): Promise<MangaDetail> {
     return {
       id: "xkcd-main",
       title: "xkcd",
       author: "Randall Munroe",
-      artist: "",
+      artist: "Randall Munroe",
       synopsis: "A webcomic of romance, sarcasm, math and language.",
       altTitles: [],
       status: "Ongoing",
@@ -84,52 +83,66 @@ export const XkcdSource: MangaSource = {
     };
   },
 
-  // ── Chapters ─────────────────────────────────────────────────────────
-  async chapters(mangaId: string, _dedupe: boolean): Promise<ChapterListResponse> {
+  // ── Chapters (all comics, newest first) ──────────────────────────────────
+  async chapters(_mangaId: string, _dedupe: boolean): Promise<ChapterListResponse> {
     const { $ } = await fetchHtml(http, `${BASE_URL}/archive/`);
-    const chapters: any[] = [];
 
-    $("#middleContainer > a").each((_, element) => {
-      const $el = $(element);
-      const relativeUrl = $el.attr("href") || "";
-      const comicNumber = parseInt(relativeUrl.replace(/\//g, ""), 10);
-      const title = $el.text().trim();
-      const date = $el.attr("title") || "";
+    const chapters: ChapterSummary[] = [];
 
-      if (!isNaN(comicNumber)) {
-        chapters.push({
-          chapter_number: comicNumber,
-          name: `${comicNumber}: ${title}`,
-          url: absUrl(BASE_URL, relativeUrl),
-          date_upload: date,
-        });
-      }
+    $("#middleContainer > a").each((_i, el) => {
+      const $a = $(el);
+      const href = $a.attr("href") || "";
+      const comicNumber = parseInt(href.replace(/\//g, ""), 10);
+      if (isNaN(comicNumber)) return;
+
+      const title = $a.text().trim();
+      const dateAttr = $a.attr("title") || "";
+      const date = parseXkcdDate(dateAttr);
+
+      chapters.push({
+        id: `xkcd-${comicNumber}`,               // clean ID, e.g. "xkcd-295"
+        number: comicNumber,
+        title: `${comicNumber}: ${title}`,
+        scanlator: "xkcd",
+        date,
+      });
     });
 
-    // Newest first (most recent comic first)
+    // Newest first (original order on page is oldest first)
     chapters.reverse();
 
-    const items = chapters.map(scraperChapterToSummary);
-
-    return { items };
+    return { items: chapters };
   },
 
-  // ── Pages ─────────────────────────────────────────────────────────────
+  // ── Pages (single image per comic) ──────────────────────────────────────
   async pages(chapterId: string): Promise<PageListResponse> {
-    // chapterId is the comic URL
-    const { $ } = await fetchHtml(http, chapterId);
-    const $img = $("#comic > img");
+    // chapterId is "xkcd-XXXX"
+    const comicNumber = chapterId.replace("xkcd-", "");
+    const comicUrl = `${BASE_URL}/${comicNumber}/`;
 
+    const { $ } = await fetchHtml(http, comicUrl);
+
+    const $img = $("#comic > img");
     if ($img.length === 0) {
-      throw new Error("Image asset not found.");
+      throw new Error("Image not found – comic may be interactive or unavailable");
     }
 
-    const imageUrl = absUrl(BASE_URL, imgAttr($img));
-    const altText = $img.attr("title") || "";
+    // Prefer HD image from srcset, otherwise use src
+    let imageUrl = "";
+    const srcset = $img.attr("srcset");
+    if (srcset) {
+      // Take the first candidate (largest usually)
+      imageUrl = absUrl(BASE_URL, srcset.split(",")[0].trim().split(" ")[0]);
+    }
+    if (!imageUrl) {
+      imageUrl = absUrl(BASE_URL, imgAttr($img));
+    }
 
+    // Alt text (tooltip) – can be returned as an extra page, but here we'll just include it in a custom field
+    // (the reader currently only uses `url`, so we ignore title for now)
     return {
       chapterId,
-      pages: [{ index: 0, url: imageUrl, ...(altText ? { title: altText } : {}) }],
+      pages: [{ index: 0, url: imageUrl }],
     };
   },
 };
