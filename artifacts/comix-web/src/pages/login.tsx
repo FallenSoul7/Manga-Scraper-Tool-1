@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearch } from "wouter";
 import { LogOut, CloudUpload, CloudDownload, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import { apiUrl } from "@/lib/api-url";
 import { useLibrarySync } from "@/hooks/use-library-sync";
 import { useStore } from "@/lib/storage";
@@ -24,16 +23,47 @@ function GoogleIcon() {
   );
 }
 
+function SuccessBanner() {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(false), 1200);
+    return () => clearTimeout(t);
+  }, []);
+  if (!visible) return null;
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(0,0,0,0.35)",
+        animation: "fadeIn 0.15s ease",
+      }}
+    >
+      <div style={{
+        background: "#22c55e", color: "#fff",
+        borderRadius: "1rem", padding: "1.25rem 2rem",
+        display: "flex", alignItems: "center", gap: "0.75rem",
+        fontSize: "1.1rem", fontWeight: 600,
+        boxShadow: "0 8px 32px rgba(34,197,94,0.35)",
+        animation: "popIn 0.2s ease",
+      }}>
+        <CheckCircle2 size={26} />
+        Signed in successfully!
+      </div>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   const searchString = useSearch();
   const authResult = new URLSearchParams(searchString).get("auth");
-  const { toast } = useToast();
   const libraryCount = useStore(s => Object.keys(s.library).length);
 
   const [user, setUser] = useState<GoogleUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [googleConfigured, setGoogleConfigured] = useState(true);
   const [dbConfigured, setDbConfigured] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(authResult === "success");
 
   const { state: syncState, message: syncMessage, uploadLibrary, downloadLibrary } = useLibrarySync();
 
@@ -53,17 +83,15 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (authResult === "success") {
-      toast({ title: "Signed in!", description: "You're now signed in with Google." });
-    } else if (authResult === "error") {
-      toast({ title: "Sign-in failed", description: "Something went wrong. Try again.", variant: "destructive" });
+    if (showSuccess) {
+      const t = setTimeout(() => setShowSuccess(false), 1200);
+      return () => clearTimeout(t);
     }
-  }, [authResult]);
+  }, [showSuccess]);
 
   async function handleLogout() {
     await fetch(apiUrl("/api/auth/logout"), { method: "POST", credentials: "include" });
     setUser(null);
-    toast({ title: "Signed out" });
   }
 
   const isSyncing = syncState === "uploading" || syncState === "downloading";
@@ -80,119 +108,110 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex flex-col gap-4 px-4 pt-6 pb-8 max-w-sm mx-auto">
+    <>
+      {showSuccess && <SuccessBanner />}
 
-      {/* Status box — always visible at top */}
-      <div className="w-full rounded-2xl border border-border bg-card px-4 py-4">
-        {user ? (
-          <div className="flex items-center gap-3">
-            {user.photo ? (
-              <img src={user.photo} alt="" className="w-10 h-10 rounded-full flex-shrink-0" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-muted flex-shrink-0" />
-            )}
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-green-500 uppercase tracking-wide">Already logged in</p>
-              <p className="text-sm text-foreground truncate">{user.email}</p>
-            </div>
-            <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 ml-auto" />
-          </div>
-        ) : (
-          <div className="text-center py-1">
-            <p className="text-sm font-medium text-muted-foreground">Not signed in</p>
-          </div>
-        )}
-      </div>
+      <main className="flex flex-col gap-4 px-4 pt-6 pb-8 max-w-sm mx-auto">
 
-      {/* Sign in / Sign up buttons — only when not logged in */}
-      {!user && (
-        <div className="grid grid-cols-2 gap-3">
-          {!googleConfigured ? (
-            <div className="col-span-2 rounded-xl bg-muted p-4 text-sm text-center text-muted-foreground">
-              Google sign-in isn't enabled yet.
+        {/* Status box — always at top */}
+        <div className="w-full rounded-2xl border border-border bg-card px-4 py-4">
+          {user ? (
+            <div className="flex items-center gap-3">
+              {user.photo ? (
+                <img src={user.photo} alt="" className="w-10 h-10 rounded-full flex-shrink-0" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-muted flex-shrink-0" />
+              )}
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-green-500 uppercase tracking-wide">Already logged in</p>
+                <p className="text-sm text-foreground truncate">{user.email}</p>
+              </div>
+              <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 ml-auto" />
             </div>
           ) : (
-            <>
-              <a
-                href={apiUrl("/api/auth/google")}
-                className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors"
-              >
-                <GoogleIcon />
-                <span className="flex-1 text-sm font-medium text-center">Google</span>
-                <span className="text-xs text-muted-foreground whitespace-nowrap">Sign up</span>
-              </a>
-              <a
-                href={apiUrl("/api/auth/google")}
-                className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors"
-              >
-                <GoogleIcon />
-                <span className="flex-1 text-sm font-medium text-center">Google</span>
-                <span className="text-xs text-muted-foreground whitespace-nowrap">Sign in</span>
-              </a>
-            </>
+            <div className="text-center py-1">
+              <p className="text-sm font-medium text-muted-foreground">Not signed in</p>
+            </div>
           )}
         </div>
-      )}
 
-      {/* Library sync — only when logged in */}
-      {user && (
-        dbConfigured ? (
-          <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-3">Library Sync</p>
-            <p className="text-sm text-muted-foreground mb-3">
-              You have <span className="font-semibold text-foreground">{libraryCount} titles</span> saved locally.
-            </p>
-
-            {syncState === "done" && (
-              <div className="flex items-center gap-2 text-sm text-green-600 bg-green-500/10 rounded-lg px-3 py-2 mb-3">
-                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                {syncMessage}
+        {/* Sign up / Sign in buttons — only when logged out */}
+        {!user && (
+          <div className="grid grid-cols-2 gap-3">
+            {!googleConfigured ? (
+              <div className="col-span-2 rounded-xl bg-muted p-4 text-sm text-center text-muted-foreground">
+                Google sign-in isn't enabled yet.
               </div>
+            ) : (
+              <>
+                <a
+                  href={apiUrl("/api/auth/google")}
+                  className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors"
+                >
+                  <GoogleIcon />
+                  <span className="flex-1 text-sm font-medium text-center">Google</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">Sign up</span>
+                </a>
+                <a
+                  href={apiUrl("/api/auth/google")}
+                  className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors"
+                >
+                  <GoogleIcon />
+                  <span className="flex-1 text-sm font-medium text-center">Google</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">Sign in</span>
+                </a>
+              </>
             )}
-            {syncState === "error" && (
-              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2 mb-3">
-                <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                {syncMessage}
-              </div>
-            )}
+          </div>
+        )}
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={uploadLibrary}
-                disabled={isSyncing}
-                className="flex items-center justify-center gap-2 rounded-lg border border-border bg-background py-2.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
-              >
-                {syncState === "uploading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
-                Save to cloud
-              </button>
-              <button
-                onClick={downloadLibrary}
-                disabled={isSyncing}
-                className="flex items-center justify-center gap-2 rounded-lg border border-border bg-background py-2.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
-              >
-                {syncState === "downloading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
-                Restore
-              </button>
+        {/* Library sync — only when logged in */}
+        {user && (
+          dbConfigured ? (
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-3">Library Sync</p>
+              <p className="text-sm text-muted-foreground mb-3">
+                You have <span className="font-semibold text-foreground">{libraryCount} titles</span> saved locally.
+              </p>
+              {syncState === "done" && (
+                <div className="flex items-center gap-2 text-sm text-green-600 bg-green-500/10 rounded-lg px-3 py-2 mb-3">
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                  {syncMessage}
+                </div>
+              )}
+              {syncState === "error" && (
+                <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2 mb-3">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {syncMessage}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={uploadLibrary} disabled={isSyncing} className="flex items-center justify-center gap-2 rounded-lg border border-border bg-background py-2.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
+                  {syncState === "uploading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+                  Save to cloud
+                </button>
+                <button onClick={downloadLibrary} disabled={isSyncing} className="flex items-center justify-center gap-2 rounded-lg border border-border bg-background py-2.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
+                  {syncState === "downloading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
+                  Restore
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="rounded-xl border border-dashed border-border bg-card/50 p-4 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground mb-1">Library sync not set up</p>
-            <p>Add a <code className="text-xs bg-muted px-1 py-0.5 rounded">DATABASE_URL</code> to enable cloud backup.</p>
-          </div>
-        )
-      )}
+          ) : (
+            <div className="rounded-xl border border-dashed border-border bg-card/50 p-4 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground mb-1">Library sync not set up</p>
+              <p>Add a <code className="text-xs bg-muted px-1 py-0.5 rounded">DATABASE_URL</code> to enable cloud backup.</p>
+            </div>
+          )
+        )}
 
-      {/* Sign out — only when logged in */}
-      {user && (
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 border border-border rounded-xl py-3 text-base font-medium text-destructive hover:bg-destructive/10 transition-colors"
-        >
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </button>
-      )}
-    </main>
+        {/* Sign out — only when logged in */}
+        {user && (
+          <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 border border-border rounded-xl py-3 text-base font-medium text-destructive hover:bg-destructive/10 transition-colors">
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </button>
+        )}
+      </main>
+    </>
   );
 }
