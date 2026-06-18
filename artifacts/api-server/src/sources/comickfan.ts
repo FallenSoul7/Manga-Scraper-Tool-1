@@ -29,7 +29,6 @@ function sanitizeImageUrl(url: string): string {
   if (!url) return "";
   let cleanUrl = url.replace(/\\/g, "").trim();
   
-  // Skip processing inline base64 image placeholders completely
   if (cleanUrl.startsWith("data:")) return cleanUrl;
   
   if (cleanUrl.startsWith("//")) {
@@ -282,7 +281,6 @@ export const ComickFanSource: MangaSource = {
     const $ = cheerio.load(res.data as string);
     const pageUrls: string[] = [];
 
-    // 🚀 METHOD 1: Primary Next.js State Core Mining (__NEXT_DATA__)
     const nextDataScript = $("#__NEXT_DATA__").html();
     if (nextDataScript) {
       try {
@@ -303,11 +301,10 @@ export const ComickFanSource: MangaSource = {
           }
         }
       } catch {
-        // Drop down to fallback DOM execution if script node parsing fails
+        // Fallback context execution
       }
     }
 
-    // 🛠️ METHOD 2: Secondary DOM Fallback (Scans src, data-src, and multi-resolution srcsets)
     if (pageUrls.length === 0) {
       $("div.w-full img, main img, article img").each((_i, el) => {
         const targetAttr = $(el).attr("data-src") ?? $(el).attr("src") ?? $(el).attr("srcset") ?? "";
@@ -336,7 +333,11 @@ export const ComickFanSource: MangaSource = {
     if (pageUrls.length > 0) {
       return {
         chapterId,
-        pages: pageUrls.map((url, i) => ({ index: i, url })),
+        // 🚀 THE PERMANENT LOOP BREAK: Wrap every image path into your Express routing endpoint safely
+        pages: pageUrls.map((url, i) => ({
+          index: i,
+          url: `/api/image-proxy?url=${encodeURIComponent(url)}&referer=${encodeURIComponent("https://comickfan.com/")}`
+        })),
       };
     }
 
@@ -384,7 +385,7 @@ export const ComickFanSource: MangaSource = {
         });
       }
     } catch {
-      // Recovery Block
+      // Fallback structural recovery block
     }
 
     if (tags.length === 0) {
