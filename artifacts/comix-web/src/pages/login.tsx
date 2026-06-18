@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useSearch } from "wouter";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, CloudUpload, CloudDownload, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiUrl, API_BASE } from "@/lib/api-url";
+import { apiUrl } from "@/lib/api-url";
+import { useLibrarySync } from "@/hooks/use-library-sync";
+import { useStore } from "@/lib/storage";
 
 interface GoogleUser {
   id: string;
@@ -15,18 +17,24 @@ export default function LoginPage() {
   const searchString = useSearch();
   const authResult = new URLSearchParams(searchString).get("auth");
   const { toast } = useToast();
+  const libraryCount = useStore(s => Object.keys(s.library).length);
 
   const [user, setUser] = useState<GoogleUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [googleConfigured, setGoogleConfigured] = useState(true);
+  const [dbConfigured, setDbConfigured] = useState(false);
+
+  const { state: syncState, message: syncMessage, uploadLibrary, downloadLibrary } = useLibrarySync();
 
   useEffect(() => {
     Promise.all([
       fetch(apiUrl("/api/auth/me"), { credentials: "include" }).then(r => r.json()).catch(() => ({ user: null })),
       fetch(apiUrl("/api/auth/status"), { credentials: "include" }).then(r => r.json()).catch(() => ({ googleConfigured: false })),
-    ]).then(([meData, statusData]) => {
+      fetch(apiUrl("/api/library/status"), { credentials: "include" }).then(r => r.json()).catch(() => ({ dbConfigured: false })),
+    ]).then(([meData, statusData, libStatus]) => {
       setUser(meData.user ?? null);
       setGoogleConfigured(statusData.googleConfigured ?? false);
+      setDbConfigured(libStatus.dbConfigured ?? false);
       setLoading(false);
     });
   }, []);
@@ -45,31 +53,83 @@ export default function LoginPage() {
     toast({ title: "Signed out" });
   }
 
+  const isSyncing = syncState === "uploading" || syncState === "downloading";
+
   return (
-    <main className="flex flex-col items-center px-4 pt-12 pb-8 min-h-[60vh]">
+    <main className="flex flex-col items-center px-4 pt-10 pb-8 max-w-sm mx-auto">
       {loading ? (
-        <div className="w-12 h-12 rounded-full bg-muted animate-pulse" />
+        <div className="flex flex-col items-center gap-3 pt-8">
+          <div className="w-16 h-16 rounded-full bg-muted animate-pulse" />
+          <div className="h-4 w-32 bg-muted rounded animate-pulse" />
+        </div>
       ) : user ? (
-        <div className="w-full max-w-sm text-center">
-          <div className="relative mx-auto mb-4 w-20 h-20">
-            {user.photo ? (
-              <img src={user.photo} alt={user.displayName} className="w-20 h-20 rounded-full shadow-md" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center">
-                <User className="h-10 w-10 text-primary-foreground" />
+        <div className="w-full">
+          {/* Profile */}
+          <div className="flex flex-col items-center mb-6">
+            <div className="relative mb-3">
+              {user.photo ? (
+                <img src={user.photo} alt={user.displayName} className="w-20 h-20 rounded-full shadow-md" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center">
+                  <User className="h-10 w-10 text-primary-foreground" />
+                </div>
+              )}
+              <span className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-full bg-green-500 border-2 border-background" />
+            </div>
+            <h2 className="text-xl font-bold">{user.displayName}</h2>
+            <p className="text-sm text-muted-foreground">{user.email}</p>
+          </div>
+
+          {/* Library sync */}
+          {dbConfigured ? (
+            <div className="rounded-xl border border-border bg-card p-4 mb-4">
+              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-3">Library Sync</p>
+              <p className="text-sm text-muted-foreground mb-3">
+                You have <span className="font-semibold text-foreground">{libraryCount} titles</span> saved locally.
+              </p>
+
+              {syncState === "done" && (
+                <div className="flex items-center gap-2 text-sm text-green-600 bg-green-500/10 rounded-lg px-3 py-2 mb-3">
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                  {syncMessage}
+                </div>
+              )}
+              {syncState === "error" && (
+                <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2 mb-3">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {syncMessage}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={uploadLibrary}
+                  disabled={isSyncing}
+                  className="flex items-center justify-center gap-2 rounded-lg border border-border bg-background py-2.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  {syncState === "uploading"
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <CloudUpload className="h-4 w-4" />}
+                  Save to cloud
+                </button>
+                <button
+                  onClick={downloadLibrary}
+                  disabled={isSyncing}
+                  className="flex items-center justify-center gap-2 rounded-lg border border-border bg-background py-2.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  {syncState === "downloading"
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <CloudDownload className="h-4 w-4" />}
+                  Restore
+                </button>
               </div>
-            )}
-            <span className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-green-500 border-2 border-background" />
-          </div>
-
-          <h2 className="text-xl font-bold mb-1">{user.displayName}</h2>
-          <p className="text-sm text-muted-foreground mb-8">{user.email}</p>
-
-          <div className="rounded-xl border border-border bg-card p-4 text-left mb-6">
-            <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-2">Account</p>
-            <p className="text-sm font-medium">{user.displayName}</p>
-            <p className="text-xs text-muted-foreground">{user.email}</p>
-          </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-border bg-card/50 p-4 mb-4 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground mb-1">Library sync not set up</p>
+              <p>Add a <code className="text-xs bg-muted px-1 py-0.5 rounded">DATABASE_URL</code> from Neon to Render to enable cloud backup.</p>
+            </div>
+          )}
 
           <button
             onClick={handleLogout}
@@ -80,7 +140,7 @@ export default function LoginPage() {
           </button>
         </div>
       ) : (
-        <div className="w-full max-w-sm text-center">
+        <div className="w-full text-center pt-4">
           <div className="w-16 h-16 rounded-full bg-white shadow-md border border-border flex items-center justify-center mx-auto mb-5">
             <GoogleIcon />
           </div>
@@ -91,8 +151,10 @@ export default function LoginPage() {
 
           {!googleConfigured ? (
             <div className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
-              Google sign-in isn't set up yet.{" "}
-              <span className="font-medium text-foreground">Add your Google credentials to Render to enable it.</span>
+              Google sign-in isn't enabled yet.{" "}
+              <span className="font-medium text-foreground">
+                Follow the setup guide in System → Login.
+              </span>
             </div>
           ) : (
             <a

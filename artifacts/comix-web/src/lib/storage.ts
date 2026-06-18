@@ -412,6 +412,10 @@ export const storeActions = {
     saveState({ ...memoryState, library: newLib });
   },
 
+  setLibrary(newLibrary: Record<string, SavedManga>) {
+    saveState({ ...memoryState, library: newLibrary });
+  },
+
   addCategory(name: string): Category {
     const id = Math.random().toString(36).substring(2, 9);
     const newCat: Category = { id, name, order: memoryState.categories.length };
