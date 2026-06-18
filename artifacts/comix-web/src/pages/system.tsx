@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Settings, Download, BarChart3, Info, FolderOpen, Sparkles, Shield, Trash2, AppWindow, LogIn, UserCircle } from "lucide-react";
 import { getCachedUser } from "@/lib/auth-cache";
@@ -63,7 +64,15 @@ function Block({ block }: { block: SystemBlock }) {
 }
 
 export default function SystemPage() {
-  const loggedIn = !!getCachedUser();
+  // Use state so React actively tracks whether the user is logged in
+  const [user, setUser] = useState(() => getCachedUser());
+
+  // Grab the absolute freshest cache data whenever this page mounts
+  useEffect(() => {
+    setUser(getCachedUser());
+  }, []);
+
+  const loggedIn = !!user;
 
   const blocks: SystemBlock[] = [
     {
@@ -115,20 +124,23 @@ export default function SystemPage() {
       description: "Add ComiHub to your home screen for offline use.",
       icon: AppWindow,
     },
-    // Dynamic Account Block: Shows "Profile" if logged in, "Login" if logged out
-    loggedIn
-      ? {
-          href: "/profile",
-          label: "Profile",
-          description: "Edit your username and view your Google account.",
-          icon: UserCircle,
-        }
-      : {
-          href: "/login",
-          label: "Login",
-          description: "Sign in with Google to sync your library across devices.",
-          icon: LogIn,
-        },
+    {
+      href: "/profile",
+      label: "Profile",
+      description: loggedIn
+        ? "Edit your username and view your Google account."
+        : "Sign in to view your profile.",
+      icon: UserCircle,
+    },
+    {
+      href: loggedIn ? undefined : "/login",
+      label: "Login",
+      description: loggedIn
+        ? "You're signed in. Visit Profile to manage your account."
+        : "Sign in with Google to sync your library across devices.",
+      icon: LogIn,
+      disabled: loggedIn,
+    },
     {
       label: "About",
       description: "Version, changelog, credits.",
