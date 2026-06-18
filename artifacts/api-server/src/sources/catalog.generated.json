@@ -15,6 +15,18 @@
       "icon": "ko.toon11.png"
     },
     {
+  "id": "en.xkcd",
+  "slug": "xkcd",
+  "name": "xkcd",
+  "lang": "en",
+  "isNsfw": false,
+  "versionCode": 1,
+  "extClass": "XkcdSource",
+  "themePkg": null,
+  "baseUrl": "https://xkcd.com",
+  "icon": null
+},
+    {
       "id": "en.eighteenporncomic",
       "slug": "eighteenporncomic",
       "name": "18 Porn Comic",
