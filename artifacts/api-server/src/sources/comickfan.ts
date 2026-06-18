@@ -27,30 +27,15 @@ function checkNsfw(genres: string[]): boolean {
 
 // ---------------------------------------------------------------------------
 // Grid parser — used by all listing pages
-//
-// Actual HTML (from server-rendered /manga-list/{genre}):
-//   <div> <form>…</form> </div>
-//   <div class="grid grid-cols-3 md:grid-cols-5 …">
-//     <a href="https://comickfan.com/manga/the-outlaws-0">
-//       <div …> <div …> <div class="… thumb-cover">
-//         <span data-state="Ongoing">Ongoing</span>
-//         <img src="https://meo.cdncmk.com/…" alt="The Outlaws 0" …>
-//       </div> </div> </div>
-//     </a>
-//     …
-//   </div>
 // ---------------------------------------------------------------------------
 function parseGrid($: ReturnType<typeof cheerio.load>): MangaSummary[] {
   const items: MangaSummary[] = [];
   const seen  = new Set<string>();
 
-  // Primary: grid that immediately follows the filter-form wrapper
-  // Fallback: any grid-child anchor linking to /manga/ (covers edge layouts)
   const cards = $("div:has(> form) + div.grid > a, div.grid > a[href*='comickfan.com/manga/']");
 
   cards.each((_i, el) => {
     const href = $(el).attr("href") ?? "";
-    // Accepts both relative (/manga/slug) and absolute (https://comickfan.com/manga/slug)
     const mangaMatch = href.match(/\/manga\/([a-z0-9][a-z0-9_-]*)(?:[/?#]|$)/);
     const slug = mangaMatch?.[1] ?? "";
     if (!slug || seen.has(slug)) return;
@@ -68,22 +53,10 @@ function parseGrid($: ReturnType<typeof cheerio.load>): MangaSummary[] {
   return items;
 }
 
-// hasNextPage — official Kotlin source checks for a:has(img[alt=Next])
 function hasNext($: ReturnType<typeof cheerio.load>): boolean {
   return $("a:has(img[alt='Next']), a:has(img[alt=Next])").length > 0;
 }
 
-// ---------------------------------------------------------------------------
-// getValue helper — mirrors the Kotlin source's Element.getValue(label)
-//
-// Row structure (searched document-wide, not inside a specific root, because
-// div.bg-card-section matches both the breadcrumb nav and the info panel and
-// we can't rely on it being unique):
-//   <div class="… flex-row … gap-4 …">
-//     <div class="… text-sm …">Label</div>
-//     <div class="… text-sm …">Value</div>
-//   </div>
-// ---------------------------------------------------------------------------
 function getValue($: ReturnType<typeof cheerio.load>, label: string): string | null {
   let result: string | null = null;
   $("div.flex-row.gap-4").each((_i, row): false | void => {
@@ -92,7 +65,7 @@ function getValue($: ReturnType<typeof cheerio.load>, label: string): string | n
     if (labelText === label) {
       const val = cells.eq(1).text().trim();
       if (val && val !== "-" && val !== "_") result = val;
-      return false; // break .each
+      return false; 
     }
   });
   return result;
@@ -133,7 +106,6 @@ export const ComickFanSource: MangaSource = {
   isNsfw:       false,
   imageReferer: "https://comickfan.com/",
 
-  // ---- Sorts ---------------------------------------------------------------
   popularSorts: [
     { value: "rating",  label: "Top Rated"    },
     { value: "latest",  label: "Last Updated" },
@@ -141,11 +113,6 @@ export const ComickFanSource: MangaSource = {
     { value: "",        label: "Default"      },
   ],
 
-  // ---- Popular -------------------------------------------------------------
-  // The official source uses /advanced-search?sort=rating which is JS-rendered,
-  // so we use /manga-list/{genre} (server-rendered) when a genre tag is selected.
-  // Without a genre, we fall back to advanced-search (will return empty for us
-  // since results are JS-rendered, but won't crash).
   async popular(opts: ListOptions): Promise<MangaListResponse> {
     const included = (opts.tagIds ?? []).filter(t => !t.startsWith("-"));
     if (included.length > 0) {
@@ -156,7 +123,6 @@ export const ComickFanSource: MangaSource = {
       const $ = cheerio.load(res.data as string);
       return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
     }
-    // No genre selected — advanced-search is JS-rendered, returns empty grid
     const res = await html.get("/advanced-search", {
       params: { page: opts.page, sort: opts.sort ?? "rating" },
     });
@@ -165,7 +131,6 @@ export const ComickFanSource: MangaSource = {
     return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
   },
 
-  // ---- Latest --------------------------------------------------------------
   async latest(opts: ListOptions): Promise<MangaListResponse> {
     const included = (opts.tagIds ?? []).filter(t => !t.startsWith("-"));
     if (included.length > 0) {
@@ -184,7 +149,6 @@ export const ComickFanSource: MangaSource = {
     return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
   },
 
-  // ---- Search --------------------------------------------------------------
   async search(query: string, opts: ListOptions): Promise<MangaListResponse> {
     const included = (opts.tagIds ?? []).filter(t => !t.startsWith("-"));
     if (included.length > 0 && !query) {
@@ -195,7 +159,6 @@ export const ComickFanSource: MangaSource = {
       const $ = cheerio.load(res.data as string);
       return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
     }
-    // Text search via advanced-search (JS-rendered, will likely be empty)
     const params: Record<string, string | number> = { page: opts.page };
     if (query)    params.name = query;
     if (opts.sort) params.sort = opts.sort;
@@ -206,37 +169,25 @@ export const ComickFanSource: MangaSource = {
     return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
   },
 
-  // ---- Details -------------------------------------------------------------
-  // Mirrors the official Kotlin source's mangaDetailsParse exactly.
   async details(slug: string, opts: DetailOptions): Promise<MangaDetail> {
     const res = await html.get(`/manga/${slug}`);
     if (res.status >= 400) throw new Error(`ComicKFan detail error ${res.status} for ${slug}`);
     const $ = cheerio.load(res.data as string);
 
-    // Title
     const title = $("h1").first().text().trim() || slug;
 
-    // Synopsis — div.comic-content.desk contains: "Read [Type] [Title] [/ AltTitle][Synopsis]"
-    // We strip the leading boilerplate step-by-step.
     let synopsis = $("div.comic-content.desk").first().text().trim();
-    // 1. Strip "Read [Type] " e.g. "Read Manhwa "
     synopsis = synopsis.replace(/^Read\s+\S+\s+/, "");
-    // 2. Strip the main title if it appears at start
     if (title && synopsis.startsWith(title)) synopsis = synopsis.slice(title.length);
-    // 3. Strip optional " / " alt-title separator
     synopsis = synopsis.replace(/^\s*\/\s*/, "");
-    // 4. Strip any remaining non-ASCII + digit run before the first uppercase English letter
-    //    (handles Korean alt-title like "범죄도시0" glued directly to "He sweeps…")
     synopsis = synopsis.replace(/^[^A-Za-z.!?'"(]+(?=[A-Z])/, "");
     synopsis = synopsis.trim();
 
-    // Thumbnail — div.thumb-cover img (globally), fallback to og:image
     const thumbnail =
       $("div.thumb-cover img").first().attr("src") ??
       $("meta[property='og:image']").attr("content") ??
       "";
 
-    // Genres — absolute links to /manga-list/
     const genres: string[] = [];
     const sourceTags: Array<{ id: string; name: string; group: string }> = [];
     $("a[href*='comickfan.com/manga-list/'], a[href^='/manga-list/']").each((_i, el) => {
@@ -249,7 +200,6 @@ export const ComickFanSource: MangaSource = {
       }
     });
 
-    // Author / Artist / Status / Type — searched document-wide via getValue
     const author    = getValue($, "Author")  ?? "";
     const artist    = getValue($, "Artist")  ?? "";
     const statusRaw = getValue($, "Status")  ?? "";
@@ -286,9 +236,6 @@ export const ComickFanSource: MangaSource = {
     };
   },
 
-  // ---- Chapters ------------------------------------------------------------
-  // Official: GET /api/comics/${slug}/chapter-list?translation_group_id=
-  // Returns per_page=2000 by default — all chapters in one request.
   async chapters(slug: string): Promise<ChapterListResponse> {
     const res = await api.get<CfChapterResp>(`/api/comics/${slug}/chapter-list`, {
       params:  { translation_group_id: "" },
@@ -298,7 +245,6 @@ export const ComickFanSource: MangaSource = {
 
     const chapters = res.data?.data ?? [];
 
-    // Deduplicate: keep one entry per chapter number (highest hash_id length ≈ most recent)
     const byChap = new Map<string, CfChapter>();
     for (const ch of chapters) {
       const key = ch.chapter ?? "0";
@@ -327,34 +273,39 @@ export const ComickFanSource: MangaSource = {
     };
   },
 
-  // ---- Pages ---------------------------------------------------------------
-  // Primary: JSON API endpoint (mirrors ComicK API pattern).
-  // Fallback: scrape the HTML reader page.
+  // ---- Pages (Fixed & Reinforced) -------------------------------------------
   async pages(chapterId: string): Promise<PageListResponse> {
     const decoded = decodeChapterId(chapterId);
     if (!decoded) throw new Error(`ComicKFan: invalid chapter ID "${chapterId}"`);
     const { slug, chapter, hashId } = decoded;
 
-    // --- Attempt 1: JSON API (fast, no JS rendering needed) ---
-    try {
-      const apiRes = await api.get<{ images?: Array<{ url?: string; b2_key?: string }> }>(
-        `/api/chapters/${hashId}/`,
-        { headers: { Referer: `${BASE}/manga/${slug}` } },
-      );
-      const images = apiRes.data?.images ?? [];
-      if (images.length > 0) {
-        const pageUrls = images
-          .map(img => img.url ?? (img.b2_key ? `https://meo.cdncmk.com/${img.b2_key}` : ""))
-          .filter(Boolean);
-        if (pageUrls.length > 0) {
-          return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
+    // --- Attempt 1: JSON API variations ---
+    const apiEndpoints = [
+      `/api/chapters/${hashId}/`,
+      `/api/chapter/${hashId}`,
+    ];
+
+    for (const endpoint of apiEndpoints) {
+      try {
+        const apiRes = await api.get<any>(endpoint, { 
+          headers: { Referer: `${BASE}/manga/${slug}` } 
+        });
+        const data = apiRes.data;
+        const images = data?.images ?? data?.chapter?.images ?? [];
+        if (images.length > 0) {
+          const pageUrls = images
+            .map((img: any) => img.url ?? (img.b2_key ? `https://meo.cdncmk.com/${img.b2_key}` : ""))
+            .filter(Boolean);
+          if (pageUrls.length > 0) {
+            return { chapterId, pages: pageUrls.map((url: string, i: number) => ({ index: i, url })) };
+          }
         }
+      } catch {
+        // continue to next path
       }
-    } catch {
-      // fall through to HTML scrape
     }
 
-    // --- Attempt 2: alternate API path ---
+    // --- Attempt 2: Alternate API Path ---
     try {
       const apiRes2 = await api.get<{ pages?: Array<{ url?: string }> }>(
         `/api/comics/${slug}/chapters/${chapter}/pages`,
@@ -368,12 +319,10 @@ export const ComickFanSource: MangaSource = {
         }
       }
     } catch {
-      // fall through to HTML scrape
+      // fall through
     }
 
-    // --- Attempt 3: scrape the HTML reader page ---
-    // The reader is JS-rendered but the CDN image URLs are embedded directly
-    // in the static HTML as meo*.cdncmk.com URLs. We extract them with regex.
+    // --- Attempt 3: Enhanced HTML Reader / Script Scrape ---
     const readingUrl = `/manga/${slug}/chapter-${chapter}-${hashId}`;
     const res = await html.get(readingUrl, {
       headers: { Referer: `${BASE}/manga/${slug}` },
@@ -382,45 +331,67 @@ export const ComickFanSource: MangaSource = {
 
     const rawHtml = res.data as string;
 
-    // Extract thumbnail URL from window.chapter_data to exclude it from pages
+    // 1. Direct window block parsing (Most reliable for hydrated layouts)
+    const chapterDataMatch = rawHtml.match(/window\.chapter_data\s*=\s*({.+?});/);
+    if (chapterDataMatch) {
+      try {
+        const parsedData = JSON.parse(chapterDataMatch[1]);
+        const images = parsedData.images ?? parsedData.chapter?.images ?? [];
+        if (images.length > 0) {
+          const pageUrls = images.map((img: any) => {
+            const path = img.url ?? img.b2_key ?? "";
+            if (!path) return "";
+            return path.startsWith("http") ? path : `https://meo.cdncmk.com/${path}`;
+          }).filter(Boolean);
+
+          if (pageUrls.length > 0) {
+            return { chapterId, pages: pageUrls.map((url: string, i: number) => ({ index: i, url })) };
+          }
+        }
+      } catch {
+        // block syntax error, fallback to regex
+      }
+    }
+
+    // 2. Escape-Safe Regular Expression Extraction
+    // Matches patterns even when forward slashes are json-escaped (\/)
+    const cdnRegex = /https?:\\?\/\\?\/meo\d*\.cdncmk\.com\\?\/[^"\s>]+?\.(?:webp|jpg|jpeg|png|avif)/gi;
+    const matches = rawHtml.match(cdnRegex) ?? [];
+    
+    // Clean backslashes from URLs
+    const allCdnUrls = [...new Set(matches.map(url => url.replace(/\\/g, "")))];
+
     let thumbnailUrl = "";
     const thumbMatch = rawHtml.match(/"thumbnail"\s*:\s*"([^"]+)"/);
-    if (thumbMatch) thumbnailUrl = thumbMatch[1];
+    if (thumbMatch) thumbnailUrl = thumbMatch[1].replace(/\\/g, "");
 
-    // Extract all CDN image URLs embedded in the page HTML
-    const cdnRegex = /https?:\/\/meo\d*\.cdncmk\.com\/[A-Za-z0-9_./-]+\.(?:webp|jpg|jpeg|png)/g;
-    const allCdnUrls = [...new Set(rawHtml.match(cdnRegex) ?? [])];
-
-    // Filter out the cover thumbnail — actual chapter pages are typically on meo2+ subdomains
     const pageUrls = allCdnUrls.filter(url =>
       url !== thumbnailUrl &&
       !url.includes("thumb-default") &&
-      !url.includes("thumb-cover"),
+      !url.includes("thumb-cover") &&
+      !url.includes("logo.png")
     );
 
     if (pageUrls.length > 0) {
       return { chapterId, pages: pageUrls.map((url, i) => ({ index: i, url })) };
     }
 
-    // --- Final fallback: cheerio selectors (in case structure changes) ---
+    // 3. Cheerio Dom Fallback
     const $ = cheerio.load(rawHtml);
     const fallbackUrls: string[] = [];
     const seen = new Set<string>();
     const selectors = [
-      "div.w-full > img[loading=lazy]",
       "div.w-full img",
       ".reading-content img",
-      ".chapter-content img",
-      "img[loading=lazy][src*='meo']",
-      "img[loading=lazy]",
-      "img[data-src]",
+      "img[src*='meo']",
+      "img[data-src]"
     ];
     for (const sel of selectors) {
       $(sel).each((_i, el) => {
         const src = $(el).attr("src") ?? $(el).attr("data-src") ?? "";
         if (!src || seen.has(src) || src.startsWith("data:")) return;
         seen.add(src);
-        fallbackUrls.push(src);
+        fallbackUrls.push(src.replace(/\\/g, ""));
       });
       if (fallbackUrls.length > 0) break;
     }
@@ -431,12 +402,9 @@ export const ComickFanSource: MangaSource = {
     };
   },
 
-  // ---- Tags ----------------------------------------------------------------
-  // Genre list hardcoded from official ComicKFanFilters.kt (avoids extra HTTP round-trip)
   async tags(): Promise<SourceTag[]> {
     if (cachedTags) return cachedTags;
     const genres: Array<{ id: string; name: string; group: string }> = [
-      // Format
       { id: "award-winning",   name: "Award Winning",   group: "Format" },
       { id: "long-strip",      name: "Long Strip",      group: "Format" },
       { id: "official-colored",name: "Official Colored",group: "Format" },
@@ -449,12 +417,10 @@ export const ComickFanSource: MangaSource = {
       { id: "web-comic",       name: "Web Comic",        group: "Format" },
       { id: "oneshot",         name: "Oneshot",          group: "Format" },
       { id: "doujinshi",       name: "Doujinshi",        group: "Format" },
-      // Content
       { id: "sexual-violence", name: "Sexual Violence",  group: "Content" },
       { id: "gore",            name: "Gore",             group: "Content" },
       { id: "smut",            name: "Smut",             group: "Content" },
       { id: "ecchi",           name: "Ecchi",            group: "Content" },
-      // Theme
       { id: "ninja",           name: "Ninja",            group: "Theme" },
       { id: "virtual-reality", name: "Virtual Reality",  group: "Theme" },
       { id: "police",          name: "Police",           group: "Theme" },
@@ -492,7 +458,6 @@ export const ComickFanSource: MangaSource = {
       { id: "samurai",         name: "Samurai",          group: "Theme" },
       { id: "genderswap",      name: "Genderswap",       group: "Theme" },
       { id: "supernatural",    name: "Supernatural",     group: "Theme" },
-      // Genre
       { id: "fantasy",         name: "Fantasy",          group: "Genre" },
       { id: "wuxia",           name: "Wuxia",            group: "Genre" },
       { id: "drama",           name: "Drama",            group: "Genre" },
