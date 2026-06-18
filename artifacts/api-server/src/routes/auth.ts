@@ -2,9 +2,7 @@ import { Router } from "express";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
-import { getDb, isDbConfigured } from "../db";
-import { users } from "../schema";
-import { eq } from "drizzle-orm";
+import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase";
 
 const router = Router();
 
@@ -25,55 +23,65 @@ function isConfigured() {
   return !!(clientID && clientSecret);
 }
 
-// ── DB helpers ────────────────────────────────────────────────────────────────
-
-interface GoogleUser {
+// ── User profile type ─────────────────────────────────────────────────────────
+export interface GoogleUser {
   id: string;
   displayName: string;
   email: string;
   photo: string;
 }
 
-// Upsert user into Neon so profile survives Render restarts
-async function saveUserToDB(user: GoogleUser) {
-  if (!isDbConfigured()) return;
-  try {
-    const db = getDb();
-    await db.insert(users).values({
+// ── Supabase helpers ──────────────────────────────────────────────────────────
+// Uses the service key (bypasses RLS) — safe because this only runs on Render.
+
+async function saveUserToSupabase(user: GoogleUser) {
+  const sb = getSupabaseAdmin();
+  if (!sb) return;
+  const { error } = await sb.from("comihub_users").upsert(
+    {
       id: user.id,
-      displayName: user.displayName,
+      display_name: user.displayName,
       email: user.email,
       photo: user.photo,
-    }).onConflictDoUpdate({
-      target: users.id,
-      set: {
-        displayName: user.displayName,
-        email: user.email,
-        photo: user.photo,
-      },
-    });
-  } catch (err) {
-    console.error("Failed to save user to DB:", err);
-  }
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "id" },
+  );
+  if (error) console.error("Supabase upsert error:", error.message);
 }
 
-// Load user from Neon by Google ID
-async function loadUserFromDB(id: string): Promise<GoogleUser | null> {
-  if (!isDbConfigured()) return null;
-  try {
-    const db = getDb();
-    const rows = await db.select().from(users).where(eq(users.id, id));
-    if (!rows[0]) return null;
-    return {
-      id: rows[0].id,
-      displayName: rows[0].displayName,
-      email: rows[0].email,
-      photo: rows[0].photo,
-    };
-  } catch (err) {
-    console.error("Failed to load user from DB:", err);
-    return null;
-  }
+async function loadUserFromSupabase(id: string): Promise<GoogleUser | null> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return null;
+  const { data, error } = await sb
+    .from("comihub_users")
+    .select("id, display_name, email, photo")
+    .eq("id", id)
+    .single();
+  if (error || !data) return null;
+  return {
+    id: data.id as string,
+    displayName: data.display_name as string,
+    email: data.email as string,
+    photo: data.photo as string,
+  };
+}
+
+// ── In-memory fallback (dev / Supabase not configured) ───────────────────────
+const memUsers = new Map<string, GoogleUser>();
+
+async function saveUser(user: GoogleUser) {
+  memUsers.set(user.id, user);
+  await saveUserToSupabase(user);
+}
+
+async function loadUser(id: string): Promise<GoogleUser | null> {
+  // Check memory cache first (avoids DB round-trip on same process)
+  if (memUsers.has(id)) return memUsers.get(id)!;
+  // Fall back to Supabase (survives Render restarts)
+  const fromDb = await loadUserFromSupabase(id);
+  if (fromDb) memUsers.set(fromDb.id, fromDb); // warm the cache
+  return fromDb;
 }
 
 // ── Session ───────────────────────────────────────────────────────────────────
@@ -113,21 +121,18 @@ function ensureStrategy() {
         email: profile.emails?.[0]?.value ?? "",
         photo: profile.photos?.[0]?.value ?? "",
       };
-      // Persist to Neon so profile survives server restarts
-      await saveUserToDB(user);
+      await saveUser(user);
       return done(null, user);
     }),
   );
   strategyRegistered = true;
 }
 
-// serialize: store only the Google ID in the session cookie
 passport.serializeUser((user, done) => done(null, (user as GoogleUser).id));
 
-// deserialize: load full profile from Neon (not RAM) so restarts don't break sessions
 passport.deserializeUser(async (id: string, done) => {
   try {
-    const user = await loadUserFromDB(id);
+    const user = await loadUser(id);
     done(null, user);
   } catch (err) {
     done(err, null);
@@ -140,7 +145,10 @@ router.use(passport.session());
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 router.get("/status", (_req, res) => {
-  res.json({ googleConfigured: isConfigured(), dbConfigured: isDbConfigured() });
+  res.json({
+    googleConfigured: isConfigured(),
+    dbConfigured: isSupabaseConfigured(),
+  });
 });
 
 router.get("/me", (req, res) => {
@@ -158,7 +166,7 @@ router.post("/logout", (req, res) => {
 router.get("/google", (req, res, next) => {
   if (!isConfigured()) {
     res.status(503).json({
-      error: "Google OAuth not configured — add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to your environment.",
+      error: "Google OAuth not configured — add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Render.",
     });
     return;
   }
