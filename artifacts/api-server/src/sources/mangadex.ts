@@ -11,8 +11,33 @@ import type {
   MangaSummary,
 } from "./types";
 
-const BASE_URL = "https://asurascans.com";   // ← Current main domain
+const BASE_URL = "https://asurascans.com";   // Change only if domain dies
 const http = makeHttp(BASE_URL);
+
+async function parseList($: any, page: number): Promise<MangaListResponse> {
+  const items: MangaSummary[] = [];
+  $(".manga-item, .series-item, article, .grid > div, .card").each((_: any, el: any) => {
+    const $el = $(el);
+    const link = $el.find("a").first().attr("href") || "";
+    const id = link.split("/").filter(Boolean).pop() || "";
+    const title = $el.find("h3, .title, .font-semibold, .manga-title").text().trim();
+    let thumb = imgAttr($el.find("img"));
+    thumb = absUrl(BASE_URL, thumb);
+
+    if (id && title) {
+      items.push({
+        id,
+        title,
+        thumbnail: proxifyImage(thumb, BASE_URL, true),
+        type: "Manhwa",
+        isNsfw: false,
+      });
+    }
+  });
+
+  const hasNextPage = $(".pagination .next, .next-page").length > 0 || items.length >= 20;
+  return { items, page, hasNextPage };
+}
 
 export const AsuraSource: MangaSource = {
   id: "en.asura",
@@ -22,53 +47,23 @@ export const AsuraSource: MangaSource = {
   imageReferer: `${BASE_URL}/`,
 
   async popular(o: ListOptions) {
-    return this.list("/series", o.page);   // adjust path if needed
+    const { $ } = await fetchHtml(http, `/series?page=${o.page}`);
+    return parseList($, o.page);
   },
 
   async latest(o: ListOptions) {
-    return this.list("/series?sort=latest", o.page);
+    const { $ } = await fetchHtml(http, `/series?sort=latest&page=${o.page}`);
+    return parseList($, o.page);
   },
 
   async search(query: string, o: ListOptions) {
     const { $ } = await fetchHtml(http, `/search?keyword=${encodeURIComponent(query)}&page=${o.page}`);
-    return this.parseList($);
+    return parseList($, o.page);
   },
-
-  private async list(path: string, page: number) {
-    const { $ } = await fetchHtml(http, `${path}?page=${page}`);
-    return this.parseList($);
-  },
-
-  private parseList($: any): MangaListResponse {
-    const items: MangaSummary[] = [];
-    $(".manga-item, .series-item, article, .grid > div").each((_: any, el: any) => {
-      const $el = $(el);
-      const link = $el.find("a").first().attr("href") || "";
-      const id = link.split("/").filter(Boolean).pop() || "";
-      const title = $el.find("h3, .title, .font-semibold, .manga-title").text().trim();
-      let thumb = imgAttr($el.find("img"));
-      thumb = absUrl(BASE_URL, thumb);
-
-      if (id && title) {
-        items.push({
-          id,
-          title,
-          thumbnail: proxifyImage(thumb, BASE_URL, true),
-          type: "Manhwa",
-          isNsfw: false,
-        });
-      }
-    });
-
-    const hasNextPage = $(".pagination .next").length > 0 || items.length >= 20;
-    return { items, page: 1, hasNextPage };
-  },
-
-  // ... (details, chapters, pages functions stay the same as previous message)
 
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
-    const { $ } = await fetchHtml(http, `/comics/${id}`);  // adjust if path is /series/${id}
-    const title = $("h1").first().text().trim();
+    const { $ } = await fetchHtml(http, `/comics/${id}`);
+    const title = $("h1").first().text().trim() || "Unknown";
     let thumbnail = imgAttr($("img.cover, .manga-cover img, .series-cover img"));
     thumbnail = absUrl(BASE_URL, thumbnail);
 
@@ -77,9 +72,9 @@ export const AsuraSource: MangaSource = {
 
     return {
       id,
-      title: title || "Unknown",
+      title,
       thumbnail: proxifyImage(thumbnail, BASE_URL, true),
-      author: $(".author, .artist").text().trim(),
+      author: $(".author").text().trim(),
       artist: "",
       synopsis: $(".description, .summary, .synopsis").text().trim(),
       altTitles: [],
@@ -101,7 +96,7 @@ export const AsuraSource: MangaSource = {
       const $el = $(el);
       const href = absUrl(BASE_URL, $el.attr("href") || "");
       const text = $el.text().trim();
-      const number = parseFloat(text.match(/[\d.]+/)?.[0] || "0");
+      const number = parseFloat(text.match(/[\d.]+/)?.[0] || "0") || 0;
 
       if (href) {
         items.push({
@@ -135,5 +130,7 @@ export const AsuraSource: MangaSource = {
     return { chapterId, pages };
   },
 
-  async tags() { return []; },
+  async tags(): Promise<SourceTag[]> {
+    return [];
+  },
 };
