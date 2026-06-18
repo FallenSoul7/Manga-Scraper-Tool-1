@@ -99,20 +99,60 @@ export function hash32(input: string): number {
   return h & 0x7fffffff;
 }
 
-/** 
- * NEW: Wraps an image URL in your backend proxy if needed.
- * In the future, we can inject your server's domain here, but it's often 
- * safer to just let the frontend app append the proxy prefix based on the user's Settings toggle!
- */
+/** Wraps an image URL in your backend proxy if needed. */
 export function proxifyImage(originalUrl: string, referer: string, useProxy: boolean = false): string {
   if (!originalUrl) return "";
   if (!useProxy) return originalUrl;
   
-  // This assumes you will add the /api/proxy-image route to your server.
-  // The frontend can dynamically replace "YOUR_SERVER_URL" or we can pass it as an environment variable.
   const encodedUrl = encodeURIComponent(originalUrl);
   const encodedRef = encodeURIComponent(referer);
-  
-  // Note: For relative frontend usage, you might just return `/api/proxy-image?...`
   return `/api/proxy-image?url=${encodedUrl}&referer=${encodedRef}`;
+}
+
+// ==========================================
+// NEW: Unified Extension Framework
+// ==========================================
+
+export interface MangaScraper {
+  name: string;
+  baseUrl: string;
+  getDetails(): Promise<any>;
+  getChapters(): Promise<any[]>;
+  getPages(chapterUrl: string): Promise<{ images: string[]; alt_text?: string }>;
+}
+
+// Import your scrapers here
+import { XkcdScraper } from "./source/xkcd";
+
+const registeredScrapers: Record<string, new (http: AxiosInstance) => MangaScraper> = {
+  xkcd: XkcdScraper,
+  // webtoons: WebtoonsScraper, <-- When ready, drop it right here
+};
+
+export class ScraperEngine {
+  /** Resolves and runs a specific scraper instance with a configured Axios pipe */
+  private static getSource(sourceKey: string): MangaScraper {
+    const ScraperClass = registeredScrapers[sourceKey.toLowerCase()];
+    if (!ScraperClass) {
+      throw new Error(`Extension source '${sourceKey}' is not registered.`);
+    }
+    
+    // Create an instance and pass down an isolated HTTP client configured for that source
+    const dummyInstance = new ScraperClass(axios.create());
+    const configuredHttp = makeHttp(dummyInstance.baseUrl);
+    
+    return new ScraperClass(configuredHttp);
+  }
+
+  static async getMangaDetails(sourceKey: string) {
+    return await this.getSource(sourceKey).getDetails();
+  }
+
+  static async getChapterList(sourceKey: string) {
+    return await this.getSource(sourceKey).getChapters();
+  }
+
+  static async getPageList(sourceKey: string, chapterUrl: string) {
+    return await this.getSource(sourceKey).getPages(chapterUrl);
+  }
 }
