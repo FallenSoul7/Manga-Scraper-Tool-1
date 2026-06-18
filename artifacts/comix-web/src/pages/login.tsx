@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useSearch } from "wouter";
-import { LogOut, CloudUpload, CloudDownload, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { useSearch, Link } from "wouter";
+import { LogOut, CloudUpload, CloudDownload, CheckCircle2, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
 import { useLibrarySync } from "@/hooks/use-library-sync";
 import { useStore } from "@/lib/storage";
@@ -112,6 +112,12 @@ export default function LoginPage() {
       {showSuccess && <SuccessBanner />}
 
       <main className="flex flex-col gap-4 px-4 pt-6 pb-8 max-w-sm mx-auto">
+
+        {/* Back to System */}
+        <Link href="/system" className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit -mb-1">
+          <ArrowLeft className="h-4 w-4" />
+          System
+        </Link>
 
         {/* Status box — always at top */}
         <div className="w-full rounded-2xl border border-border bg-card px-4 py-4">

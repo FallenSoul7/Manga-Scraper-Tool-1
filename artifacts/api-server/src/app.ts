@@ -41,6 +41,8 @@ app.use(
     origin: (origin, cb) => {
       // allow same-origin (no origin header) + server-to-server calls
       if (!origin) return cb(null, true);
+      // allow any vercel.app preview/production URL automatically
+      if (origin.endsWith(".vercel.app")) return cb(null, true);
       if (allowedOrigins.includes(origin)) return cb(null, true);
       cb(new Error(`CORS: origin ${origin} not allowed`));
     },
