@@ -332,12 +332,71 @@ router.get("/google", (req, res, next) => {
   passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
 });
 
+// Serve an HTML relay page after OAuth so the user always sees a helpful page
+// even if FRONTEND_URL is wrong or the redirect would produce a Vercel 404.
+// The page auto-redirects to the app and shows a manual "Return to App" button
+// as a fallback — critical for iOS PWA where the OAuth opens in Safari.
+function authRelayPage(status: "success" | "error", frontendURL: string): string {
+  const dest = frontendURL
+    ? `${frontendURL}/?auth=${status}`
+    : null;
+
+  const redirectScript = dest
+    ? `<script>window.location.replace(${JSON.stringify(dest)});</script>`
+    : `<script>
+        // No FRONTEND_URL configured — try to go back or close
+        if (window.history.length > 1) {
+          window.history.back();
+        }
+      </script>`;
+
+  const buttonHTML = dest
+    ? `<a href="${dest}" style="display:inline-block;margin-top:24px;padding:14px 28px;background:#7c3aed;color:#fff;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px;">
+         Return to ComiHub
+       </a>`
+    : `<p style="color:#888;margin-top:16px;">Please close this tab and return to the app.</p>`;
+
+  const isError = status === "error";
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${isError ? "Sign In Failed" : "Signed In"} — ComiHub</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{min-height:100dvh;display:flex;align-items:center;justify-content:center;
+         background:#121212;color:#f5f5f5;font-family:system-ui,sans-serif;padding:24px;text-align:center}
+    .card{background:#1e1e1e;border:1px solid #333;border-radius:20px;padding:40px 32px;max-width:380px;width:100%}
+    .icon{font-size:48px;margin-bottom:16px}
+    h1{font-size:22px;font-weight:700;margin-bottom:8px}
+    p{color:#aaa;font-size:15px;line-height:1.5}
+  </style>
+  ${redirectScript}
+</head>
+<body>
+  <div class="card">
+    <div class="icon">${isError ? "⚠️" : "✅"}</div>
+    <h1>${isError ? "Sign In Failed" : "Signed In!"}</h1>
+    <p>${isError ? "Something went wrong. Please try again." : "You're signed in to ComiHub. Tap below to return to the app."}</p>
+    ${buttonHTML}
+  </div>
+</body>
+</html>`;
+}
+
 router.get("/google/callback", (req, res, next) => {
   const frontendURL = getFrontendURL();
   passport.authenticate("google", {
-    failureRedirect: `${frontendURL}/?auth=error`,
-  })(req, res, () => {
-    res.redirect(`${frontendURL}/?auth=success`);
+    failureMessage: true,
+  })(req, res, (err: any) => {
+    if (err || !req.user) {
+      res.status(200).send(authRelayPage("error", frontendURL));
+      return;
+    }
+    // Use relay page instead of bare redirect — safe even if FRONTEND_URL is wrong.
+    // The relay page auto-redirects and also shows a Return to App button for iOS PWA.
+    res.status(200).send(authRelayPage("success", frontendURL));
   });
 });
 

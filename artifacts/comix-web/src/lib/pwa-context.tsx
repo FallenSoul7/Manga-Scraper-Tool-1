@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { apiUrl } from "@/lib/api-url";
 
 interface PwaContextValue {
   deferredPrompt: any;
@@ -51,6 +52,18 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     return () => {
       window.removeEventListener("beforeinstallprompt", handler as EventListener);
     };
+  }, []);
+
+  // ── Keep-alive ping ──────────────────────────────────────────────────────────
+  // Ping the Render API every 8 minutes while the app is open to prevent the
+  // free-tier server from going to sleep. When no users are online, combine
+  // this with an external monitor like UptimeRobot for full coverage.
+  useEffect(() => {
+    const ping = () =>
+      fetch(apiUrl("/api/healthz"), { credentials: "omit" }).catch(() => {});
+    ping(); // immediate ping on mount
+    const id = setInterval(ping, 8 * 60 * 1000);
+    return () => clearInterval(id);
   }, []);
 
   // ── Service-worker auto-update ───────────────────────────────────────────────

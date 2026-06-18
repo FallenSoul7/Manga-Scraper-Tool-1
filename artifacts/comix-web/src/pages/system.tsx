@@ -4,7 +4,8 @@ import {
   Settings, Download, BarChart3, Info, FolderOpen, Sparkles,
   Shield, Trash2, AppWindow, LogIn, UserCircle,
 } from "lucide-react";
-import { getCachedUser, onAuthChanged, type CachedUser } from "@/lib/auth-cache";
+import { getCachedUser, setCachedUser, onAuthChanged, type CachedUser } from "@/lib/auth-cache";
+import { apiUrl } from "@/lib/api-url";
 
 interface SystemBlock {
   href?: string;
@@ -14,7 +15,6 @@ interface SystemBlock {
   comingSoon?: boolean;
   highlight?: boolean;
   disabled?: boolean;
-  /** Extra slot rendered below the description */
   extra?: React.ReactNode;
 }
 
@@ -43,14 +43,10 @@ function Block({ block }: { block: SystemBlock }) {
         <h3 className="font-serif font-bold text-lg text-foreground flex items-center gap-2">
           {block.label}
           {block.highlight && (
-            <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">
-              New
-            </span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">New</span>
           )}
           {block.comingSoon && (
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-              Soon
-            </span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Soon</span>
           )}
         </h3>
         <p className="text-sm text-muted-foreground leading-relaxed">{block.description}</p>
@@ -60,11 +56,7 @@ function Block({ block }: { block: SystemBlock }) {
   );
 
   if (block.href && !block.comingSoon && !block.disabled) {
-    return (
-      <Link href={block.href} className="block h-full">
-        {inner}
-      </Link>
-    );
+    return <Link href={block.href} className="block h-full">{inner}</Link>;
   }
   return inner;
 }
@@ -87,9 +79,7 @@ function ProfileExtra({ user }: { user: CachedUser }) {
         </div>
       )}
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-foreground truncate">
-          {user.username || user.displayName}
-        </p>
+        <p className="text-sm font-semibold text-foreground truncate">{user.username || user.displayName}</p>
         <p className="text-xs text-muted-foreground truncate">{user.email}</p>
       </div>
     </div>
@@ -101,7 +91,22 @@ export default function SystemPage() {
 
   useEffect(() => {
     setUser(getCachedUser());
+
+    // Re-render on any auth cache change (set/cleared by any component)
     const unsubscribe = onAuthChanged(() => setUser(getCachedUser()));
+
+    // Also check the server directly — catches the case where the user
+    // logged in via Safari (iOS PWA) and the cache hasn't been populated yet
+    fetch(apiUrl("/api/auth/me"), { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.user) {
+          setCachedUser(data.user);
+          // setUser will be called via onAuthChanged event above
+        }
+      })
+      .catch(() => {});
+
     return unsubscribe;
   }, []);
 
@@ -157,7 +162,6 @@ export default function SystemPage() {
       description: "Add ComiHub to your home screen for offline use.",
       icon: AppWindow,
     },
-    // Profile is ALWAYS shown — description and extra slot depend on login state
     {
       href: "/profile",
       label: "Profile",
@@ -167,13 +171,12 @@ export default function SystemPage() {
       icon: UserCircle,
       extra: loggedIn && user ? <ProfileExtra user={user} /> : undefined,
     },
-    // Login block is only shown when NOT logged in
     ...(!loggedIn ? [{
       href: "/login",
       label: "Login",
       description: "Sign in with Google to sync your library across devices.",
       icon: LogIn,
-    }] : []),
+    } as SystemBlock] : []),
     {
       label: "About",
       description: "Version, changelog, credits.",
@@ -190,7 +193,6 @@ export default function SystemPage() {
           Configuration, storage and tools for your reader.
         </p>
       </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {blocks.map((b) => (
           <Block key={b.label} block={b} />
