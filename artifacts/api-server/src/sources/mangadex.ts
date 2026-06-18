@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance } from "axios";
+import { proxifyImage } from "./scraper-utils";   // ← Import this
 import type {
   MangaSource,
   ListOptions,
@@ -14,7 +15,6 @@ const API_URL = "https://api.mangadex.org";
 const COVER_URL = "https://uploads.mangadex.org/covers";
 const PER_PAGE = 32;
 
-/** Custom param serialiser */
 function serializeParams(params: Record<string, unknown>): string {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -38,6 +38,7 @@ const client: AxiosInstance = axios.create({
   headers: {
     "User-Agent": "Comix Lounge / 1.0 (web reader)",
     Accept: "application/json",
+    Referer: "https://mangadex.org/",
   },
   validateStatus: (s) => s >= 200 && s < 500,
   paramsSerializer: { serialize: serializeParams },
@@ -113,10 +114,7 @@ function isNsfw(m: MdManga): boolean {
 function getGenres(m: MdManga): string[] {
   const out: string[] = [];
   if (m.attributes.publicationDemographic) {
-    out.push(
-      m.attributes.publicationDemographic[0]!.toUpperCase() +
-        m.attributes.publicationDemographic.slice(1),
-    );
+    out.push(m.attributes.publicationDemographic[0]!.toUpperCase() + m.attributes.publicationDemographic.slice(1));
   }
   for (const t of m.attributes.tags) {
     const name = t.attributes.name?.["en"];
@@ -135,27 +133,21 @@ function toSummary(m: MdManga) {
   };
 }
 
-function buildListParams(
-  opts: ListOptions,
-  order: Record<string, string>,
-): Record<string, unknown> {
+function buildListParams(opts: ListOptions, order: Record<string, string>): Record<string, unknown> {
   const params: Record<string, unknown> = {
     limit: PER_PAGE,
     offset: (opts.page - 1) * PER_PAGE,
     includes: ["cover_art", "author", "artist"],
-    contentRating: opts.nsfw
-      ? ["safe", "suggestive", "erotica", "pornographic"]
-      : ["safe", "suggestive"],
+    contentRating: opts.nsfw ? ["safe", "suggestive", "erotica", "pornographic"] : ["safe", "suggestive"],
     order,
   };
 
-  if (opts.tagIds && opts.tagIds.length > 0) {
-    const included = opts.tagIds.filter((t) => !t.startsWith("-"));
-    const excluded = opts.tagIds.filter((t) => t.startsWith("-")).map((t) => t.slice(1));
-    if (included.length > 0) params.includedTags = included;
-    if (excluded.length > 0) params.excludedTags = excluded;
+  if (opts.tagIds?.length) {
+    const included = opts.tagIds.filter(t => !t.startsWith("-"));
+    const excluded = opts.tagIds.filter(t => t.startsWith("-")).map(t => t.slice(1));
+    if (included.length) params.includedTags = included;
+    if (excluded.length) params.excludedTags = excluded;
   }
-
   return params;
 }
 
@@ -169,39 +161,21 @@ export const MangaDexSource: MangaSource = {
   imageReferer: "https://mangadex.org/",
 
   async popular(opts) {
-    const res = await client.get<MdList<MdManga>>("/manga", {
-      params: buildListParams(opts, { followedCount: "desc" }),
-    });
+    const res = await client.get<MdList<MdManga>>("/manga", { params: buildListParams(opts, { followedCount: "desc" }) });
     if (res.status >= 400) throw new Error(`MangaDex error ${res.status}`);
-    return {
-      items: res.data.data.map(toSummary),
-      page: opts.page,
-      hasNextPage: res.data.offset + res.data.limit < res.data.total,
-    };
+    return { items: res.data.data.map(toSummary), page: opts.page, hasNextPage: res.data.offset + res.data.limit < res.data.total };
   },
 
   async latest(opts) {
-    const res = await client.get<MdList<MdManga>>("/manga", {
-      params: buildListParams(opts, { latestUploadedChapter: "desc" }),
-    });
+    const res = await client.get<MdList<MdManga>>("/manga", { params: buildListParams(opts, { latestUploadedChapter: "desc" }) });
     if (res.status >= 400) throw new Error(`MangaDex error ${res.status}`);
-    return {
-      items: res.data.data.map(toSummary),
-      page: opts.page,
-      hasNextPage: res.data.offset + res.data.limit < res.data.total,
-    };
+    return { items: res.data.data.map(toSummary), page: opts.page, hasNextPage: res.data.offset + res.data.limit < res.data.total };
   },
 
-  async search(query, opts): Promise<MangaListResponse> {
-    const res = await client.get<MdList<MdManga>>("/manga", {
-      params: { ...buildListParams(opts, { relevance: "desc" }), title: query },
-    });
+  async search(query: string, opts: ListOptions): Promise<MangaListResponse> {
+    const res = await client.get<MdList<MdManga>>("/manga", { params: { ...buildListParams(opts, { relevance: "desc" }), title: query } });
     if (res.status >= 400) throw new Error(`MangaDex error ${res.status}`);
-    return {
-      items: res.data.data.map(toSummary),
-      page: opts.page,
-      hasNextPage: res.data.offset + res.data.limit < res.data.total,
-    };
+    return { items: res.data.data.map(toSummary), page: opts.page, hasNextPage: res.data.offset + res.data.limit < res.data.total };
   },
 
   async tags(): Promise<SourceTag[]> {
@@ -210,13 +184,11 @@ export const MangaDexSource: MangaSource = {
       const res = await client.get<{ data: Array<{ id: string; attributes: { name: Record<string, string>; group: string } }> }>("/manga/tag");
       if (res.status >= 400) return [];
       const tags: SourceTag[] = res.data.data
-        .filter((t) => t.attributes?.name?.en)
-        .map((t) => ({
+        .filter(t => t.attributes?.name?.en)
+        .map(t => ({
           id: t.id,
           name: t.attributes.name.en!,
-          group: t.attributes.group
-            ? t.attributes.group[0]!.toUpperCase() + t.attributes.group.slice(1)
-            : "Tag",
+          group: t.attributes.group ? t.attributes.group[0]!.toUpperCase() + t.attributes.group.slice(1) : "Tag",
         }));
       cachedMdTags = tags;
       return tags;
@@ -225,20 +197,14 @@ export const MangaDexSource: MangaSource = {
     }
   },
 
-  async details(id, opts: DetailOptions): Promise<MangaDetail> {
-    const res = await client.get<MdResp<MdManga>>(`/manga/${id}`, {
-      params: { includes: ["cover_art", "author", "artist"] },
-    });
-    if (res.status >= 400 || !res.data?.data)
-      throw new Error(`MangaDex error ${res.status}`);
+  async details(id: string, opts: DetailOptions): Promise<MangaDetail> {
+    const res = await client.get<MdResp<MdManga>>(`/manga/${id}`, { params: { includes: ["cover_art", "author", "artist"] } });
+    if (res.status >= 400 || !res.data?.data) throw new Error(`MangaDex error ${res.status}`);
     const m = res.data.data;
-    const altTitles = m.attributes.altTitles
-      .map((t) => Object.values(t)[0])
-      .filter((v): v is string => typeof v === "string");
+    const altTitles = m.attributes.altTitles.map(t => Object.values(t)[0]).filter((v): v is string => typeof v === "string");
     let synopsis = pickDesc(m);
-    if (opts.alt && altTitles.length > 0) {
-      synopsis += "\n\nAlternative Names:\n" + altTitles.join("\n");
-    }
+    if (opts.alt && altTitles.length > 0) synopsis += "\n\nAlternative Names:\n" + altTitles.join("\n");
+
     return {
       id: m.id,
       title: pickTitle(m),
@@ -257,36 +223,16 @@ export const MangaDexSource: MangaSource = {
     };
   },
 
-  async chapters(mangaId): Promise<ChapterListResponse> {
-    interface MdChapter {
-      id: string;
-      attributes: {
-        chapter: string | null;
-        title: string | null;
-        translatedLanguage: string;
-        publishAt: string;
-        readableAt: string;
-      };
-      relationships: MdRel[];
-    }
+  async chapters(mangaId: string): Promise<ChapterListResponse> {
+    interface MdChapter { id: string; attributes: { chapter: string | null; title: string | null; translatedLanguage: string; publishAt: string; readableAt: string; }; relationships: MdRel[]; }
     const all: MdChapter[] = [];
     let offset = 0;
     const limit = 100;
     let total = 0;
     do {
-      const res = await client.get<MdList<MdChapter>>(
-        `/manga/${mangaId}/feed`,
-        {
-          params: {
-            limit,
-            offset,
-            translatedLanguage: ["en"],
-            order: { chapter: "desc", volume: "desc" },
-            includes: ["scanlation_group"],
-            contentRating: ["safe", "suggestive", "erotica", "pornographic"],
-          },
-        },
-      );
+      const res = await client.get<MdList<MdChapter>>(`/manga/${mangaId}/feed`, {
+        params: { limit, offset, translatedLanguage: ["en"], order: { chapter: "desc", volume: "desc" }, includes: ["scanlation_group"], contentRating: ["safe", "suggestive", "erotica", "pornographic"] }
+      });
       if (res.status >= 400) throw new Error(`MangaDex error ${res.status}`);
       total = res.data.total;
       all.push(...res.data.data);
@@ -294,42 +240,34 @@ export const MangaDexSource: MangaSource = {
     } while (offset < total && offset < 1000);
 
     return {
-      items: all.map((c) => {
+      items: all.map(c => {
         const num = parseFloat(c.attributes.chapter ?? "0") || 0;
         const numStr = (c.attributes.chapter ?? "0").replace(/\.0$/, "");
         let title = `Chapter ${numStr}`;
         if (c.attributes.title) title += `: ${c.attributes.title}`;
-        const scan = c.relationships.find((r) => r.type === "scanlation_group");
-        const scanlator =
-          (scan?.attributes?.["name"] as string | undefined) ?? "Unknown";
+        const scan = c.relationships.find(r => r.type === "scanlation_group");
         return {
           id: c.id,
           number: num,
           title,
-          scanlator,
+          scanlator: (scan?.attributes?.["name"] as string) ?? "Unknown",
           date: Math.floor(new Date(c.attributes.publishAt).getTime() / 1000),
         };
       }),
     };
   },
 
-  // ────── FIXED PAGES FUNCTION ──────
   async pages(chapterId: string): Promise<PageListResponse> {
     try {
       const res = await client.get<{
         result: string;
         baseUrl: string;
         chapter: { hash: string; data: string[]; dataSaver: string[] };
-      }>(`/at-home/server/${chapterId}`, {
-        headers: { Referer: "https://mangadex.org/" },
-      });
+      }>(`/at-home/server/${chapterId}`);
 
-      if (res.status >= 400 || !res.data?.chapter) {
-        throw new Error(`MangaDex chapter error ${res.status}`);
-      }
+      if (res.status >= 400 || !res.data?.chapter) throw new Error(`MangaDex chapter error ${res.status}`);
 
       const { baseUrl, chapter } = res.data;
-
       const useDataSaver = chapter.data.length === 0;
       const files = useDataSaver ? chapter.dataSaver : chapter.data;
       const quality = useDataSaver ? "data-saver" : "data";
@@ -338,7 +276,7 @@ export const MangaDexSource: MangaSource = {
         chapterId,
         pages: files.map((file, i) => ({
           index: i,
-          url: `${baseUrl}/${quality}/${chapter.hash}/${file}`,
+          url: proxifyImage(`${baseUrl}/${quality}/${chapter.hash}/${file}`, "https://mangadex.org/", true),   // ← Uses your proxy
         })),
       };
     } catch (err) {
