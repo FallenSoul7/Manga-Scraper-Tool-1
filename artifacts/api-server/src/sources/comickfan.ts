@@ -29,6 +29,14 @@ function sanitizeImageUrl(url: string): string {
   if (!url) return "";
   let cleanUrl = url.replace(/\\/g, "").trim();
   
+  // 🛠️ FIX: Un-wrap hidden original URLs out of Next.js image optimization routes
+  if (cleanUrl.includes("_next/image") && cleanUrl.includes("url=")) {
+    const urlParam = cleanUrl.split(/[?&]url=/)[1];
+    if (urlParam) {
+      cleanUrl = decodeURIComponent(urlParam.split("&")[0]);
+    }
+  }
+  
   if (cleanUrl.startsWith("//")) {
     cleanUrl = "https:" + cleanUrl;
   } else if (cleanUrl.startsWith("/")) {
@@ -71,7 +79,6 @@ function parseGrid($: ReturnType<typeof cheerio.load>): MangaSummary[] {
   return items;
 }
 
-// 🐛 FIX: Removed the Kotlin 'document' variable and strictly used Cheerio's '$'
 function hasNext($: ReturnType<typeof cheerio.load>): boolean {
   return $("a:has(img[alt='Next']), a:has(img[alt=Next])").length > 0;
 }
@@ -280,7 +287,8 @@ export const ComickFanSource: MangaSource = {
     const $ = cheerio.load(res.data as string);
     const pageUrls: string[] = [];
 
-    $("div.w-full > img[loading=lazy], div.w-full img").each((_i, el) => {
+    // 🛠️ FIX: Strict immediate child combinator (>) to prevent harvesting site icons/logos
+    $("div.w-full > img[loading=lazy], div.w-full > img").each((_i, el) => {
       const src = $(el).attr("src") ?? $(el).attr("data-src") ?? "";
       const formattedUrl = sanitizeImageUrl(src);
       if (formattedUrl && !formattedUrl.includes("logo.png") && !formattedUrl.includes("thumb-")) {
