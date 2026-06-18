@@ -3,6 +3,7 @@ const KEY = "comihub-user-v1";
 export interface CachedUser {
   id: string;
   displayName: string;
+  username: string;   // custom app username (may differ from Google displayName)
   email: string;
   photo: string;
 }

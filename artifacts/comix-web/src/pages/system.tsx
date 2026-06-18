@@ -1,5 +1,6 @@
-import { Link } from "wouter";
-import { Settings, Download, BarChart3, Info, FolderOpen, Sparkles, Shield, Trash2, AppWindow, LogIn } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Settings, Download, BarChart3, Info, FolderOpen, Sparkles, Shield, Trash2, AppWindow, LogIn, UserCircle } from "lucide-react";
+import { getCachedUser } from "@/lib/auth-cache";
 
 interface SystemBlock {
   href?: string;
@@ -8,78 +9,15 @@ interface SystemBlock {
   icon: typeof Settings;
   comingSoon?: boolean;
   highlight?: boolean;
+  disabled?: boolean;
 }
-
-const blocks: SystemBlock[] = [
-  {
-    href: "/comi-ai",
-    label: "Comi AI",
-    description: "AI chat assistant — sort your Tachimanga library by genre, tags, or any rule.",
-    icon: Sparkles,
-    highlight: true,
-  },
-  {
-    href: "/vpn",
-    label: "Built-in VPN",
-    description: "Route images through the server to bypass regional blocks.",
-    icon: Shield,
-  },
-  {
-    href: "/settings",
-    label: "Settings",
-    description: "Theme, library defaults, reader, backup & restore.",
-    icon: Settings,
-  },
-  {
-    href: "/categories",
-    label: "Categories",
-    description: "Create, rename, reorder and delete library categories.",
-    icon: FolderOpen,
-  },
-  {
-    href: "/downloads",
-    label: "Downloads",
-    description: "Save chapters for offline reading.",
-    icon: Download,
-  },
-  {
-    href: "/stats",
-    label: "Stats",
-    description: "Reading time, top titles, streak.",
-    icon: BarChart3,
-  },
-  {
-    href: "/cache",
-    label: "Cache",
-    description: "View cache size and clear stored data.",
-    icon: Trash2,
-  },
-  {
-    href: "/install",
-    label: "Install",
-    description: "Add ComiHub to your home screen for offline use.",
-    icon: AppWindow,
-  },
-  {
-    href: "/login",
-    label: "Login",
-    description: "Sign in with Google to sync your library across devices.",
-    icon: LogIn,
-  },
-  {
-    label: "About",
-    description: "Version, changelog, credits.",
-    icon: Info,
-    comingSoon: true,
-  },
-];
 
 function Block({ block }: { block: SystemBlock }) {
   const Icon = block.icon;
   const inner = (
     <div
       className={`relative h-full rounded-2xl border p-5 sm:p-6 transition-all flex flex-col gap-3 ${
-        block.comingSoon
+        block.comingSoon || block.disabled
           ? "bg-card/50 border-dashed text-muted-foreground"
           : block.highlight
           ? "bg-primary/5 border-primary/40 hover:bg-primary/10 hover:border-primary/60 hover:shadow-md cursor-pointer"
@@ -87,7 +25,11 @@ function Block({ block }: { block: SystemBlock }) {
       }`}
     >
       <div className={`h-11 w-11 rounded-xl flex items-center justify-center ${
-        block.comingSoon ? "bg-muted" : block.highlight ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
+        block.comingSoon || block.disabled
+          ? "bg-muted"
+          : block.highlight
+          ? "bg-primary/20 text-primary"
+          : "bg-primary/10 text-primary"
       }`}>
         <Icon className="h-5 w-5" />
       </div>
@@ -110,7 +52,7 @@ function Block({ block }: { block: SystemBlock }) {
     </div>
   );
 
-  if (block.href && !block.comingSoon) {
+  if (block.href && !block.comingSoon && !block.disabled) {
     return (
       <Link href={block.href} className="block h-full">
         {inner}
@@ -121,6 +63,85 @@ function Block({ block }: { block: SystemBlock }) {
 }
 
 export default function SystemPage() {
+  const loggedIn = !!getCachedUser();
+
+  const blocks: SystemBlock[] = [
+    {
+      href: "/comi-ai",
+      label: "Comi AI",
+      description: "AI chat assistant — sort your Tachimanga library by genre, tags, or any rule.",
+      icon: Sparkles,
+      highlight: true,
+    },
+    {
+      href: "/vpn",
+      label: "Built-in VPN",
+      description: "Route images through the server to bypass regional blocks.",
+      icon: Shield,
+    },
+    {
+      href: "/settings",
+      label: "Settings",
+      description: "Theme, library defaults, reader, backup & restore.",
+      icon: Settings,
+    },
+    {
+      href: "/categories",
+      label: "Categories",
+      description: "Create, rename, reorder and delete library categories.",
+      icon: FolderOpen,
+    },
+    {
+      href: "/downloads",
+      label: "Downloads",
+      description: "Save chapters for offline reading.",
+      icon: Download,
+    },
+    {
+      href: "/stats",
+      label: "Stats",
+      description: "Reading time, top titles, streak.",
+      icon: BarChart3,
+    },
+    {
+      href: "/cache",
+      label: "Cache",
+      description: "View cache size and clear stored data.",
+      icon: Trash2,
+    },
+    {
+      href: "/install",
+      label: "Install",
+      description: "Add ComiHub to your home screen for offline use.",
+      icon: AppWindow,
+    },
+    // Profile: always shows, navigates to /profile (which handles not-logged-in state itself)
+    {
+      href: "/profile",
+      label: "Profile",
+      description: loggedIn
+        ? "Edit your username and view your Google account."
+        : "Sign in to view your profile.",
+      icon: UserCircle,
+    },
+    // Login: only clickable when not logged in
+    {
+      href: loggedIn ? undefined : "/login",
+      label: "Login",
+      description: loggedIn
+        ? "You're signed in. Visit Profile to manage your account."
+        : "Sign in with Google to sync your library across devices.",
+      icon: LogIn,
+      disabled: loggedIn,
+    },
+    {
+      label: "About",
+      description: "Version, changelog, credits.",
+      icon: Info,
+      comingSoon: true,
+    },
+  ];
+
   return (
     <main className="container mx-auto px-4 pt-4 sm:pt-6 pb-8 max-w-5xl animate-in fade-in duration-300">
       <div className="mb-6 sm:mb-8">

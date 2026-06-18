@@ -11,7 +11,6 @@ const SESSION_SECRET = process.env["SESSION_SECRET"] ?? "comihub-dev-secret-chan
 function getFrontendURL() {
   return (process.env["FRONTEND_URL"] ?? "").replace(/\/+$/, "");
 }
-
 function getGoogleCreds() {
   return {
     clientID: process.env["GOOGLE_CLIENT_ID"] ?? "",
@@ -23,24 +22,36 @@ function isConfigured() {
   return !!(clientID && clientSecret);
 }
 
-// ── User profile type ─────────────────────────────────────────────────────────
+// ── User type (matches comihub_users table) ───────────────────────────────────
 export interface GoogleUser {
   id: string;
   displayName: string;
+  username: string;   // custom app username, defaults to displayName on first login
   email: string;
   photo: string;
 }
 
 // ── Supabase helpers ──────────────────────────────────────────────────────────
-// Uses the service key (bypasses RLS) — safe because this only runs on Render.
 
-async function saveUserToSupabase(user: GoogleUser) {
+async function upsertUser(user: GoogleUser): Promise<GoogleUser> {
   const sb = getSupabaseAdmin();
-  if (!sb) return;
+  if (!sb) return user;
+
+  // Check if a user with this email already exists (returning user)
+  const { data: existing } = await sb
+    .from("comihub_users")
+    .select("id, username")
+    .eq("email", user.email)
+    .maybeSingle();
+
+  // Preserve custom username if they've set one before
+  const username = (existing as any)?.username ?? user.displayName;
+
   const { error } = await sb.from("comihub_users").upsert(
     {
       id: user.id,
       display_name: user.displayName,
+      username,
       email: user.email,
       photo: user.photo,
       updated_at: new Date().toISOString(),
@@ -48,39 +59,41 @@ async function saveUserToSupabase(user: GoogleUser) {
     { onConflict: "id" },
   );
   if (error) console.error("Supabase upsert error:", error.message);
+  return { ...user, username };
 }
 
-async function loadUserFromSupabase(id: string): Promise<GoogleUser | null> {
+async function loadUserById(id: string): Promise<GoogleUser | null> {
   const sb = getSupabaseAdmin();
   if (!sb) return null;
   const { data, error } = await sb
     .from("comihub_users")
-    .select("id, display_name, email, photo")
+    .select("id, display_name, username, email, photo")
     .eq("id", id)
     .single();
   if (error || !data) return null;
+  const row = data as Record<string, string>;
   return {
-    id: data.id as string,
-    displayName: data.display_name as string,
-    email: data.email as string,
-    photo: data.photo as string,
+    id: row["id"],
+    displayName: row["display_name"],
+    username: row["username"] ?? row["display_name"],
+    email: row["email"],
+    photo: row["photo"] ?? "",
   };
 }
 
-// ── In-memory fallback (dev / Supabase not configured) ───────────────────────
+// ── In-memory cache (avoids a DB round-trip per request on same process) ─────
 const memUsers = new Map<string, GoogleUser>();
 
-async function saveUser(user: GoogleUser) {
-  memUsers.set(user.id, user);
-  await saveUserToSupabase(user);
+async function saveUser(user: GoogleUser): Promise<GoogleUser> {
+  const saved = await upsertUser(user);
+  memUsers.set(saved.id, saved);
+  return saved;
 }
 
 async function loadUser(id: string): Promise<GoogleUser | null> {
-  // Check memory cache first (avoids DB round-trip on same process)
   if (memUsers.has(id)) return memUsers.get(id)!;
-  // Fall back to Supabase (survives Render restarts)
-  const fromDb = await loadUserFromSupabase(id);
-  if (fromDb) memUsers.set(fromDb.id, fromDb); // warm the cache
+  const fromDb = await loadUserById(id);
+  if (fromDb) memUsers.set(fromDb.id, fromDb);
   return fromDb;
 }
 
@@ -115,13 +128,14 @@ function ensureStrategy() {
 
   passport.use(
     new GoogleStrategy({ clientID, clientSecret, callbackURL }, async (_at, _rt, profile, done) => {
-      const user: GoogleUser = {
+      const raw: GoogleUser = {
         id: profile.id,
         displayName: profile.displayName,
+        username: profile.displayName, // will be overwritten by upsertUser if returning user
         email: profile.emails?.[0]?.value ?? "",
         photo: profile.photos?.[0]?.value ?? "",
       };
-      await saveUser(user);
+      const user = await saveUser(raw);
       return done(null, user);
     }),
   );
@@ -129,7 +143,6 @@ function ensureStrategy() {
 }
 
 passport.serializeUser((user, done) => done(null, (user as GoogleUser).id));
-
 passport.deserializeUser(async (id: string, done) => {
   try {
     const user = await loadUser(id);
@@ -145,10 +158,7 @@ router.use(passport.session());
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 router.get("/status", (_req, res) => {
-  res.json({
-    googleConfigured: isConfigured(),
-    dbConfigured: isSupabaseConfigured(),
-  });
+  res.json({ googleConfigured: isConfigured(), dbConfigured: isSupabaseConfigured() });
 });
 
 router.get("/me", (req, res) => {
@@ -159,15 +169,49 @@ router.get("/me", (req, res) => {
   }
 });
 
+// Update custom username (profile edit)
+router.put("/profile", async (req, res) => {
+  if (!req.isAuthenticated() || !req.user) {
+    res.status(401).json({ error: "Not signed in" });
+    return;
+  }
+  const { username } = req.body as { username?: string };
+  if (!username || typeof username !== "string" || !username.trim()) {
+    res.status(400).json({ error: "username is required" });
+    return;
+  }
+  const trimmed = username.trim().slice(0, 32);
+  const currentUser = req.user as GoogleUser;
+
+  const sb = getSupabaseAdmin();
+  if (sb) {
+    const { error } = await sb
+      .from("comihub_users")
+      .update({ username: trimmed, updated_at: new Date().toISOString() })
+      .eq("id", currentUser.id);
+    if (error) {
+      res.status(500).json({ error: "Failed to update username" });
+      return;
+    }
+  }
+
+  // Update memory cache + session
+  const updated: GoogleUser = { ...currentUser, username: trimmed };
+  memUsers.set(updated.id, updated);
+  (req.user as any).username = trimmed;
+
+  res.json({ ok: true, user: updated });
+});
+
 router.post("/logout", (req, res) => {
+  const id = (req.user as GoogleUser | undefined)?.id;
+  if (id) memUsers.delete(id);
   req.logout(() => res.json({ ok: true }));
 });
 
 router.get("/google", (req, res, next) => {
   if (!isConfigured()) {
-    res.status(503).json({
-      error: "Google OAuth not configured — add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Render.",
-    });
+    res.status(503).json({ error: "Google OAuth not configured." });
     return;
   }
   ensureStrategy();
