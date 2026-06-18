@@ -5,6 +5,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import http from "http";
 import path from "path";  
+import axios from "axios"; // 🚀 Added Axios for processing proxy data chunks
 
 const app: Express = express();
 
@@ -30,6 +31,7 @@ app.use(
     },
   }),
 );
+
 const allowedOrigins = [
   "http://localhost:19597",
   "http://localhost:8080",
@@ -39,9 +41,7 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, cb) => {
-      // allow same-origin (no origin header) + server-to-server calls
       if (!origin) return cb(null, true);
-      // allow any vercel.app preview/production URL automatically
       if (origin.endsWith(".vercel.app")) return cb(null, true);
       if (allowedOrigins.includes(origin)) return cb(null, true);
       cb(new Error(`CORS: origin ${origin} not allowed`));
@@ -49,22 +49,49 @@ app.use(
     credentials: true,
   }),
 );
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 👇 THE FIX: Direct route to the double-nested folder
 const iconPath = path.join(__dirname, "../../comix-web/public/public/source-icons");
 app.use("/public/source-icons", express.static(iconPath));
 
-// Fallback for any other standard public files
 const publicPath = path.join(__dirname, "../../comix-web/public");
 app.use("/public", express.static(publicPath));
 
+// 🚀 ADDED: Direct proxy interceptor to beat hotlink protections
+app.get("/api/image-proxy", async (req, res) => {
+  const targetUrl = req.query.url as string;
+  const refererUrl = (req.query.referer as string) || "https://comickfan.com/";
+
+  if (!targetUrl) {
+    return res.status(400).send("Missing target image url parameter.");
+  }
+
+  try {
+    const response = await axios.get(targetUrl, {
+      responseType: "arraybuffer", 
+      headers: {
+        "Referer": refererUrl, 
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      },
+      timeout: 15000,
+    });
+
+    res.set("Content-Type", response.headers["content-type"] || "image/jpeg");
+    res.set("Cache-Control", "public, max-age=86400"); 
+    
+    return res.send(Buffer.from(response.data));
+  } catch (error: any) {
+    logger.error({ err: error.message, url: targetUrl }, "Image proxy routing failure");
+    return res.status(500).send("Failed to retrieve proxy asset data.");
+  }
+});
+
 app.use("/api", router);
 
-// In development, proxy all non-API requests to the Vite dev server...
 if (process.env.NODE_ENV === "development") {
-  // ... rest unchanged
+  // Development mode conditions remain here
 }
 
 export default app;
