@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Settings, Download, BarChart3, Info, FolderOpen, Sparkles, Shield, Trash2, AppWindow, LogIn, UserCircle } from "lucide-react";
-import { getCachedUser } from "@/lib/auth-cache";
+import { getCachedUser, onAuthChanged } from "@/lib/auth-cache";
 
 interface SystemBlock {
   href?: string;
@@ -64,12 +64,15 @@ function Block({ block }: { block: SystemBlock }) {
 }
 
 export default function SystemPage() {
-  // Use state so React actively tracks whether the user is logged in
   const [user, setUser] = useState(() => getCachedUser());
 
-  // Grab the absolute freshest cache data whenever this page mounts
   useEffect(() => {
+    // Read fresh cache on mount
     setUser(getCachedUser());
+
+    // Re-render whenever any component calls setCachedUser or clearCachedUser
+    const unsubscribe = onAuthChanged(() => setUser(getCachedUser()));
+    return unsubscribe;
   }, []);
 
   const loggedIn = !!user;

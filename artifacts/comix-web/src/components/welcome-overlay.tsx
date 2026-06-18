@@ -40,7 +40,11 @@ export function WelcomeOverlay() {
   }, [showSuccess]);
 
   useEffect(() => {
-    // Fetch user — cache it if present, and skip popup if already logged in
+    // Always verify session with server on mount.
+    // • If server confirms user → cache them and mark done.
+    // • If server says no user → clear any stale cache so the app
+    //   reflects the real (logged-out) state everywhere.
+    // • If server is unreachable → trust the local cache (offline mode).
     fetch(apiUrl("/api/auth/me"), { credentials: "include" })
       .then(r => r.json())
       .then(data => {
@@ -48,10 +52,18 @@ export function WelcomeOverlay() {
           setCachedUser(data.user);
           markStep("done");
           setStep("done");
+        } else {
+          // Session expired or never existed — evict stale cache.
+          clearCachedUser();
+          // Only show the overlay if not already dismissed.
+          if (getInitialStep() === "done") {
+            markStep("install");
+            setStep("install");
+          }
         }
       })
       .catch(() => {
-        // If server unreachable, still skip popup if we have a cached user
+        // Network error / offline — keep whatever is in localStorage.
         if (getCachedUser()) {
           markStep("done");
           setStep("done");
