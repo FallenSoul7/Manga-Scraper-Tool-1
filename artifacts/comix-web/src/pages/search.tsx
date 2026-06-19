@@ -2,31 +2,64 @@ import { useSearch, useLocation } from "wouter";
 import { useSearchManga, getSearchMangaQueryKey } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
 import { MangaCard } from "@/components/manga-card";
-import { Loader2, Search as SearchIcon, Clock, ChevronDown } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Loader2, Search as SearchIcon, Clock } from "lucide-react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 
+// ── Session snapshot helpers ────────────────────────────────────────────────
+interface SearchSnapshot { query: string; page: number; items: any[] }
+const snapKey  = (q: string) => `search-state:${q}`;
+const scrollKey = (q: string) => `search-scroll:${q}`;
+
+function loadSnapshot(q: string): SearchSnapshot | null {
+  if (!q) return null;
+  try { return JSON.parse(sessionStorage.getItem(snapKey(q)) ?? "null"); } catch { return null; }
+}
+function loadScrollY(q: string): number {
+  return parseFloat(sessionStorage.getItem(scrollKey(q)) || "0") || 0;
+}
+
+// ── Component ──────────────────────────────────────────────────────────────
 export default function SearchPage() {
   const searchString = useSearch();
   const query = useMemo(() => new URLSearchParams(searchString).get("query") || "", [searchString]);
   const [, setLocation] = useLocation();
   const { settings } = useSettings();
   const searchHistory = useStore(s => s.searchHistory);
-  const [page, setPage] = useState(1);
 
   const trimmed = query.trim();
   const tooShort = trimmed.length > 0 && trimmed.length < 2;
 
-  // Reset page when query changes
-  useMemo(() => { setPage(1); }, [trimmed]);
+  // ── Restore snapshot on mount ──────────────────────────────────────────
+  const [snapshot] = useState<SearchSnapshot | null>(() => loadSnapshot(trimmed));
+  const [accumulatedItems, setAccumulatedItems] = useState<any[]>(() => snapshot?.items ?? []);
+  const [page, setPage] = useState<number>(1);
+  // Flag: we already have items from snapshot — don't wipe them on first page-1 fetch
+  const didRestoreRef = useRef(snapshot != null && (snapshot.items?.length ?? 0) > 0);
 
-  const searchParams = {
-    query: trimmed,
-    nsfw: !settings.hideNsfw,
-    poster: settings.posterQuality,
-    page,
-  };
+  const scrollRestoreY = useRef<number | null>(
+    (() => {
+      const best = Math.max(loadScrollY(trimmed), snapshot?.items?.length ? (loadScrollY(trimmed) || 0) : 0);
+      return best > 0 ? best : null;
+    })()
+  );
+  const hasRestoredScroll = useRef(false);
+
+  // Reset everything when query changes
+  const prevTrimmedRef = useRef(trimmed);
+  useEffect(() => {
+    if (prevTrimmedRef.current === trimmed) return;
+    prevTrimmedRef.current = trimmed;
+    setAccumulatedItems([]);
+    setPage(1);
+    didRestoreRef.current = false;
+    scrollRestoreY.current = loadScrollY(trimmed);
+    hasRestoredScroll.current = false;
+  }, [trimmed]);
+
+  // ── Fetch ────────────────────────────────────────────────────────────
+  const searchParams = { query: trimmed, nsfw: !settings.hideNsfw, poster: settings.posterQuality, page };
   const { data: results, isLoading, isFetching } = useSearchManga(searchParams as any, {
     query: {
       enabled: trimmed.length >= 2,
@@ -34,30 +67,72 @@ export default function SearchPage() {
     },
   });
 
-  const [accumulatedItems, setAccumulatedItems] = useState<any[]>([]);
-
-  // Accumulate items across pages
-  useMemo(() => {
+  // Accumulate results across pages
+  useEffect(() => {
     if (!results?.items) return;
-    if (page === 1) {
-      setAccumulatedItems(results.items);
-    } else {
-      setAccumulatedItems(prev => {
+    setAccumulatedItems(prev => {
+      if (page === 1 && didRestoreRef.current) {
+        // Back-navigation: merge fresh page-1 into existing snapshot items (deduplicate)
+        didRestoreRef.current = false;
         const existingIds = new Set(prev.map((m: any) => m.id));
-        const newItems = results.items.filter((m: any) => !existingIds.has(m.id));
-        return [...prev, ...newItems];
-      });
-    }
-  }, [results, page]);
+        const newOnes = results.items.filter((m: any) => !existingIds.has(m.id));
+        return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+      }
+      if (page === 1) return results.items;
+      const existingIds = new Set(prev.map((m: any) => m.id));
+      const newOnes = results.items.filter((m: any) => !existingIds.has(m.id));
+      return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+    });
+  }, [results]); // intentionally omit `page` — page is already baked into results identity via queryKey
 
-  // Reset accumulated items when query changes
-  useMemo(() => { setAccumulatedItems([]); }, [trimmed]);
+  const hasNextPage = (results as any)?.hasNextPage ?? false;
+
+  // ── Save snapshot whenever items change ────────────────────────────────
+  useEffect(() => {
+    if (!trimmed || accumulatedItems.length === 0) return;
+    const snap: SearchSnapshot = { query: trimmed, page, items: accumulatedItems };
+    try { sessionStorage.setItem(snapKey(trimmed), JSON.stringify(snap)); } catch { /* quota */ }
+    sessionStorage.setItem(scrollKey(trimmed), String(window.scrollY));
+  }, [trimmed, page, accumulatedItems]);
+
+  // Continuous scroll tracking
+  useEffect(() => {
+    if (!trimmed) return;
+    const onScroll = () => sessionStorage.setItem(scrollKey(trimmed), String(window.scrollY));
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [trimmed]);
+
+  // ── Scroll restoration ───────────────────────────────────────────────
+  useEffect(() => {
+    if (hasRestoredScroll.current) return;
+    if (!scrollRestoreY.current || scrollRestoreY.current <= 0) return;
+    if (accumulatedItems.length === 0) return;
+
+    const targetY = scrollRestoreY.current;
+    const attempt = (n: number) => {
+      window.scrollTo({ top: targetY, behavior: "instant" });
+      if (n < 3) setTimeout(() => attempt(n + 1), 200);
+      else { scrollRestoreY.current = null; hasRestoredScroll.current = true; }
+    };
+    const t = setTimeout(() => attempt(0), 100);
+    return () => clearTimeout(t);
+  }, [accumulatedItems]);
+
+  // ── Infinite scroll sentinel ─────────────────────────────────────────
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting && hasNextPage && !isFetching) setPage(p => p + 1); },
+      { rootMargin: "400px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasNextPage, isFetching]);
 
   const displayItems = trimmed.length >= 2 ? accumulatedItems : [];
-  const hasNextPage = (results as any)?.hasNextPage ?? false;
-  const totalCount = (results as any)?.total ?? null;
-
-  const handleLoadMore = () => setPage(p => p + 1);
 
   return (
     <main className="container mx-auto px-4 py-6 sm:py-8 max-w-7xl animate-in fade-in duration-500">
@@ -67,10 +142,8 @@ export default function SearchPage() {
         </h1>
         {trimmed && !tooShort && !isLoading && displayItems.length > 0 && (
           <p className="text-sm sm:text-base text-muted-foreground">
-            {totalCount != null
-              ? `${displayItems.length} of ${totalCount.toLocaleString()} titles`
-              : `${displayItems.length} title${displayItems.length === 1 ? "" : "s"} loaded`}
-            {hasNextPage && " — more available"}
+            {displayItems.length} title{displayItems.length === 1 ? "" : "s"} loaded
+            {hasNextPage && " — scroll for more"}
           </p>
         )}
       </div>
@@ -118,7 +191,9 @@ export default function SearchPage() {
           Type at least 2 characters to search.
         </div>
       ) : isLoading && displayItems.length === 0 ? (
-        <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+        <div className="flex justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
       ) : displayItems.length === 0 ? (
         <div className="py-20 text-center text-muted-foreground border rounded-2xl bg-card/50 px-4">
           <p className="mb-1">No results found for "{trimmed}".</p>
@@ -132,27 +207,12 @@ export default function SearchPage() {
             ))}
           </div>
 
-          {/* Load more */}
-          {hasNextPage && (
-            <div className="flex justify-center mt-8">
-              <Button
-                variant="outline"
-                className="gap-2 px-8"
-                onClick={handleLoadMore}
-                disabled={isFetching}
-              >
-                {isFetching ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-                {isFetching ? "Loading…" : "Load More"}
-              </Button>
-            </div>
-          )}
-          {isFetching && displayItems.length > 0 && !hasNextPage && (
-            <div className="flex justify-center mt-6">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="h-1 w-full mt-4" aria-hidden />
+
+          {isFetching && (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
           )}
         </>

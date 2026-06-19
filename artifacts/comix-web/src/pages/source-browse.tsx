@@ -205,7 +205,15 @@ export default function SourceBrowsePage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // ── Scroll restoration ────────────────────────────────
-  const scrollRestoreY = useRef<number | null>(storedSnapshot?.scrollY ?? null);
+  // Prefer the continuously-updated pageScrollKey over the stale snapshot.scrollY
+  const scrollRestoreY = useRef<number | null>(
+    (() => {
+      const fromKey = parseFloat(sessionStorage.getItem(pageScrollKey) || "0") || 0;
+      const fromSnap = storedSnapshot?.scrollY ?? 0;
+      const best = Math.max(fromKey, fromSnap);
+      return best > 0 ? best : null;
+    })()
+  );
   const hasRestoredScroll = useRef(false);
 
   const [popularPage, setPopularPage] = useState(() => storedSnapshot?.popularPage ?? 1);
@@ -742,22 +750,11 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
         ))}
       </div>
 
-      {/* Sentinel for auto-load + manual Load More button for when hasNext is possibly wrong */}
+      {/* Sentinel — auto-loads next page when scrolled into view */}
       <div ref={sentinelRef} className="h-1 w-full mt-4" aria-hidden />
       {fetching && (
         <div className="flex justify-center py-6">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        </div>
-      )}
-      {hasNext && !fetching && (
-        <div className="flex justify-center py-4">
-          <button
-            type="button"
-            onClick={onLoadMore}
-            className="px-6 py-2.5 text-sm font-medium rounded-full border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-          >
-            Load more
-          </button>
         </div>
       )}
     </>
