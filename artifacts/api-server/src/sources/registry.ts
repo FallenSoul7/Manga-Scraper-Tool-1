@@ -8,6 +8,8 @@ import { createMangaThemesiaSource } from "./mangathemesia";
 import { HentaiFoxSource } from "./hentaifox";
 import { NineHentaiSource } from "./ninehentai";
 import { ComickFanSource } from "./comickfan";
+import { AsuraScansSource } from "./asurascans";
+import { WebtoonsSource } from "./webtoons";
 import { XkcdSource } from "./xkcd";   // ← ADDED
 import catalogJson from "./catalog.generated.json" with { type: "json" };
 
@@ -41,6 +43,8 @@ register(DanbooruSource);
 register(HentaiFoxSource);
 register(NineHentaiSource);
 register(ComickFanSource);
+register(AsuraScansSource);
+register(WebtoonsSource);
 register(XkcdSource);   // ← ADDED
 
 // Madara-themed sources

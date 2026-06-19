@@ -341,7 +341,14 @@ export const ComickFanSource: MangaSource = {
       };
     }
 
-    throw new Error("ComicKFan: No reader pages could be found in the document shell.");
+    // ComickFan chapter pages are fully JS-rendered (no images in the HTML shell) and
+    // the ComicK backend API (api.comick.fun) is protected by Cloudflare bot-detection
+    // which blocks server-side requests. Chapter reading is not available for this source
+    // in the web reader — please use the Tachiyomi / Mihon app with the ComickFan extension.
+    throw new Error(
+      "ComickFan chapter pages cannot be loaded: the site is fully client-side rendered and the backend API " +
+      "(api.comick.fun) blocks server-side requests via Cloudflare. Use the Mihon/Tachiyomi app instead."
+    );
   },
 
   async tags(): Promise<SourceTag[]> {

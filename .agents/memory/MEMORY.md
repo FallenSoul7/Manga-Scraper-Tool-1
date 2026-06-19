@@ -1,1 +1,4 @@
 - [Comix Lounge port routing](comix-port-routing.md) — API server owns port 8080 (external 80); must proxy non-API reqs to Vite (19597) in dev.
+- [AsuraScans source](asurascans-source.md) — uses api.asurascans.com/api; chapters need public_url slug (different from API slug) for web URLs.
+- [ComickFan pages blocked](comickfan-pages.md) — chapter pages unfixable from server: JS-rendered shell, api.comick.fun blocked by Cloudflare.
+- [Webtoons source](webtoons-source.md) — episode list via m.webtoons.com mobile API; pages via HTML viewer; 290+ panels/episode is normal for vertical scroll.
