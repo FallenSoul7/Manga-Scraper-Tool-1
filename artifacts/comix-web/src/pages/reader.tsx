@@ -61,6 +61,8 @@ export default function Reader() {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  // Stores measured heights of rendered pages so off-screen placeholders keep correct scroll position
+  const pageHeightsRef = useRef<Record<number, number>>({});
 
   const { data: pagesData, isLoading: pagesLoading } = useGetChapterPages(chapterId, {
     query: {
@@ -403,6 +405,28 @@ export default function Reader() {
           const isWebtoon = readerSettings.direction === 'webtoon';
           const isPaged = readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl';
 
+          // ── Windowed rendering for vertical/webtoon modes ──────────────
+          // Only keep images in the DOM within ±12 pages of where the user is.
+          // Pages outside this window are replaced with a same-height placeholder
+          // so scroll position stays correct. Paginated (LTR/RTL) keeps all pages
+          // because each page is a snap point that needs to exist in the DOM.
+          const WINDOW = 12;
+          const inWindow = isPaged || Math.abs(idx - currentPage) <= WINDOW;
+
+          if (!inWindow) {
+            // Use stored height if we measured it, else estimate from screen width
+            const storedH = pageHeightsRef.current[idx];
+            const estH = storedH || Math.round(window.innerWidth * (window.innerWidth < 640 ? 1.45 : 1.3));
+            return (
+              <div
+                key={page.index}
+                id={`page-${idx}`}
+                className={`reader-page w-full flex-shrink-0 ${isVerticalLike && !isWebtoon ? 'mb-8' : ''}`}
+                style={{ height: estH, minHeight: estH, background: 'transparent' }}
+              />
+            );
+          }
+
           return (
             <div
               key={page.index}
@@ -423,13 +447,17 @@ export default function Reader() {
                 <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
               )}
               <img
-                // ── ONE FIXED LINE ────────────────────────────────────────
                 src={getProxiedImageUrl(page.url, sourceId ?? "")}
                 alt={`Page ${page.index}`}
                 className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
-                loading={isVerticalLike ? 'eager' : (idx < 3 ? 'eager' : 'lazy')}
+                loading={isPaged ? (idx < 3 ? 'eager' : 'lazy') : 'eager'}
                 decoding="async"
-                onLoad={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
+                onLoad={(e) => {
+                  // Store rendered height for placeholder accuracy
+                  const el = (e.target as HTMLImageElement).parentElement;
+                  if (el) pageHeightsRef.current[idx] = el.offsetHeight;
+                  setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
+                }}
                 onError={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
                 style={
                   isWebtoon

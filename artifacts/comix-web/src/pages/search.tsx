@@ -2,8 +2,8 @@ import { useSearch, useLocation } from "wouter";
 import { useSearchManga, getSearchMangaQueryKey } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
 import { MangaCard } from "@/components/manga-card";
-import { Loader2, Search as SearchIcon, Clock } from "lucide-react";
-import { useMemo } from "react";
+import { Loader2, Search as SearchIcon, Clock, ChevronDown } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 
@@ -13,36 +13,64 @@ export default function SearchPage() {
   const [, setLocation] = useLocation();
   const { settings } = useSettings();
   const searchHistory = useStore(s => s.searchHistory);
+  const [page, setPage] = useState(1);
 
   const trimmed = query.trim();
   const tooShort = trimmed.length > 0 && trimmed.length < 2;
+
+  // Reset page when query changes
+  useMemo(() => { setPage(1); }, [trimmed]);
 
   const searchParams = {
     query: trimmed,
     nsfw: !settings.hideNsfw,
     poster: settings.posterQuality,
+    page,
   };
-  const { data: results, isLoading } = useSearchManga(searchParams, {
+  const { data: results, isLoading, isFetching } = useSearchManga(searchParams as any, {
     query: {
       enabled: trimmed.length >= 2,
-      queryKey: getSearchMangaQueryKey(searchParams),
+      queryKey: getSearchMangaQueryKey(searchParams as any),
     },
   });
 
-  // Use whatever the server returns — its tag/genre/title matching is broader than a
-  // strict client-side word filter (e.g. "hentai" should also pull titles tagged with it
-  // even if the literal word isn't in their name).
-  const filteredResults = results?.items ?? [];
+  const [accumulatedItems, setAccumulatedItems] = useState<any[]>([]);
+
+  // Accumulate items across pages
+  useMemo(() => {
+    if (!results?.items) return;
+    if (page === 1) {
+      setAccumulatedItems(results.items);
+    } else {
+      setAccumulatedItems(prev => {
+        const existingIds = new Set(prev.map((m: any) => m.id));
+        const newItems = results.items.filter((m: any) => !existingIds.has(m.id));
+        return [...prev, ...newItems];
+      });
+    }
+  }, [results, page]);
+
+  // Reset accumulated items when query changes
+  useMemo(() => { setAccumulatedItems([]); }, [trimmed]);
+
+  const displayItems = trimmed.length >= 2 ? accumulatedItems : [];
+  const hasNextPage = (results as any)?.hasNextPage ?? false;
+  const totalCount = (results as any)?.total ?? null;
+
+  const handleLoadMore = () => setPage(p => p + 1);
 
   return (
     <main className="container mx-auto px-4 py-6 sm:py-8 max-w-7xl animate-in fade-in duration-500">
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-serif font-bold text-foreground mb-2">
-          {trimmed ? `Search results for "${trimmed}"` : "Search"}
+          {trimmed ? `Results for "${trimmed}"` : "Search"}
         </h1>
-        {trimmed && !tooShort && (
+        {trimmed && !tooShort && !isLoading && displayItems.length > 0 && (
           <p className="text-sm sm:text-base text-muted-foreground">
-            {filteredResults.length} {filteredResults.length === 1 ? "title" : "titles"} found
+            {totalCount != null
+              ? `${displayItems.length} of ${totalCount.toLocaleString()} titles`
+              : `${displayItems.length} title${displayItems.length === 1 ? "" : "s"} loaded`}
+            {hasNextPage && " — more available"}
           </p>
         )}
       </div>
@@ -61,9 +89,9 @@ export default function SearchPage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {searchHistory.map((term) => (
-                  <Button 
-                    key={term} 
-                    variant="secondary" 
+                  <Button
+                    key={term}
+                    variant="secondary"
                     className="rounded-full"
                     onClick={() => {
                       storeActions.pushSearch(term);
@@ -89,19 +117,45 @@ export default function SearchPage() {
         <div className="py-12 text-center text-muted-foreground border rounded-2xl bg-card/50">
           Type at least 2 characters to search.
         </div>
-      ) : isLoading ? (
+      ) : isLoading && displayItems.length === 0 ? (
         <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-      ) : filteredResults.length === 0 ? (
+      ) : displayItems.length === 0 ? (
         <div className="py-20 text-center text-muted-foreground border rounded-2xl bg-card/50 px-4">
           <p className="mb-1">No results found for "{trimmed}".</p>
           <p className="text-sm">Try a different search term or check spelling.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-5">
-          {filteredResults.map((manga: any) => (
-            <MangaCard key={manga.id} manga={manga} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-5">
+            {displayItems.map((manga: any) => (
+              <MangaCard key={manga.id} manga={manga} />
+            ))}
+          </div>
+
+          {/* Load more */}
+          {hasNextPage && (
+            <div className="flex justify-center mt-8">
+              <Button
+                variant="outline"
+                className="gap-2 px-8"
+                onClick={handleLoadMore}
+                disabled={isFetching}
+              >
+                {isFetching ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+                {isFetching ? "Loading…" : "Load More"}
+              </Button>
+            </div>
+          )}
+          {isFetching && displayItems.length > 0 && !hasNextPage && (
+            <div className="flex justify-center mt-6">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            </div>
+          )}
+        </>
       )}
     </main>
   );

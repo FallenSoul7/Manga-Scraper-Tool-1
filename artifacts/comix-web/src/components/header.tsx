@@ -7,6 +7,7 @@ import { useStore, storeActions } from "@/lib/storage";
 import { Button } from "./ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { useHistoryHeader } from "@/lib/header-history";
+import { usePwa } from "@/lib/pwa-context";
 
 const PAGE_TITLES: Record<string, string> = {
   "/updates": "Updates",
@@ -25,6 +26,7 @@ export function Header() {
   const theme = useStore(s => s.theme);
   const historyScope = useHistoryHeader();
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const { isStandalone } = usePwa();
 
   const isHome    = location === "/";
   const isUpdates = location === "/updates";
@@ -252,9 +254,10 @@ export function Header() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`relative flex flex-col items-center justify-center gap-1.5 py-4 text-[11px] font-medium transition-colors ${
+                className={`relative flex flex-col items-center justify-center gap-1.5 text-[11px] font-medium transition-colors ${
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 }`}
+                style={{ paddingTop: isStandalone ? 17 : 16, paddingBottom: isStandalone ? 17 : 16 }}
               >
                 <link.icon className="h-5 w-5" />
                 <span>{link.label}</span>

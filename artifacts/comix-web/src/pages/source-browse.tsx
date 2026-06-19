@@ -705,12 +705,13 @@ interface GridProps {
 function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridProps) {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
+  // Auto-load more when sentinel scrolls into view
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
       ([entry]) => { if (entry.isIntersecting && hasNext && !fetching) onLoadMore(); },
-      { rootMargin: "300px" },
+      { rootMargin: "400px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -724,6 +725,12 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
   }
   return (
     <>
+      {/* Result count */}
+      <p className="text-xs text-muted-foreground mb-3">
+        {items.length} title{items.length === 1 ? "" : "s"} loaded
+        {hasNext && " — scroll down for more"}
+      </p>
+
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3">
         {items.map(m => (
           <MangaCard
@@ -734,10 +741,23 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
           />
         ))}
       </div>
+
+      {/* Sentinel for auto-load + manual Load More button for when hasNext is possibly wrong */}
       <div ref={sentinelRef} className="h-1 w-full mt-4" aria-hidden />
       {fetching && (
         <div className="flex justify-center py-6">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
+      )}
+      {hasNext && !fetching && (
+        <div className="flex justify-center py-4">
+          <button
+            type="button"
+            onClick={onLoadMore}
+            className="px-6 py-2.5 text-sm font-medium rounded-full border border-border hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+          >
+            Load more
+          </button>
         </div>
       )}
     </>
