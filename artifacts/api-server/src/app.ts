@@ -35,7 +35,9 @@ app.use(
 const allowedOrigins = [
   "http://localhost:19597",
   "http://localhost:8080",
-  ...(process.env["FRONTEND_URL"] ? [process.env["FRONTEND_URL"]] : []),
+  ...(process.env["FRONTEND_URL"]
+    ? [process.env["FRONTEND_URL"].replace(/\/+$/, "")]
+    : []),
 ];
 
 app.use(

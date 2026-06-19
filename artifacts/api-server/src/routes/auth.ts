@@ -238,7 +238,7 @@ function ensureStrategy() {
 
   const callbackURL =
     process.env["NODE_ENV"] === "production"
-      ? `${process.env["API_BASE_URL"] ?? ""}/api/auth/google/callback`
+      ? `${(process.env["API_BASE_URL"] ?? "").replace(/\/+$/, "")}/api/auth/google/callback`
       : process.env["REPLIT_DEV_DOMAIN"]
         ? `https://${process.env["REPLIT_DEV_DOMAIN"]}/api/auth/google/callback`
         : "http://localhost:8080/api/auth/google/callback";
