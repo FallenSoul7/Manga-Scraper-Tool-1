@@ -39,17 +39,11 @@ export function WelcomeOverlay() {
     }
   }, [showSuccess]);
 
-  useEffect(() => {
-    // Verify session with server on mount.
-    // ✅ If server confirms user → refresh cache + mark done.
-    // ⚠️  If server says no user (session lost due to server restart, etc.)
-    //     → do NOT clear localStorage. Keep the local cache so the UI stays
-    //     in the logged-in state. The server session can be restored on the
-    //     next explicit auth action.
-    // ✅ If server is unreachable → keep cache (offline mode).
+  // Check auth with server — called on mount AND whenever the PWA comes to foreground
+  function checkAuth() {
     fetch(apiUrl("/api/auth/me"), { credentials: "include" })
       .then(r => {
-        if (!r.ok) throw new Error("non-ok"); // treat errors as offline
+        if (!r.ok) throw new Error("non-ok");
         return r.json();
       })
       .then(data => {
@@ -58,24 +52,34 @@ export function WelcomeOverlay() {
           markStep("done");
           setStep("done");
         } else {
-          // Server has no session (server restart, cookie expired, etc.)
-          // Keep the local cache — don't evict it here.
-          // Only show the overlay if the user never completed onboarding.
+          // Server has no session — trust local cache so UI stays logged-in
           if (getCachedUser()) {
-            // Already "logged in" locally — skip overlay
             markStep("done");
             setStep("done");
           }
         }
       })
       .catch(() => {
-        // Network error / server down — trust local cache
+        // Network error / offline — trust local cache
         if (getCachedUser()) {
           markStep("done");
           setStep("done");
         }
       });
-  }, []);
+  }
+
+  // Run on mount
+  useEffect(() => { checkAuth(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-check when PWA comes back to foreground (iOS home screen app re-focus).
+  // This is the key fix for "logged out after leaving": when the user returns
+  // from Safari (where OAuth completed), we re-check the server session and
+  // update the local cache accordingly.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") checkAuth(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetch(apiUrl("/api/auth/status"), { credentials: "include" })

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 
 // ── Session snapshot helpers ────────────────────────────────────────────────
 interface SearchSnapshot { query: string; page: number; items: any[] }
-const snapKey  = (q: string) => `search-state:${q}`;
+const snapKey   = (q: string) => `search-state:${q}`;
 const scrollKey = (q: string) => `search-scroll:${q}`;
 
 function loadSnapshot(q: string): SearchSnapshot | null {
@@ -35,7 +35,6 @@ export default function SearchPage() {
   const [snapshot] = useState<SearchSnapshot | null>(() => loadSnapshot(trimmed));
   const [accumulatedItems, setAccumulatedItems] = useState<any[]>(() => snapshot?.items ?? []);
   const [page, setPage] = useState<number>(1);
-  // Flag: we already have items from snapshot — don't wipe them on first page-1 fetch
   const didRestoreRef = useRef(snapshot != null && (snapshot.items?.length ?? 0) > 0);
 
   const scrollRestoreY = useRef<number | null>(
@@ -72,7 +71,6 @@ export default function SearchPage() {
     if (!results?.items) return;
     setAccumulatedItems(prev => {
       if (page === 1 && didRestoreRef.current) {
-        // Back-navigation: merge fresh page-1 into existing snapshot items (deduplicate)
         didRestoreRef.current = false;
         const existingIds = new Set(prev.map((m: any) => m.id));
         const newOnes = results.items.filter((m: any) => !existingIds.has(m.id));
@@ -83,9 +81,14 @@ export default function SearchPage() {
       const newOnes = results.items.filter((m: any) => !existingIds.has(m.id));
       return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
     });
-  }, [results]); // intentionally omit `page` — page is already baked into results identity via queryKey
+  }, [results]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Stable refs for infinite scroll (avoids observer churn) ──────────
   const hasNextPage = (results as any)?.hasNextPage ?? false;
+  const hasNextPageRef = useRef(hasNextPage);
+  const isFetchingRef  = useRef(isFetching);
+  hasNextPageRef.current = hasNextPage;
+  isFetchingRef.current  = isFetching;
 
   // ── Save snapshot whenever items change ────────────────────────────────
   useEffect(() => {
@@ -119,18 +122,29 @@ export default function SearchPage() {
     return () => clearTimeout(t);
   }, [accumulatedItems]);
 
-  // ── Infinite scroll sentinel ─────────────────────────────────────────
+  // ── Infinite scroll — stable observer, refs hold latest values ────────
+  // The observer is created once per mount (empty deps).
+  // It reads hasNextPageRef and isFetchingRef on each intersection event
+  // so we never miss a trigger due to stale closure values.
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const pageSetterRef = useRef(setPage);
+  pageSetterRef.current = setPage;
+
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
+
     const obs = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting && hasNextPage && !isFetching) setPage(p => p + 1); },
-      { rootMargin: "400px" },
+      ([entry]) => {
+        if (entry.isIntersecting && hasNextPageRef.current && !isFetchingRef.current) {
+          pageSetterRef.current(p => p + 1);
+        }
+      },
+      { rootMargin: "600px" },
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [hasNextPage, isFetching]);
+  }, [trimmed]); // re-create only when search query changes (not on every render)
 
   const displayItems = trimmed.length >= 2 ? accumulatedItems : [];
 
@@ -207,13 +221,19 @@ export default function SearchPage() {
             ))}
           </div>
 
-          {/* Infinite scroll sentinel */}
-          <div ref={sentinelRef} className="h-1 w-full mt-4" aria-hidden />
+          {/* Stable sentinel — observer reads refs, never disconnects mid-fetch */}
+          <div ref={sentinelRef} className="h-2 w-full mt-4" aria-hidden />
 
           {isFetching && (
             <div className="flex justify-center py-6">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
+          )}
+
+          {!hasNextPage && displayItems.length > 0 && (
+            <p className="text-center text-xs text-muted-foreground py-4">
+              All {displayItems.length} results loaded
+            </p>
           )}
         </>
       )}
