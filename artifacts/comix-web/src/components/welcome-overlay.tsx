@@ -210,7 +210,7 @@ export function WelcomeOverlay() {
                 </p>
               ) : (
                 <a
-                  href={apiUrl("/api/auth/google")}
+                  href="/api/auth/google"
                   onClick={dismiss}
                   className="w-full flex items-center justify-center gap-3 border border-border rounded-xl py-3 font-semibold text-base mb-3 hover:bg-muted transition-colors"
                 >
