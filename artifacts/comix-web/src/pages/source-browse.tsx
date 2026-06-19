@@ -712,18 +712,31 @@ interface GridProps {
 
 function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridProps) {
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const hasNextRef = useRef(hasNext);
+  const fetchingRef = useRef(fetching);
+  const onLoadMoreRef = useRef(onLoadMore);
 
-  // Auto-load more when sentinel scrolls into view
+  // Keep refs in sync so the observer callback always reads the latest values
+  // without needing to be recreated (which was the root cause of the stuck-at-20 bug).
+  useEffect(() => { hasNextRef.current = hasNext; }, [hasNext]);
+  useEffect(() => { fetchingRef.current = fetching; }, [fetching]);
+  useEffect(() => { onLoadMoreRef.current = onLoadMore; }, [onLoadMore]);
+
+  // Create the observer once — never recreate it on hasNext/fetching changes.
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting && hasNext && !fetching) onLoadMore(); },
+      ([entry]) => {
+        if (entry.isIntersecting && hasNextRef.current && !fetchingRef.current) {
+          onLoadMoreRef.current();
+        }
+      },
       { rootMargin: "400px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasNext, fetching, onLoadMore]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
