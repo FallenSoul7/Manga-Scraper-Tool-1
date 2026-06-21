@@ -4,7 +4,10 @@
       "source": "/api/:path*",
       "destination": "https://comihub-backend.onrender.com/api/:path*"
     },
-    { "source": "/(.*)", "destination": "/" }
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
     {
