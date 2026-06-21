@@ -16,13 +16,11 @@ function GoogleIcon() {
 export default function LoginPage() {
   const [, setLocation] = useLocation();
 
-  // If already logged in → immediately go back, do nothing
   useEffect(() => {
     if (getCachedUser()) {
       setLocation("/system");
       return;
     }
-    // Not cached — ask the server via proxy
     fetch("/api/auth/me", { credentials: "include" })
       .then(r => r.json())
       .then(data => {
@@ -32,16 +30,14 @@ export default function LoginPage() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [setLocation]);
 
-  // If cached user — render nothing (redirect in progress)
   if (getCachedUser()) return null;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-xs mx-4 rounded-2xl bg-background overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-
-        {/* Header */}
+        
         <div className="h-32 bg-gradient-to-br from-blue-500/20 via-blue-400/10 to-background flex items-center justify-center">
           <div className="w-16 h-16 rounded-full bg-white shadow-md flex items-center justify-center">
             <GoogleIcon />
@@ -52,27 +48,31 @@ export default function LoginPage() {
           <div>
             <h2 className="text-xl font-bold mb-1">Sign in to ComiHub</h2>
             <p className="text-sm text-muted-foreground">
-              Back up your library and reading history across all your devices.
+              Back up your library and reading history.
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <a
-              href="/api/auth/google"
-              className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors"
+            <button
+              onClick={() => { window.location.href = "/api/auth/google"; }}
+              className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors text-left"
             >
               <GoogleIcon />
-              <span className="flex-1 text-sm font-medium">Google</span>
-              <span className="text-xs text-muted-foreground">Sign up</span>
-            </a>
-            <a
-              href="/api/auth/google"
-              className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors"
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">Google</span>
+                <span className="text-xs text-muted-foreground">Sign up</span>
+              </div>
+            </button>
+            <button
+              onClick={() => { window.location.href = "/api/auth/google"; }}
+              className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors text-left"
             >
               <GoogleIcon />
-              <span className="flex-1 text-sm font-medium">Google</span>
-              <span className="text-xs text-muted-foreground">Sign in</span>
-            </a>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">Google</span>
+                <span className="text-xs text-muted-foreground">Sign in</span>
+              </div>
+            </button>
           </div>
 
           <button
