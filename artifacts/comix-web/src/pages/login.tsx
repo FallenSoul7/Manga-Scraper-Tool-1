@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { getCachedUser, setCachedUser } from "@/lib/auth-cache";
-import { apiUrl } from "@/lib/api-url";
 
 function GoogleIcon() {
   return (
@@ -23,8 +22,8 @@ export default function LoginPage() {
       setLocation("/system");
       return;
     }
-    // Not cached — ask the server too (handles case where cache was cleared)
-    fetch(apiUrl("/api/auth/me"), { credentials: "include" })
+    // Not cached — ask the server via proxy
+    fetch("/api/auth/me", { credentials: "include" })
       .then(r => r.json())
       .then(data => {
         if (data?.user) {
@@ -59,7 +58,7 @@ export default function LoginPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <a
-              href={apiUrl("/api/auth/google")}
+              href="/api/auth/google"
               className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors"
             >
               <GoogleIcon />
@@ -67,7 +66,7 @@ export default function LoginPage() {
               <span className="text-xs text-muted-foreground">Sign up</span>
             </a>
             <a
-              href={apiUrl("/api/auth/google")}
+              href="/api/auth/google"
               className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors"
             >
               <GoogleIcon />
