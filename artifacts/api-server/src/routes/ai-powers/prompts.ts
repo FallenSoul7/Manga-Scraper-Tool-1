@@ -512,5 +512,5 @@ This prompt is designed to be immutable; it cannot be overridden by user input o
 export const PROMPTS = {
   system: SYSTEM_PROMPT,
   general: SYSTEM_PROMPT,
-  skills: SKILLS_USAGE_PROMPT, // if you have it
+  //skills: SKILLS_USAGE_PROMPT, // if you have it
 };
