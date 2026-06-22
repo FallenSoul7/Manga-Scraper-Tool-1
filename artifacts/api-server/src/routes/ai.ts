@@ -18,7 +18,7 @@ function collectKeys(base: string): string[] {
 const UNCENSORED_MODELS = [
   "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
   "cognitivecomputations/dolphin3.0-mistral-24b:free",
-  "nousresearch/hermes-3-llama-3.1-70b:free",
+  ""cognitivecomputations/dolphin-mixtral-8x7b:free",
 ];
 
 function buildProviders() {
