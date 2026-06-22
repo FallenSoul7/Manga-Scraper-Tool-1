@@ -1,6 +1,6 @@
 // routes/ai.ts
 import { Router } from "express";
-import { PROMPTS } from "../ai-powers/prompts";
+import { PROMPTS } from "./ai-powers/prompts";
 
 const router = Router();
 
