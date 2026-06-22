@@ -1,15 +1,6 @@
-// Export all shared types
+// ai-powers/index.ts
 export * from './types';
-
-// Export the prompt library (system, workflows, etc.)
-export * from './prompts';
-
-// Export the skill registry (list of tool functions)
+export * from './prompts';        // make sure this file exists and exports PROMPTS
 export * from './skills';
-
-// Export the executor (main dispatcher)
 export * from './executor';
-
-// (Optional) Export protocol and checkpoint helpers if we implement them later
-// export * from './protocol';
-// export * from './checkpoint';
+// export * from './system-prompt'; // uncomment if you want to export system prompt separately
