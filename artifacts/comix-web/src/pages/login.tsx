@@ -34,6 +34,22 @@ export default function LoginPage() {
 
   if (getCachedUser()) return null;
 
+  const handleLogin = async () => {
+    // KILL SWITCH: Destroy the old Service Worker so it stops trapping the link
+    if ('serviceWorker' in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.unregister();
+        }
+      } catch (err) {
+        console.error("SW clear error", err);
+      }
+    }
+    // Now safely navigate to the proxy
+    window.location.href = "/api/auth/google";
+  };
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-xs mx-4 rounded-2xl bg-background overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
@@ -54,7 +70,7 @@ export default function LoginPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={() => { window.location.href = "/api/auth/google"; }}
+              onClick={handleLogin}
               className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors text-left"
             >
               <GoogleIcon />
@@ -64,7 +80,7 @@ export default function LoginPage() {
               </div>
             </button>
             <button
-              onClick={() => { window.location.href = "/api/auth/google"; }}
+              onClick={handleLogin}
               className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors text-left"
             >
               <GoogleIcon />
