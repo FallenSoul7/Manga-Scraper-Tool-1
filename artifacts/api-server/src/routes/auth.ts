@@ -97,19 +97,13 @@ async function loadUser(id: string): Promise<GoogleUser | null> {
 }
 
 // ── Supabase-backed persistent session store ──────────────────────────────────
-// Keeps sessions alive across Render server restarts so users stay logged in.
-// Falls back to the default MemoryStore when Supabase is not configured.
-
 class SupabaseSessionStore extends session.Store {
   private tableReady = false;
 
-  // Create the sessions table if it doesn't exist yet.
   private async ensureTable() {
     if (this.tableReady) return;
     const sb = getSupabaseAdmin();
     if (!sb) return;
-    // Use Supabase REST API to create table via a raw SQL RPC.
-    // If the table already exists this is a no-op.
     await sb.rpc("exec_sql", {
       sql: `
         CREATE TABLE IF NOT EXISTS comihub_sessions (
@@ -122,8 +116,6 @@ class SupabaseSessionStore extends session.Store {
       `,
     }).then(({ error }) => {
       if (error) {
-        // RPC might not exist — fall back to a direct upsert attempt.
-        // The table may already exist; if not, errors will show on first use.
         if (!error.message?.includes("already exists")) {
           console.warn("Sessions table setup warning:", error.message);
         }
@@ -131,7 +123,7 @@ class SupabaseSessionStore extends session.Store {
         this.tableReady = true;
       }
     }).catch(() => {});
-    this.tableReady = true; // don't retry even if it failed
+    this.tableReady = true; 
   }
 
   get(sid: string, callback: (err: any, session?: session.SessionData | null) => void) {
@@ -149,7 +141,6 @@ class SupabaseSessionStore extends session.Store {
         if (error || !data) return callback(null, null);
 
         if (new Date((data as any).expires_at) < new Date()) {
-          // Expired — clean up and return nothing
           await sb.from("comihub_sessions").delete().eq("sid", sid).then(() => {});
           return callback(null, null);
         }
@@ -211,7 +202,6 @@ class SupabaseSessionStore extends session.Store {
 }
 
 // ── Session middleware ─────────────────────────────────────────────────────────
-// Use Supabase-backed store when configured; memory store in dev without Supabase.
 const sessionStore = isSupabaseConfigured() ? new SupabaseSessionStore() : undefined;
 
 router.use(
@@ -324,6 +314,85 @@ router.post("/logout", (req, res) => {
   req.logout(() => res.json({ ok: true }));
 });
 
+// 🚀 NEW: Register Route (Email & Password)
+router.post("/register", async (req, res) => {
+  const { email, password, username } = req.body;
+  const sb = getSupabaseAdmin();
+  
+  if (!sb) {
+    res.status(500).json({ error: "Database not configured" });
+    return;
+  }
+
+  try {
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password,
+      options: { data: { username: username } },
+    });
+
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    res.status(200).json({
+      message: "Check your email to verify your account!",
+      user: data.user,
+    });
+  } catch (err: any) {
+    console.error("Register Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 🚀 NEW: Login Route (Email & Password)
+router.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  const sb = getSupabaseAdmin();
+  
+  if (!sb) {
+    res.status(500).json({ error: "Database not configured" });
+    return;
+  }
+
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    // Map Supabase User into our existing system format
+    const rawUser: GoogleUser = {
+      id: data.user.id,
+      displayName: data.user.user_metadata?.username || email.split("@")[0],
+      username: data.user.user_metadata?.username || email.split("@")[0],
+      email: email,
+      photo: "",
+    };
+
+    const user = await saveUser(rawUser);
+
+    // Tell express-session to log this user in using the existing system
+    req.login(user, (err) => {
+      if (err) {
+        res.status(500).json({ error: "Session creation failed" });
+        return;
+      }
+      res.status(200).json({ message: "Login successful!", user });
+    });
+  } catch (err: any) {
+    console.error("Login Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Google Routes (Kept as fallback/future-proofing) ──────────────────────────
 router.get("/google", (req, res, next) => {
   if (!isConfigured()) {
     res.status(503).json({ error: "Google OAuth not configured." });
@@ -333,10 +402,6 @@ router.get("/google", (req, res, next) => {
   passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
 });
 
-// Serve an HTML relay page after OAuth so the user always sees a helpful page
-// even if FRONTEND_URL is wrong or the redirect would produce a Vercel 404.
-// The page auto-redirects to the app and shows a manual "Return to App" button
-// as a fallback — critical for iOS PWA where the OAuth opens in Safari.
 function authRelayPage(status: "success" | "error", frontendURL: string): string {
   const dest = frontendURL
     ? `${frontendURL}/?auth=${status}`
@@ -345,7 +410,6 @@ function authRelayPage(status: "success" | "error", frontendURL: string): string
   const redirectScript = dest
     ? `<script>window.location.replace(${JSON.stringify(dest)});</script>`
     : `<script>
-        // No FRONTEND_URL configured — try to go back or close
         if (window.history.length > 1) {
           window.history.back();
         }
@@ -395,8 +459,6 @@ router.get("/google/callback", (req, res, next) => {
       res.status(200).send(authRelayPage("error", frontendURL));
       return;
     }
-    // Use relay page instead of bare redirect — safe even if FRONTEND_URL is wrong.
-    // The relay page auto-redirects and also shows a Return to App button for iOS PWA.
     res.status(200).send(authRelayPage("success", frontendURL));
   });
 });
