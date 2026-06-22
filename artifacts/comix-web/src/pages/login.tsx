@@ -16,6 +16,7 @@ function GoogleIcon() {
 export default function LoginPage() {
   const [, setLocation] = useLocation();
 
+  // Check if user is already logged in
   useEffect(() => {
     if (getCachedUser()) {
       setLocation("/system");
@@ -32,34 +33,21 @@ export default function LoginPage() {
       .catch(() => {});
   }, [setLocation]);
 
+  // If we already detected a user, don't show the login screen
   if (getCachedUser()) return null;
-
-  const handleLogin = async () => {
-    // KILL SWITCH: Destroy the old Service Worker so it stops trapping the link
-    if ('serviceWorker' in navigator) {
-      try {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        for (const reg of registrations) {
-          await reg.unregister();
-        }
-      } catch (err) {
-        console.error("SW clear error", err);
-      }
-    }
-    // Now safely navigate to the proxy
-    window.location.href = "/api/auth/google";
-  };
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-xs mx-4 rounded-2xl bg-background overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
         
+        {/* Header Section */}
         <div className="h-32 bg-gradient-to-br from-blue-500/20 via-blue-400/10 to-background flex items-center justify-center">
           <div className="w-16 h-16 rounded-full bg-white shadow-md flex items-center justify-center">
             <GoogleIcon />
           </div>
         </div>
 
+        {/* Content Section */}
         <div className="px-6 pb-6 pt-4 text-center space-y-5">
           <div>
             <h2 className="text-xl font-bold mb-1">Sign in to ComiHub</h2>
@@ -69,26 +57,32 @@ export default function LoginPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={handleLogin}
-              className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors text-left"
-            >
-              <GoogleIcon />
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">Google</span>
-                <span className="text-xs text-muted-foreground">Sign up</span>
-              </div>
-            </button>
-            <button
-              onClick={handleLogin}
-              className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors text-left"
-            >
-              <GoogleIcon />
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">Google</span>
-                <span className="text-xs text-muted-foreground">Sign in</span>
-              </div>
-            </button>
+            {/* Native Form to bypass React Router and Service Worker */}
+            <form action="/api/auth/google" method="GET" className="w-full">
+              <button
+                type="submit"
+                className="flex w-full items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors text-left"
+              >
+                <GoogleIcon />
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">Google</span>
+                  <span className="text-xs text-muted-foreground">Sign up</span>
+                </div>
+              </button>
+            </form>
+
+            <form action="/api/auth/google" method="GET" className="w-full">
+              <button
+                type="submit"
+                className="flex w-full items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 hover:bg-muted transition-colors text-left"
+              >
+                <GoogleIcon />
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">Google</span>
+                  <span className="text-xs text-muted-foreground">Sign in</span>
+                </div>
+              </button>
+            </form>
           </div>
 
           <button
