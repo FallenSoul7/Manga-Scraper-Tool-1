@@ -18,11 +18,11 @@ function collectKeys(base: string): string[] {
   return keys;
 }
 
-// ── Use confirmed working free models ────────────────────────────
+// ── Use confirmed working uncensored models ──────────────────────
 const UNCENSORED_MODELS = [
-  "nousresearch/nous-hermes-2-mixtral-8x7b:free",
-  "cognitivecomputations/dolphin-2.9-mixtral-8x7b:free",
-  "gryphe/mythomax-l2-13b:free",
+  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+  "cognitivecomputations/dolphin3.0-mistral-24b:free",
+  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", // duplicate for extra keys
 ];
 
 // ── Provider builder ─────────────────────────────────────────────
@@ -54,10 +54,10 @@ function buildProviders() {
   }
   for (let i = 0; i < openrouterKeys.length; i++) {
     providers.push({
-      name: i > 0 ? `OpenRouter Nex (key ${i + 1})` : "OpenRouter Nex",
+      name: i > 0 ? `OpenRouter (key ${i + 1})` : "OpenRouter",
       url: "https://openrouter.ai/api/v1/chat/completions",
       key: openrouterKeys[i],
-      model: "nex-agi/nex-n2-pro:free",
+      model: "openrouter/free", // fallback free model, works for normal queries
       isUncensored: false,
     });
   }
@@ -158,7 +158,7 @@ function sanitizeMessages(
     if (msg.role === "tool") {
       const prev = cleaned[cleaned.length - 1];
       if (!prev || prev.role !== "assistant" || !prev.tool_calls?.length) {
-        continue; // orphaned tool result – skip
+        continue;
       }
     }
     cleaned.push(msg);
@@ -218,7 +218,6 @@ router.post("/chat", async (req, res) => {
 
       if (!aiRes.ok) {
         const errText = await aiRes.text();
-        // If 404, try next provider
         if (aiRes.status === 404) {
           throw new Error(`Model ${provider.model} not found – skipping.`);
         }
@@ -258,7 +257,7 @@ router.post("/chat", async (req, res) => {
             }
           }
           if (tool_calls.length > 0) {
-            content = null; // hide raw JSON from user
+            content = null;
           } else {
             tool_calls = null;
           }
