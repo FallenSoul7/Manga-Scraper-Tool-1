@@ -2,11 +2,16 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import { 
   ArrowLeft, Send, Paperclip, Sparkles, X, Loader2, 
-  ShieldCheck, ShieldX, Trash2, Cpu, Brain, Zap, Layers 
+  ShieldCheck, ShieldX, Trash2, Cpu, Brain, Zap, Layers, ZoomIn
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -52,8 +57,7 @@ interface GroqToolCall {
   function: { name: string; arguments: string };
 }
 
-
-// ── Secure AI call — routes through the backend so API keys stay server-side ─
+// ── Secure AI call ──────────────────────────────────────────────────────────
 
 async function callAIWithWaterfall(
   msgs: GroqMsg[],
@@ -87,7 +91,20 @@ function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(`${API_BASE}${path}`, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+// ── Helper: format items with thumbnails ──────────────────────────────────
+
+function formatItems(items: any[], sourceId?: string): string {
+  return items.slice(0, 15).map((m: any) => {
+    const title = m.title || "Untitled";
+    const thumb = m.thumbnail || m.imageUrl || m.coverUrl || "";
+    const type = m.type ? ` [${m.type}]` : "";
+    const src = m.source ? ` (${m.source})` : "";
+    return thumb ? `![${title}](${thumb}) **${title}**${type}${src}` : `• **${title}**${type}${src}`;
+  }).join("\n");
+}
+
 // ── Tool execution ─────────────────────────────────────────────────────────
+
 async function executeTool(name: string, args: Record<string, any>): Promise<ExecResult> {
   const state = getStoreSnapshot();
 
@@ -113,8 +130,8 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
       if (!items.length) return { result: "No results found." };
-      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
-      return { result: `Popular in ${sourceId}:\n${list}` };
+      const formatted = formatItems(items);
+      return { result: `Popular in ${sourceId}:\n${formatted}` };
     } catch {
       return { result: `Could not browse ${sourceId}.` };
     }
@@ -128,8 +145,8 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
       if (!items.length) return { result: "No results found." };
-      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
-      return { result: `Latest in ${sourceId}:\n${list}` };
+      const formatted = formatItems(items);
+      return { result: `Latest in ${sourceId}:\n${formatted}` };
     } catch {
       return { result: `Could not browse latest from ${sourceId}.` };
     }
@@ -143,8 +160,8 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
       if (!items.length) return { result: `No results for "${query}" in ${sourceId}.` };
-      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
-      return { result: `Search results for "${query}" in ${sourceId}:\n${list}` };
+      const formatted = formatItems(items);
+      return { result: `Search results for "${query}" in ${sourceId}:\n${formatted}` };
     } catch {
       return { result: `Could not search ${sourceId}.` };
     }
@@ -158,27 +175,42 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
       if (!items.length) return { result: `No results found for "${query}" across all sources.` };
-      const list = items.slice(0, 15).map((m: any) =>
-        `• ${m.title}${m.type ? ` [${m.type}]` : ""}${m.source ? ` (${m.source})` : ""}`
-      ).join("\n");
-      return { result: `Global search results for "${query}":\n${list}` };
+      const formatted = formatItems(items, true);
+      return { result: `Global search results for "${query}":\n${formatted}` };
     } catch {
       return { result: `Global search failed for "${query}".` };
     }
   }
 
   if (name === "browse_by_tag") {
-    const { sourceId, tag, page = 1 } = args;
+    const { sourceId, tagIds, tag, page = 1 } = args;
+    // support both old 'tag' string and new 'tagIds' array
+    let tagParam = tagIds ? (Array.isArray(tagIds) ? tagIds.join(',') : tagIds) : tag;
+    if (!tagParam) return { result: "No tag provided." };
     try {
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tag/${encodeURIComponent(tag)}?page=${page}`);
-      if (!res.ok) return { result: `Could not browse tag "${tag}" in ${sourceId}.` };
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tag/${encodeURIComponent(tagParam)}?page=${page}`);
+      if (!res.ok) return { result: `Could not browse tag "${tagParam}" in ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
-      if (!items.length) return { result: `No results for tag "${tag}" in ${sourceId}.` };
-      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
-      return { result: `Results for tag "${tag}" in ${sourceId}:\n${list}` };
+      if (!items.length) return { result: `No results for tag "${tagParam}" in ${sourceId}.` };
+      const formatted = formatItems(items);
+      return { result: `Results for tag "${tagParam}" in ${sourceId}:\n${formatted}` };
     } catch {
-      return { result: `Could not browse tag "${tag}" in ${sourceId}.` };
+      return { result: `Could not browse tag "${tagParam}" in ${sourceId}.` };
+    }
+  }
+
+  if (name === "get_source_tags") {
+    const { sourceId } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tags`);
+      if (!res.ok) return { result: `Could not fetch tags for ${sourceId}.` };
+      const tags = await res.json() as any[];
+      if (!tags.length) return { result: `No tags found for ${sourceId}.` };
+      const list = tags.map((t: any) => `• ${t.name} (ID: ${t.id})${t.count ? ` – ${t.count} titles` : ''}`).join('\n');
+      return { result: `Tags for ${sourceId}:\n${list}` };
+    } catch {
+      return { result: `Could not fetch tags for ${sourceId}.` };
     }
   }
 
@@ -189,7 +221,9 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       if (!res.ok) return { result: `Could not fetch details for manga ${mangaId}.` };
       const m = await res.json() as any;
       const genres = m.genres?.join(", ") ?? "N/A";
+      const thumb = m.thumbnail || m.imageUrl || m.coverUrl || "";
       const detail = [
+        thumb ? `![${m.title}](${thumb})` : "",
         `**${m.title}**`,
         m.description ? `${m.description.slice(0, 300)}${m.description.length > 300 ? "…" : ""}` : "",
         `Author: ${m.author ?? "Unknown"}`,
@@ -300,7 +334,6 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
   return { result: `Unknown tool: ${name}` };
 }
 
-
 // ── Welcome message ────────────────────────────────────────────────────────
 
 const WELCOME: Message = {
@@ -332,6 +365,7 @@ export default function ComiAIPage() {
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   
   // Model Select State
   const [modelMode, setModelMode] = useState<string>("auto");
@@ -360,7 +394,7 @@ export default function ComiAIPage() {
   const addMsg = useCallback((content: string, extra: Partial<Message> = {}) => {
     const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const msg: Message = { id, role: "assistant", content, timestamp: new Date(), ...extra };
-    setMessages(prev => [...prev, msg].slice(-20));
+    setMessages(prev => [...prev, msg].slice(-50));
     return id;
   }, []);
 
@@ -420,7 +454,7 @@ export default function ComiAIPage() {
               timestamp: new Date(),
               permissionRequest,
             };
-            setMessages(prev => [...prev, permMsg].slice(-20));
+            setMessages(prev => [...prev, permMsg].slice(-50));
             return;
           }
 
@@ -470,7 +504,7 @@ export default function ComiAIPage() {
       file: file ? { name: file.name, size: file.size } : undefined,
       timestamp: new Date(),
     };
-    setMessages(prev => [...prev, userMsg].slice(-20));
+    setMessages(prev => [...prev, userMsg].slice(-50));
 
     try {
       const isOrganize = file && /\b(sort|organise|organize|categoris|categoriz|group|arrang)\b/i.test(userContent);
@@ -514,7 +548,7 @@ export default function ComiAIPage() {
         if (id && prev.find(m => m.id === id)) {
           return prev.map(m => m.id === id ? { ...m, content } : m);
         }
-        return [...prev, { id: msgId, role: "assistant" as const, content, timestamp: new Date() }].slice(-20);
+        return [...prev, { id: msgId, role: "assistant" as const, content, timestamp: new Date() }].slice(-50);
       });
       return msgId;
     };
@@ -588,12 +622,35 @@ export default function ComiAIPage() {
 
   // ── Render helpers ───────────────────────────────────────────────────────
 
-  const renderContent = (text: string) =>
-    text.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
-      part.startsWith("**") && part.endsWith("**")
-        ? <strong key={i}>{part.slice(2, -2)}</strong>
-        : <span key={i}>{part}</span>
-    );
+  // Render content with markdown images and click-to-zoom
+  const renderContent = (text: string) => {
+    // Split by image markdown: ![alt](url)
+    const parts = text.split(/(!\[[^\]]*\]\([^)]*\))/g);
+    return parts.map((part, index) => {
+      const imgMatch = part.match(/!\[([^\]]*)\]\(([^)]*)\)/);
+      if (imgMatch) {
+        const alt = imgMatch[1];
+        const url = imgMatch[2];
+        return (
+          <span key={index} className="inline-block">
+            <img
+              src={url}
+              alt={alt}
+              className="max-w-[150px] max-h-[200px] rounded-md cursor-pointer hover:opacity-80 transition-opacity border border-border mt-1 mb-1"
+              onClick={() => setZoomedImage(url)}
+              loading="lazy"
+            />
+          </span>
+        );
+      }
+      // Split by bold markdown **text**
+      return part.split(/(\*\*[^*]+\*\*)/).map((sub, subIndex) =>
+        sub.startsWith("**") && sub.endsWith("**")
+          ? <strong key={`${index}-${subIndex}`}>{sub.slice(2, -2)}</strong>
+          : <span key={`${index}-${subIndex}`}>{sub}</span>
+      );
+    });
+  };
 
   const getModelBadgeDetails = () => {
     switch (modelMode) {
@@ -620,7 +677,7 @@ export default function ComiAIPage() {
             <div>
               <h1 className="font-serif font-bold text-lg leading-none">Comi AI</h1>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Search · Recommend · Library Grid ({messages.length}/20)
+                Search · Recommend · Library Grid ({messages.length}/50)
               </p>
             </div>
           </div>
@@ -644,7 +701,7 @@ export default function ComiAIPage() {
           {messages.map(msg => (
             <div key={msg.id} className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}>
               <div className={cn(
-                "max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
+                "max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words",
                 msg.role === "user"
                   ? "bg-primary text-primary-foreground rounded-br-sm"
                   : "bg-muted text-foreground border border-border rounded-bl-sm"
@@ -734,10 +791,8 @@ export default function ComiAIPage() {
         </div>
       )}
 
-      {/* Input controls with Integrated Box Engine Selector */}
+      {/* Input controls */}
       <div className="flex gap-2 items-end shrink-0">
-        
-        {/* Soft-Edged Model Selection Box Engine */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -755,7 +810,6 @@ export default function ComiAIPage() {
               Select AI Engine Strategy
             </div>
             <DropdownMenuSeparator />
-            
             <DropdownMenuItem 
               onClick={() => setModelMode("auto")}
               className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "auto" && "bg-primary/10 font-bold text-primary")}
@@ -763,7 +817,6 @@ export default function ComiAIPage() {
               <Sparkles className="h-3.5 w-3.5 text-green-400" />
               <span>✨ All Auto</span>
             </DropdownMenuItem>
-
             <DropdownMenuItem 
               onClick={() => setModelMode("gemini")}
               className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "gemini" && "bg-primary/10 font-bold text-primary")}
@@ -771,7 +824,6 @@ export default function ComiAIPage() {
               <Brain className="h-3.5 w-3.5 text-blue-400" />
               <span>♊ Gemini</span>
             </DropdownMenuItem>
-
             <DropdownMenuItem 
               onClick={() => setModelMode("groq")}
               className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "groq" && "bg-primary/10 font-bold text-primary")}
@@ -779,7 +831,6 @@ export default function ComiAIPage() {
               <Zap className="h-3.5 w-3.5 text-orange-400" />
               <span>⚡ Groq</span>
             </DropdownMenuItem>
-
             <DropdownMenuItem 
               onClick={() => setModelMode("openrouter")}
               className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "openrouter" && "bg-primary/10 font-bold text-primary")}
@@ -787,9 +838,7 @@ export default function ComiAIPage() {
               <Layers className="h-3.5 w-3.5 text-purple-400" />
               <span>🌐 OpenRouter</span>
             </DropdownMenuItem>
-
             <DropdownMenuSeparator />
-            
             <DropdownMenuItem 
               onClick={() => setModelMode("uncensored")}
               className={cn("rounded-lg text-xs gap-2 font-medium text-red-400 focus:text-red-500 cursor-pointer", modelMode === "uncensored" && "bg-red-500/10 font-bold")}
@@ -843,6 +892,26 @@ export default function ComiAIPage() {
           {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
       </div>
+
+      {/* Zoom Modal */}
+      <Dialog open={!!zoomedImage} onOpenChange={() => setZoomedImage(null)}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh] p-0 bg-transparent border-none shadow-none">
+          <div className="relative flex items-center justify-center w-full h-full">
+            <img
+              src={zoomedImage || ""}
+              alt="Zoomed manga cover"
+              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setZoomedImage(null)}
+              className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
