@@ -9,7 +9,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState(""); // 🚀 Error feedback
+  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleEmailSubmit = (e: React.FormEvent) => {
@@ -59,7 +59,6 @@ export default function LoginPage() {
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div className="relative w-full max-w-sm rounded-2xl bg-background overflow-hidden shadow-2xl">
         
-        {/* 🚀 X Button */}
         <button 
           onClick={() => setLocation("/system")}
           className="absolute right-4 top-4 z-10 p-2 text-muted-foreground hover:text-foreground transition-colors"
@@ -95,7 +94,6 @@ export default function LoginPage() {
           )}
 
           {step === "details" && (
-            {/* 🚀 THE FIX 3: Add noValidate so iPhone Safari stops blocking the submit button */}
             <form onSubmit={handleRegisterSubmit} noValidate className="space-y-4">
               <input
                 type="text"
