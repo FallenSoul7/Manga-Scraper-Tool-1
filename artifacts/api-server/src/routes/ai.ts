@@ -26,8 +26,8 @@ const UNCENSORED_MODELS = [
 
 // ── Provider builder ─────────────────────────────────────────────
 function buildProviders() {
-  const groqKeys       = collectKeys("GROQ_API_KEY");
-  const geminiKeys     = collectKeys("GEMINI_API_KEY");
+  const groqKeys = collectKeys("GROQ_API_KEY");
+  const geminiKeys = collectKeys("GEMINI_API_KEY");
   const openrouterKeys = collectKeys("OPENROUTER_API_KEY");
 
   type Provider = { name: string; url: string; key: string; model: string; isUncensored: boolean };
@@ -77,7 +77,7 @@ function buildProviders() {
   return providers;
 }
 
-// ── Adult context detection (unchanged) ──────────────────────────
+// ── Adult context detection ──────────────────────────────────────
 const ADULT_WORDS = [
   "hentia", "hentai", "18+", "nsfw", "xxx", "erotic", "smut",
   "lewd", "ecchi", "adult manga", "adult manhwa",
@@ -95,9 +95,9 @@ function isAdultContext(messages: Array<{ role: string; content: string | null }
 
 // ── Provider queue builder ────────────────────────────────────────
 function buildQueue(modelMode: string, isAdult: boolean) {
-  const all        = buildProviders();
-  const normal     = all.filter(p => !p.isUncensored);
-  const uncensored = all.filter(p =>  p.isUncensored);
+  const all = buildProviders();
+  const normal = all.filter(p => !p.isUncensored);
+  const uncensored = all.filter(p => p.isUncensored);
 
   if (modelMode === "uncensored") return [...uncensored];
   if (modelMode === "auto" && isAdult) return [...uncensored, ...normal];
@@ -129,7 +129,7 @@ function isBlocked(content: string | null): boolean {
   return BLOCK_PHRASES.some(p => content.includes(p));
 }
 
-// ── Message sanitization (unchanged) ──────────────────────────────
+// ── Message sanitization ──────────────────────────────────────────
 function sanitizeMessages(
   messages: Array<{ role: string; content: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }>
 ) {
@@ -157,7 +157,7 @@ function sanitizeMessages(
     if (msg.role === "tool") {
       const prev = cleaned[cleaned.length - 1];
       if (!prev || prev.role !== "assistant" || !prev.tool_calls?.length) {
-        continue; // orphaned tool result — skip
+        continue; // orphaned tool result – skip
       }
     }
     cleaned.push(msg);
@@ -179,11 +179,10 @@ router.post("/chat", async (req, res) => {
     return;
   }
 
-  const isAdult  = isAdultContext(rawMessages);
-  const queue    = buildQueue(modelMode, isAdult);
+  const isAdult = isAdultContext(rawMessages);
+  const queue = buildQueue(modelMode, isAdult);
   const cleanMessages = sanitizeMessages(rawMessages);
 
-  // ── Use the new system + skills prompts from ai-powers ──
   const apiMessages = [
     { role: "system", content: PROMPTS.system },
     { role: "system", content: PROMPTS.skills },
@@ -199,12 +198,11 @@ router.post("/chat", async (req, res) => {
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      // ── Build request WITHOUT `tools` and `tool_choice` ──
       const body: any = {
         model: provider.model,
         messages: apiMessages,
         temperature: provider.isUncensored ? 0.7 : 0.3,
-        max_tokens: 4000, // increased for deeper reasoning
+        max_tokens: 4000,
       };
 
       const aiRes = await fetch(provider.url, {
@@ -222,7 +220,7 @@ router.post("/chat", async (req, res) => {
         throw new Error(`${aiRes.status} — ${errText.slice(0, 300)}`);
       }
 
-      const data   = await aiRes.json() as any;
+      const data = await aiRes.json() as any;
       const choice = data.choices?.[0];
       let content: string | null = choice?.message?.content ?? null;
 
@@ -230,25 +228,36 @@ router.post("/chat", async (req, res) => {
         throw new Error(`Content blocked by ${provider.name} alignment filter.`);
       }
 
-      // ── Try to parse tool calls from content (prompt‑based) ──
+      // ── Parse all JSON tool calls from content ──
       let tool_calls = choice?.message?.tool_calls ?? null;
-      if (!tool_calls && content && content.trim().startsWith('{"tool"')) {
-        try {
-          const parsed = JSON.parse(content);
-          if (parsed.tool && parsed.args) {
-            tool_calls = [{
-              id: `call_${Date.now()}`,
-              type: "function",
-              function: {
-                name: parsed.tool,
-                arguments: JSON.stringify(parsed.args),
-              },
-            }];
-            // Hide the raw JSON from the user
-            content = null;
+      if (!tool_calls && content) {
+        // Match any JSON object that has "tool" and "args" fields
+        const jsonRegex = /\{["']tool["']\s*:\s*["'][^"']+["']\s*,\s*["']args["']\s*:\s*\{[^}]*\}\s*\}/g;
+        const matches = content.match(jsonRegex);
+        if (matches) {
+          tool_calls = [];
+          for (const jsonStr of matches) {
+            try {
+              const parsed = JSON.parse(jsonStr);
+              if (parsed.tool && parsed.args) {
+                tool_calls.push({
+                  id: `call_${Date.now()}_${tool_calls.length}`,
+                  type: "function",
+                  function: {
+                    name: parsed.tool,
+                    arguments: JSON.stringify(parsed.args),
+                  },
+                });
+              }
+            } catch {
+              // skip invalid JSON
+            }
           }
-        } catch {
-          // Not valid JSON; keep content as is
+          if (tool_calls.length > 0) {
+            content = null; // hide raw JSON from user
+          } else {
+            tool_calls = null;
+          }
         }
       }
 
