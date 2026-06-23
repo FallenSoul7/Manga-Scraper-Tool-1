@@ -316,11 +316,21 @@ router.post("/logout", (req, res) => {
 
 // 🚀 NEW: Register Route (Email & Password)
 router.post("/register", async (req, res) => {
-  const { email, password, username } = req.body;
+  // 1. Clean the inputs! Strip out invisible spaces and force lowercase
+  const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  const username = typeof req.body.username === "string" ? req.body.username.trim() : "";
+  const password = req.body.password; // Don't trim the password, spaces might be intentional
+
   const sb = getSupabaseAdmin();
   
   if (!sb) {
     res.status(500).json({ error: "Database not configured" });
+    return;
+  }
+
+  // 2. Catch empty emails immediately
+  if (!email || !email.includes("@")) {
+    res.status(400).json({ error: "Please provide a valid email address." });
     return;
   }
 
