@@ -316,10 +316,16 @@ router.post("/logout", (req, res) => {
 
 // 🚀 NEW: Register Route (Email & Password)
 router.post("/register", async (req, res) => {
-  // 1. Clean the inputs! Strip out invisible spaces and force lowercase
   const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
   const username = typeof req.body.username === "string" ? req.body.username.trim() : "";
-  const password = req.body.password; // Don't trim the password, spaces might be intentional
+  const password = typeof req.body.password === "string" ? req.body.password : "";
+
+  // 🔍 THE TRAP: Print the exact text and length to the Render logs
+  console.log("--- REGISTRATION ATTEMPT ---");
+  console.log("Email:", `"${email}"`, `(Length: ${email.length})`);
+  console.log("Username:", `"${username}"`, `(Length: ${username.length})`);
+  console.log("Password:", `"${password}"`, `(Length: ${password.length})`);
+  console.log("----------------------------");
 
   const sb = getSupabaseAdmin();
   
@@ -328,7 +334,6 @@ router.post("/register", async (req, res) => {
     return;
   }
 
-  // 2. Catch empty emails immediately
   if (!email || !email.includes("@")) {
     res.status(400).json({ error: "Please provide a valid email address." });
     return;
@@ -342,10 +347,12 @@ router.post("/register", async (req, res) => {
     });
 
     if (error) {
+      console.log("❌ SUPABASE REJECTED:", error.message);
       res.status(400).json({ error: error.message });
       return;
     }
 
+    console.log("✅ SUPABASE ACCEPTED!");
     res.status(200).json({
       message: "Check your email to verify your account!",
       user: data.user,
@@ -355,6 +362,7 @@ router.post("/register", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 // 🚀 NEW: Login Route (Email & Password)
 router.post("/login", async (req, res) => {
