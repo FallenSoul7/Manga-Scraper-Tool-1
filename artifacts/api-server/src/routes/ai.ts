@@ -20,9 +20,9 @@ function collectKeys(base: string): string[] {
 
 // ── Use confirmed working free models ────────────────────────────
 const UNCENSORED_MODELS = [
-  "openrouter/free",                                   // routes to any working free model
-  "nousresearch/nous-hermes-2-mixtral-8x7b:free",      // uncensored, good reasoning
-  "cognitivecomputations/dolphin-2.9-mixtral-8x7b:free", // reliable fallback
+  "nousresearch/nous-hermes-2-mixtral-8x7b:free",
+  "cognitivecomputations/dolphin-2.9-mixtral-8x7b:free",
+  "gryphe/mythomax-l2-13b:free",
 ];
 
 // ── Provider builder ─────────────────────────────────────────────
