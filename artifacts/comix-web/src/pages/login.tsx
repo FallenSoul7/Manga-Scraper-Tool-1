@@ -28,11 +28,18 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const res = await fetch("/api/auth/register", {
+      // 🚀 THE FIX 1: Directing traffic straight to Render
+      const res = await fetch("https://comihub-backend.onrender.com/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, username, password }),
       });
+
+      // 🚀 THE FIX 2: Stop Safari from crashing if Render returns an HTML error
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error(`Connection error (${res.status}). Server returned text instead of data.`);
+      }
 
       const data = await res.json();
 
@@ -72,7 +79,7 @@ export default function LoginPage() {
           )}
 
           {step === "email" && (
-            <form onSubmit={handleEmailSubmit} className="space-y-4">
+            <form onSubmit={handleEmailSubmit} noValidate className="space-y-4">
               <input
                 type="email"
                 required
@@ -88,7 +95,8 @@ export default function LoginPage() {
           )}
 
           {step === "details" && (
-            <form onSubmit={handleRegisterSubmit} className="space-y-4">
+            {/* 🚀 THE FIX 3: Add noValidate so iPhone Safari stops blocking the submit button */}
+            <form onSubmit={handleRegisterSubmit} noValidate className="space-y-4">
               <input
                 type="text"
                 required
