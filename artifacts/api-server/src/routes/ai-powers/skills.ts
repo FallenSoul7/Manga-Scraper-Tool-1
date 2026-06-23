@@ -85,7 +85,6 @@ export const browseLatest: SkillFunction = async (args, ctx) => {
 
 export const browseByTag: SkillFunction = async (args, ctx) => {
   const { sourceId, tagIds, page = 1 } = args;
-  // tagIds should be an array of strings like ["6:123"]
   const tagParam = Array.isArray(tagIds) ? tagIds.join(',') : tagIds;
   try {
     const res = await ctx.apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tag/${encodeURIComponent(tagParam)}?page=${page}`);
@@ -121,7 +120,6 @@ export const checkSourceHealth: SkillFunction = async (args, ctx) => {
   const { sourceId } = args;
   if (!sourceId) return { result: 'sourceId is required.' };
   try {
-    // Try to fetch popular page (first page) as a health check
     const res = await ctx.apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/popular?page=1`);
     if (!res.ok) return { result: `❌ Source "${sourceId}" is DOWN (HTTP ${res.status}).` };
     const data = await res.json() as any;
@@ -135,8 +133,6 @@ export const checkSourceHealth: SkillFunction = async (args, ctx) => {
 
 export const detectSourceBugs: SkillFunction = async (args, ctx) => {
   const { sourceId } = args;
-  // This would inspect error logs or known issues from a registry.
-  // For now, we return a generic stub.
   return { result: `No known bugs reported for "${sourceId}".` };
 };
 
@@ -184,28 +180,23 @@ export const getChapters: SkillFunction = async (args, ctx) => {
 };
 
 export const getMangaByID: SkillFunction = async (args, ctx) => {
-  // Similar to getMangaDetails, but returns raw data maybe
   return getMangaDetails(args, ctx);
 };
 
 export const getRelatedManga: SkillFunction = async (args, ctx) => {
-  // Stub: could use source's "recommendations" if available
   return { result: 'Related manga feature not yet implemented.' };
 };
 
 export const getMangaSynopsis: SkillFunction = async (args, ctx) => {
   const { sourceId, mangaId } = args;
   const detailResult = await getMangaDetails({ sourceId, mangaId }, ctx);
-  // Try to extract synopsis from detail
   const lines = detailResult.result.split('\n');
-  // Usually the synopsis is the second line after title
   return { result: lines[1] || 'No synopsis available.' };
 };
 
 export const getMangaTags: SkillFunction = async (args, ctx) => {
   const { sourceId, mangaId } = args;
   const detailResult = await getMangaDetails({ sourceId, mangaId }, ctx);
-  // Extract genres from the detail
   const lines = detailResult.result.split('\n');
   const genreLine = lines.find(l => l.startsWith('Genres:'));
   if (genreLine) return { result: genreLine };
@@ -256,7 +247,6 @@ export const addToLibrary: SkillFunction = async (args, ctx) => {
 
 export const removeFromLibrary: SkillFunction = async (args, ctx) => {
   const { mangaId } = args;
-  // Assume there is an endpoint; if not, use store actions
   if (ctx.actions.removeFromLibrary) {
     ctx.actions.removeFromLibrary(mangaId);
     return { result: `Removed manga ${mangaId} from library.` };
@@ -315,7 +305,7 @@ export const moveMangaCategory: SkillFunction = async (args, ctx) => {
 };
 
 export const batchAddToLibrary: SkillFunction = async (args, ctx) => {
-  const { items } = args; // items = [{ sourceId, mangaId, categoryId? }]
+  const { items } = args;
   if (!Array.isArray(items) || !items.length) return { result: 'No items provided.' };
   let added = 0;
   for (const item of items) {
@@ -354,7 +344,6 @@ export const getLibraryStats: SkillFunction = async (args, ctx) => {
 
 export const webSearch: SkillFunction = async (args, ctx) => {
   const { query } = args;
-  // This would call a search API (SerpAPI, Tavily, etc.) via backend
   try {
     const res = await ctx.apiFetch(`/api/search/web?q=${encodeURIComponent(query)}`);
     if (!res.ok) return { result: `Web search failed for "${query}".` };
@@ -376,7 +365,6 @@ export const fetchURL: SkillFunction = async (args, ctx) => {
     const res = await ctx.apiFetch(`/api/fetch?url=${encodeURIComponent(url)}`);
     if (!res.ok) return { result: `Could not fetch ${url}.` };
     const data = await res.json() as any;
-    // Return a summary of the page (title, description, etc.)
     return { result: `Fetched ${url}:\nTitle: ${data.title || 'N/A'}\nDescription: ${data.description || 'N/A'}` };
   } catch {
     return { result: `Could not fetch ${url}.` };
@@ -400,11 +388,8 @@ export const checkWebsiteStatus: SkillFunction = async (args, ctx) => {
 // ────────────────────────────────────────────────────────────────
 
 export const readCurrentPage: SkillFunction = async (args, ctx) => {
-  // This skill relies on the frontend sending page data.
-  // The context can contain a `pageData` property injected by the frontend.
   const pageData = ctx.pageData || args.pageData;
   if (!pageData) return { result: 'No page data available. Please open a manga/extension page first.' };
-  // pageData = { url, title, description, tags, chapters, imageUrls, ... }
   const info = [
     `Page: ${pageData.url}`,
     `Title: ${pageData.title || 'N/A'}`,
@@ -417,22 +402,16 @@ export const readCurrentPage: SkillFunction = async (args, ctx) => {
 };
 
 export const extractMangaData: SkillFunction = async (args, ctx) => {
-  // Similar to readCurrentPage but more structured
   const pageData = ctx.pageData || args.pageData;
   if (!pageData) return { result: 'No page data available.' };
-  // Return a structured manga object
   return { result: JSON.stringify(pageData, null, 2) };
 };
 
 export const detectPageElements: SkillFunction = async (args, ctx) => {
-  // This would be a frontend‑side detection using DOM selectors.
-  // For now, return a stub.
   return { result: 'Page element detection requires frontend integration.' };
 };
 
 export const screenshotPage: SkillFunction = async (args, ctx) => {
-  // Requires backend headless browser or frontend capture.
-  // Return a stub.
   return { result: 'Screenshot functionality not yet implemented.' };
 };
 
@@ -441,7 +420,6 @@ export const screenshotPage: SkillFunction = async (args, ctx) => {
 // ────────────────────────────────────────────────────────────────
 
 export const getSystemStatus: SkillFunction = async (args, ctx) => {
-  // Check backend health, API keys, database, etc.
   try {
     const res = await ctx.apiFetch('/api/health');
     if (!res.ok) return { result: 'System unhealthy.' };
@@ -454,7 +432,6 @@ export const getSystemStatus: SkillFunction = async (args, ctx) => {
 
 export const getExtensionLogs: SkillFunction = async (args, ctx) => {
   const { sourceId } = args;
-  // Fetch logs from backend for that extension
   try {
     const res = await ctx.apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/logs`);
     if (!res.ok) return { result: `Could not fetch logs for ${sourceId}.` };
@@ -467,23 +444,19 @@ export const getExtensionLogs: SkillFunction = async (args, ctx) => {
 
 export const reportBug: SkillFunction = async (args, ctx) => {
   const { description, sourceId } = args;
-  // Log bug to system
   return { result: `Bug reported for ${sourceId}: ${description}` };
 };
 
 export const suggestFix: SkillFunction = async (args, ctx) => {
   const { errorMessage, sourceId } = args;
-  // Simple pattern matching
   if (errorMessage.includes('404')) return { result: 'The source may be down. Try checking its health.' };
   if (errorMessage.includes('timeout')) return { result: 'The source is slow. Try again later or use another source.' };
   return { result: 'No specific fix available.' };
 };
 
 export const runHealthCheck: SkillFunction = async (args, ctx) => {
-  // Run all health checks and return summary
   const sources = await listSources({}, ctx);
   const lines = sources.result.split('\n');
-  // For each source, run checkSourceHealth
   const results: string[] = [];
   for (const line of lines) {
     const match = line.match(/ID: ([^,)]+)/);
@@ -500,7 +473,7 @@ export const runHealthCheck: SkillFunction = async (args, ctx) => {
 // 7. AI & MODEL CONTROL
 // ────────────────────────────────────────────────────────────────
 
-let currentModelMode = 'auto'; // Global state (could be stored in context)
+let currentModelMode = 'auto';
 
 export const switchModelMode: SkillFunction = async (args, ctx) => {
   const { mode } = args;
@@ -515,7 +488,6 @@ export const getModelStatus: SkillFunction = async (args, ctx) => {
 };
 
 export const resetConversation: SkillFunction = async (args, ctx) => {
-  // Clear context; will be handled by the caller (frontend)
   return { result: 'Conversation reset. Starting fresh.' };
 };
 
@@ -523,7 +495,6 @@ export const resetConversation: SkillFunction = async (args, ctx) => {
 // 8. USER PREFERENCES
 // ────────────────────────────────────────────────────────────────
 
-// We'll store preferences in a global object; in a real app, use a DB.
 const userPreferences: Record<string, any> = {};
 
 export const getUserPreferences: SkillFunction = async (args, ctx) => {
@@ -546,12 +517,10 @@ export const clearUserPreferences: SkillFunction = async (args, ctx) => {
 // ────────────────────────────────────────────────────────────────
 
 export const autoTagManga: SkillFunction = async (args, ctx) => {
-  // Use AI to assign tags based on manga description
   return { result: 'Auto‑tagging not yet implemented.' };
 };
 
 export const batchSortLibrary: SkillFunction = async (args, ctx) => {
-  // Uses the existing sort pipeline; this triggers it.
   return { result: 'Batch sorting requires file upload. Please attach a .db or .tmb file and say "sort my library".' };
 };
 
@@ -560,9 +529,51 @@ export const scheduleUpdateCheck: SkillFunction = async (args, ctx) => {
 };
 
 export const exportLibrary: SkillFunction = async (args, ctx) => {
-  // Generate JSON export
   const lib = Object.values(ctx.store.library);
   return { result: `Library export (${lib.length} manga):\n${JSON.stringify(lib, null, 2)}` };
+};
+
+// ────────────────────────────────────────────────────────────────
+// 10. NEW SKILLS: UNIFIED SEARCH & AI-ONLY SEARCH
+// ────────────────────────────────────────────────────────────────
+
+export const mangaUnifiedSearch: SkillFunction = async (args, ctx) => {
+  const { query, source = 'all' } = args;
+  if (!query?.trim()) return { result: 'Query is required.' };
+  try {
+    const res = await ctx.apiFetch(
+      `/api/search/manga-unified?q=${encodeURIComponent(query)}&source=${encodeURIComponent(source)}`
+    );
+    if (!res.ok) return { result: `Unified search failed for "${query}".` };
+    const data = await res.json() as any;
+    const items = data.items || [];
+    if (!items.length) return { result: `No results found for "${query}" across unified sources.` };
+    const list = items.slice(0, 10).map((m: any) =>
+      `• **${m.title}** (${m.source})${m.genres ? ` – ${m.genres.join(', ')}` : ''}`
+    ).join('\n');
+    return { result: `Unified search results for "${query}":\n${list}` };
+  } catch {
+    return { result: `Unified search failed for "${query}".` };
+  }
+};
+
+export const aiSourceSearch: SkillFunction = async (args, ctx) => {
+  const { sourceId, query, page = 1 } = args;
+  try {
+    const res = await ctx.apiFetch(
+      `/api/ai/sources/${encodeURIComponent(sourceId)}/search?q=${encodeURIComponent(query)}&page=${page}`
+    );
+    if (!res.ok) return { result: `AI search failed in ${sourceId}.` };
+    const data = await res.json() as any;
+    const items: any[] = data.items ?? data.results ?? [];
+    if (!items.length) return { result: `No results for "${query}" in ${sourceId} (AI-only).` };
+    const list = items.slice(0, 12).map((m: any) =>
+      `• ${m.title}${m.type ? ` [${m.type}]` : ''}${m.coverUrl ? ` (${m.coverUrl})` : ''}`
+    ).join('\n');
+    return { result: `AI-only search results for "${query}" in ${sourceId}:\n${list}` };
+  } catch {
+    return { result: `Could not perform AI search in ${sourceId}.` };
+  }
 };
 
 // ────────────────────────────────────────────────────────────────
@@ -635,4 +646,8 @@ export const skillRegistry: Record<string, SkillFunction> = {
   batch_sort_library: batchSortLibrary,
   schedule_update_check: scheduleUpdateCheck,
   export_library: exportLibrary,
+
+  // ─── NEW SKILLS ────────────────────────────────────────────────────
+  manga_unified_search: mangaUnifiedSearch,
+  ai_source_search: aiSourceSearch,
 };
