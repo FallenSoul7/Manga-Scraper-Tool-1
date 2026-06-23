@@ -21,7 +21,7 @@ function collectKeys(base: string): string[] {
 const UNCENSORED_MODELS = [
   "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
   "cognitivecomputations/dolphin3.0-mistral-24b:free",
-  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+  "gryphe/mythomax-l2-13b:free",   // smaller, faster, high rate limits
 ];
 
 // ── Provider builder ─────────────────────────────────────────────
