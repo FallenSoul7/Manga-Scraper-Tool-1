@@ -314,7 +314,7 @@ router.post("/logout", (req, res) => {
   req.logout(() => res.json({ ok: true }));
 });
 
-// 🚀 NEW: Register Route (Email & Password)
+// 🚀 NEW: Register Route (Email & Password) WITH TRAP
 router.post("/register", async (req, res) => {
   const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
   const username = typeof req.body.username === "string" ? req.body.username.trim() : "";
@@ -363,7 +363,6 @@ router.post("/register", async (req, res) => {
   }
 });
 
-
 // 🚀 NEW: Login Route (Email & Password)
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
@@ -385,7 +384,6 @@ router.post("/login", async (req, res) => {
       return;
     }
 
-    // Map Supabase User into our existing system format
     const rawUser: GoogleUser = {
       id: data.user.id,
       displayName: data.user.user_metadata?.username || email.split("@")[0],
@@ -396,7 +394,6 @@ router.post("/login", async (req, res) => {
 
     const user = await saveUser(rawUser);
 
-    // Tell express-session to log this user in using the existing system
     req.login(user, (err) => {
       if (err) {
         res.status(500).json({ error: "Session creation failed" });
@@ -410,7 +407,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// ── Google Routes (Kept as fallback/future-proofing) ──────────────────────────
+// ── Google Routes ─────────────────────────────────────────────────────────────
 router.get("/google", (req, res, next) => {
   if (!isConfigured()) {
     res.status(503).json({ error: "Google OAuth not configured." });
@@ -421,25 +418,11 @@ router.get("/google", (req, res, next) => {
 });
 
 function authRelayPage(status: "success" | "error", frontendURL: string): string {
-  const dest = frontendURL
-    ? `${frontendURL}/?auth=${status}`
-    : null;
-
-  const redirectScript = dest
-    ? `<script>window.location.replace(${JSON.stringify(dest)});</script>`
-    : `<script>
-        if (window.history.length > 1) {
-          window.history.back();
-        }
-      </script>`;
-
-  const buttonHTML = dest
-    ? `<a href="${dest}" style="display:inline-block;margin-top:24px;padding:14px 28px;background:#7c3aed;color:#fff;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px;">
-         Return to ComiHub
-       </a>`
-    : `<p style="color:#888;margin-top:16px;">Please close this tab and return to the app.</p>`;
-
+  const dest = frontendURL ? `${frontendURL}/?auth=${status}` : null;
+  const redirectScript = dest ? `<script>window.location.replace(${JSON.stringify(dest)});</script>` : `<script>if(window.history.length>1){window.history.back();}</script>`;
+  const buttonHTML = dest ? `<a href="${dest}" style="display:inline-block;margin-top:24px;padding:14px 28px;background:#7c3aed;color:#fff;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px;">Return to ComiHub</a>` : `<p style="color:#888;margin-top:16px;">Please close this tab and return to the app.</p>`;
   const isError = status === "error";
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -448,8 +431,7 @@ function authRelayPage(status: "success" | "error", frontendURL: string): string
   <title>${isError ? "Sign In Failed" : "Signed In"} — ComiHub</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{min-height:100dvh;display:flex;align-items:center;justify-content:center;
-         background:#121212;color:#f5f5f5;font-family:system-ui,sans-serif;padding:24px;text-align:center}
+    body{min-height:100dvh;display:flex;align-items:center;justify-content:center;background:#121212;color:#f5f5f5;font-family:system-ui,sans-serif;padding:24px;text-align:center}
     .card{background:#1e1e1e;border:1px solid #333;border-radius:20px;padding:40px 32px;max-width:380px;width:100%}
     .icon{font-size:48px;margin-bottom:16px}
     h1{font-size:22px;font-weight:700;margin-bottom:8px}
