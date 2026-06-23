@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import { 
   ArrowLeft, Send, Paperclip, Sparkles, X, Loader2, 
-  ShieldCheck, ShieldX, Trash2, Cpu, Brain, Zap, Layers, ZoomIn
+  ShieldCheck, ShieldX, Trash2, Cpu, Brain, Zap, Layers
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -96,7 +96,7 @@ function apiFetch(path: string, init?: RequestInit): Promise<Response> {
 function formatItems(items: any[], sourceId?: string): string {
   return items.slice(0, 15).map((m: any) => {
     const title = m.title || "Untitled";
-    const thumb = m.thumbnail || m.imageUrl || m.coverUrl || "";
+    const thumb = m.thumbnail || m.imageUrl || m.coverUrl || "/placeholder.png";
     const type = m.type ? ` [${m.type}]` : "";
     const src = m.source ? ` (${m.source})` : "";
     return thumb ? `![${title}](${thumb}) **${title}**${type}${src}` : `• **${title}**${type}${src}`;
@@ -175,7 +175,7 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
       if (!items.length) return { result: `No results found for "${query}" across all sources.` };
-      const formatted = formatItems(items, true);
+      const formatted = formatItems(items);
       return { result: `Global search results for "${query}":\n${formatted}` };
     } catch {
       return { result: `Global search failed for "${query}".` };
@@ -184,7 +184,6 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
   if (name === "browse_by_tag") {
     const { sourceId, tagIds, tag, page = 1 } = args;
-    // support both old 'tag' string and new 'tagIds' array
     let tagParam = tagIds ? (Array.isArray(tagIds) ? tagIds.join(',') : tagIds) : tag;
     if (!tagParam) return { result: "No tag provided." };
     try {
@@ -622,9 +621,7 @@ export default function ComiAIPage() {
 
   // ── Render helpers ───────────────────────────────────────────────────────
 
-  // Render content with markdown images and click-to-zoom
   const renderContent = (text: string) => {
-    // Split by image markdown: ![alt](url)
     const parts = text.split(/(!\[[^\]]*\]\([^)]*\))/g);
     return parts.map((part, index) => {
       const imgMatch = part.match(/!\[([^\]]*)\]\(([^)]*)\)/);
@@ -636,14 +633,14 @@ export default function ComiAIPage() {
             <img
               src={url}
               alt={alt}
-              className="max-w-[150px] max-h-[200px] rounded-md cursor-pointer hover:opacity-80 transition-opacity border border-border mt-1 mb-1"
+              className="max-w-[150px] max-h-[200px] w-auto h-auto rounded-md cursor-pointer hover:opacity-80 transition-opacity border border-border mt-1 mb-1"
               onClick={() => setZoomedImage(url)}
               loading="lazy"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           </span>
         );
       }
-      // Split by bold markdown **text**
       return part.split(/(\*\*[^*]+\*\*)/).map((sub, subIndex) =>
         sub.startsWith("**") && sub.endsWith("**")
           ? <strong key={`${index}-${subIndex}`}>{sub.slice(2, -2)}</strong>
@@ -663,7 +660,7 @@ export default function ComiAIPage() {
   };
 
   return (
-    <main className="container mx-auto px-4 py-6 max-w-3xl h-[100dvh] flex flex-col">
+    <main className="container mx-auto px-4 py-6 max-w-3xl h-[100dvh] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4 shrink-0">
         <Link href="/system" className="text-muted-foreground hover:text-primary transition-colors">
@@ -696,8 +693,8 @@ export default function ComiAIPage() {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 rounded-2xl border border-border bg-card/50 p-4 mb-3">
-        <div className="flex flex-col gap-4 pb-2">
+      <ScrollArea className="flex-1 rounded-2xl border border-border bg-card/50 p-4 mb-3 overflow-y-auto touch-pan-y">
+        <div className="flex flex-col gap-4 pb-2 max-w-full break-words">
           {messages.map(msg => (
             <div key={msg.id} className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}>
               <div className={cn(
