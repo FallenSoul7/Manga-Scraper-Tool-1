@@ -18,10 +18,11 @@ function collectKeys(base: string): string[] {
   return keys;
 }
 
+// ── Use confirmed working free models ────────────────────────────
 const UNCENSORED_MODELS = [
-  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
-  "cognitivecomputations/dolphin3.0-mistral-24b:free",
-  "gryphe/mythomax-l2-13b:free",   // smaller, faster, high rate limits
+  "openrouter/free",                                   // routes to any working free model
+  "nousresearch/nous-hermes-2-mixtral-8x7b:free",      // uncensored, good reasoning
+  "cognitivecomputations/dolphin-2.9-mixtral-8x7b:free", // reliable fallback
 ];
 
 // ── Provider builder ─────────────────────────────────────────────
@@ -217,6 +218,10 @@ router.post("/chat", async (req, res) => {
 
       if (!aiRes.ok) {
         const errText = await aiRes.text();
+        // If 404, try next provider
+        if (aiRes.status === 404) {
+          throw new Error(`Model ${provider.model} not found – skipping.`);
+        }
         throw new Error(`${aiRes.status} — ${errText.slice(0, 300)}`);
       }
 
@@ -231,7 +236,6 @@ router.post("/chat", async (req, res) => {
       // ── Parse all JSON tool calls from content ──
       let tool_calls = choice?.message?.tool_calls ?? null;
       if (!tool_calls && content) {
-        // Match any JSON object that has "tool" and "args" fields
         const jsonRegex = /\{["']tool["']\s*:\s*["'][^"']+["']\s*,\s*["']args["']\s*:\s*\{[^}]*\}\s*\}/g;
         const matches = content.match(jsonRegex);
         if (matches) {
