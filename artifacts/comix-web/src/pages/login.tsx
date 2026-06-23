@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
 import { getCachedUser } from "@/lib/auth-cache";
 
@@ -6,6 +6,9 @@ export default function LoginPage() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<"email" | "details" | "verify">("email");
   
+  // 🚀 NEW: State to track if we are Logging In or Signing Up
+  const [isLoginMode, setIsLoginMode] = useState(false); 
+
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -22,20 +25,27 @@ export default function LoginPage() {
     setStep("details");
   };
 
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
 
     try {
-      // 🚀 THE FIX 1: Directing traffic straight to Render
-      const res = await fetch("https://comihub-backend.onrender.com/api/auth/register", {
+      // 🚀 THE FIX: Dynamically choose between login and register endpoints
+      const endpoint = isLoginMode ? "/api/auth/login" : "/api/auth/register";
+      const url = `https://comihub-backend.onrender.com${endpoint}`;
+
+      // Only send username if we are registering
+      const bodyData = isLoginMode 
+        ? { email, password } 
+        : { email, username, password };
+
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, username, password }),
+        body: JSON.stringify(bodyData),
       });
 
-      // 🚀 THE FIX 2: Stop Safari from crashing if Render returns an HTML error
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         throw new Error(`Connection error (${res.status}). Server returned text instead of data.`);
@@ -44,10 +54,15 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Registration failed");
+        throw new Error(data.error || "Authentication failed");
       }
 
-      setStep("verify");
+      // 🚀 THE FIX: If it's a login, we are done! Go to home. If register, go to verify.
+      if (isLoginMode) {
+        setLocation("/"); // Adjust this to whatever your home/dashboard route is
+      } else {
+        setStep("verify");
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -67,7 +82,7 @@ export default function LoginPage() {
         </button>
 
         <div className="h-24 bg-gradient-to-br from-blue-600/20 via-blue-400/10 to-background flex items-center justify-center">
-          <h2 className="text-2xl font-bold">ComiHub</h2>
+          <h2 className="text-2xl font-bold">{isLoginMode ? "Welcome Back" : "Join ComiHub"}</h2>
         </div>
 
         <div className="px-6 pb-8 pt-2">
@@ -90,23 +105,37 @@ export default function LoginPage() {
               <button type="submit" className="w-full rounded-xl bg-primary py-3 font-medium text-primary-foreground hover:opacity-90">
                 Continue
               </button>
+              
+              {/* 🚀 THE FIX: Toggle Button */}
+              <button 
+                type="button" 
+                onClick={() => setIsLoginMode(!isLoginMode)}
+                className="w-full text-sm text-muted-foreground hover:text-primary mt-2"
+              >
+                {isLoginMode ? "Need an account? Sign up" : "Already have an account? Log in"}
+              </button>
             </form>
           )}
 
           {step === "details" && (
-            <form onSubmit={handleRegisterSubmit} noValidate className="space-y-4">
-              <input
-                type="text"
-                required
-                placeholder="Username"
-                className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
+            <form onSubmit={handleAuthSubmit} noValidate className="space-y-4">
+              
+              {/* Hide username field if they are just logging in */}
+              {!isLoginMode && (
+                <input
+                  type="text"
+                  required
+                  placeholder="Username"
+                  className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              )}
+
               <input
                 type="password"
                 required
-                placeholder="Password (min 6 chars)"
+                placeholder="Password"
                 className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -116,7 +145,10 @@ export default function LoginPage() {
                 disabled={isLoading}
                 className="w-full rounded-xl bg-primary py-3 font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
               >
-                {isLoading ? "Creating..." : "Sign Up"}
+                {isLoading 
+                  ? (isLoginMode ? "Logging in..." : "Creating...") 
+                  : (isLoginMode ? "Log In" : "Sign Up")
+                }
               </button>
             </form>
           )}
