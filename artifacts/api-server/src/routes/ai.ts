@@ -18,14 +18,12 @@ function collectKeys(base: string): string[] {
   return keys;
 }
 
-// ── Use confirmed working uncensored models ──────────────────────
 const UNCENSORED_MODELS = [
   "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
   "cognitivecomputations/dolphin3.0-mistral-24b:free",
-  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", // duplicate for extra keys
+  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
 ];
 
-// ── Provider builder ─────────────────────────────────────────────
 function buildProviders() {
   const groqKeys = collectKeys("GROQ_API_KEY");
   const geminiKeys = collectKeys("GEMINI_API_KEY");
@@ -57,7 +55,7 @@ function buildProviders() {
       name: i > 0 ? `OpenRouter (key ${i + 1})` : "OpenRouter",
       url: "https://openrouter.ai/api/v1/chat/completions",
       key: openrouterKeys[i],
-      model: "openrouter/free", // fallback free model, works for normal queries
+      model: "openrouter/free",
       isUncensored: false,
     });
   }
@@ -78,7 +76,6 @@ function buildProviders() {
   return providers;
 }
 
-// ── Adult context detection ──────────────────────────────────────
 const ADULT_WORDS = [
   "hentia", "hentai", "18+", "nsfw", "xxx", "erotic", "smut",
   "lewd", "ecchi", "adult manga", "adult manhwa",
@@ -94,7 +91,6 @@ function isAdultContext(messages: Array<{ role: string; content: string | null }
   return false;
 }
 
-// ── Provider queue builder ────────────────────────────────────────
 function buildQueue(modelMode: string, isAdult: boolean) {
   const all = buildProviders();
   const normal = all.filter(p => !p.isUncensored);
@@ -114,7 +110,6 @@ function buildQueue(modelMode: string, isAdult: boolean) {
   return [...normal, ...uncensored];
 }
 
-// ── Block phrase filter ──────────────────────────────────────────
 const BLOCK_PHRASES = [
   "I cannot assist with",
   "I am unable to provide",
@@ -130,7 +125,6 @@ function isBlocked(content: string | null): boolean {
   return BLOCK_PHRASES.some(p => content.includes(p));
 }
 
-// ── Message sanitization ──────────────────────────────────────────
 function sanitizeMessages(
   messages: Array<{ role: string; content: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }>
 ) {
@@ -166,8 +160,78 @@ function sanitizeMessages(
   return cleaned;
 }
 
-// ──────────────────────────────────────────────────────────────────
-// MAIN CHAT ROUTE
+// ── Parser: JSON / XML / plain text with arg_key/arg_value ──
+function parseToolCalls(content: string): any[] | null {
+  // 1. Try JSON: {"tool": "...", "args": {...}}
+  const jsonRegex = /\{["']tool["']\s*:\s*["'][^"']+["']\s*,\s*["']args["']\s*:\s*\{[^}]*\}\s*\}/g;
+  const jsonMatches = content.match(jsonRegex);
+  if (jsonMatches) {
+    const calls: any[] = [];
+    for (const jsonStr of jsonMatches) {
+      try {
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.tool && parsed.args) {
+          calls.push({
+            id: `call_${Date.now()}_${calls.length}`,
+            type: "function",
+            function: {
+              name: parsed.tool,
+              arguments: JSON.stringify(parsed.args),
+            },
+          });
+        }
+      } catch {}
+    }
+    if (calls.length > 0) return calls;
+  }
+
+  // 2. Try XML: <tool_call>name<arg_key>key</arg_key><arg_value>value</arg_value></tool_call>
+  const xmlRegex = /<tool_call>\s*(\w+)\s*(.*?)<\/tool_call>/s;
+  const match = content.match(xmlRegex);
+  if (match) {
+    const name = match[1];
+    const body = match[2];
+    const args: Record<string, any> = {};
+    const argRegex = /<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>/g;
+    let argMatch;
+    while ((argMatch = argRegex.exec(body)) !== null) {
+      const key = argMatch[1].trim();
+      const val = argMatch[2].trim();
+      if (key && val) args[key] = val;
+    }
+    return [{
+      id: `call_${Date.now()}`,
+      type: "function",
+      function: {
+        name,
+        arguments: JSON.stringify(args),
+      },
+    }];
+  }
+
+  // 3. Try plain text with arg_key/arg_value (no wrapper)
+  const plainRegex = /(\w+)\s*<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>/g;
+  let plainName: string | null = null;
+  const plainArgs: Record<string, any> = {};
+  let plainMatch;
+  while ((plainMatch = plainRegex.exec(content)) !== null) {
+    if (!plainName) plainName = plainMatch[1];
+    plainArgs[plainMatch[2].trim()] = plainMatch[3].trim();
+  }
+  if (plainName && Object.keys(plainArgs).length > 0) {
+    return [{
+      id: `call_${Date.now()}`,
+      type: "function",
+      function: {
+        name: plainName,
+        arguments: JSON.stringify(plainArgs),
+      },
+    }];
+  }
+
+  return null;
+}
+
 // ──────────────────────────────────────────────────────────────────
 router.post("/chat", async (req, res) => {
   const { messages: rawMessages, modelMode = "auto" } = req.body as {
@@ -232,35 +296,13 @@ router.post("/chat", async (req, res) => {
         throw new Error(`Content blocked by ${provider.name} alignment filter.`);
       }
 
-      // ── Parse all JSON tool calls from content ──
+      // ── Use the new parser ──
       let tool_calls = choice?.message?.tool_calls ?? null;
       if (!tool_calls && content) {
-        const jsonRegex = /\{["']tool["']\s*:\s*["'][^"']+["']\s*,\s*["']args["']\s*:\s*\{[^}]*\}\s*\}/g;
-        const matches = content.match(jsonRegex);
-        if (matches) {
-          tool_calls = [];
-          for (const jsonStr of matches) {
-            try {
-              const parsed = JSON.parse(jsonStr);
-              if (parsed.tool && parsed.args) {
-                tool_calls.push({
-                  id: `call_${Date.now()}_${tool_calls.length}`,
-                  type: "function",
-                  function: {
-                    name: parsed.tool,
-                    arguments: JSON.stringify(parsed.args),
-                  },
-                });
-              }
-            } catch {
-              // skip invalid JSON
-            }
-          }
-          if (tool_calls.length > 0) {
-            content = null;
-          } else {
-            tool_calls = null;
-          }
+        const parsed = parseToolCalls(content);
+        if (parsed) {
+          tool_calls = parsed;
+          content = null; // hide raw text from user
         }
       }
 
