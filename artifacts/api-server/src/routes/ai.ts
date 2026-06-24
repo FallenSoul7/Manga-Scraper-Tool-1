@@ -160,7 +160,7 @@ function sanitizeMessages(
   return cleaned;
 }
 
-// ── Parser: JSON / XML / plain text with arg_key/arg_value ──
+// ── Enhanced parser: JSON + XML (both formats) + plain arg_key/arg_value ──
 function parseToolCalls(content: string): any[] | null {
   // 1. Try JSON: {"tool": "...", "args": {...}}
   const jsonRegex = /\{["']tool["']\s*:\s*["'][^"']+["']\s*,\s*["']args["']\s*:\s*\{[^}]*\}\s*\}/g;
@@ -185,29 +185,56 @@ function parseToolCalls(content: string): any[] | null {
     if (calls.length > 0) return calls;
   }
 
-  // 2. Try XML: <tool_call>name<arg_key>key</arg_key><arg_value>value</arg_value></tool_call>
-  const xmlRegex = /<tool_call>\s*(\w+)\s*(.*?)<\/tool_call>/s;
-  const match = content.match(xmlRegex);
-  if (match) {
-    const name = match[1];
-    const body = match[2];
+  // 2. Try XML with <tool_call> ... </tool_call> (both the arg_key/arg_value and the function=.../parameter=... variants)
+  // First, extract all <tool_call> blocks.
+  const toolCallRegex = /<tool_call>\s*([\s\S]*?)<\/tool_call>/g;
+  let match;
+  const calls: any[] = [];
+  while ((match = toolCallRegex.exec(content)) !== null) {
+    const body = match[1].trim();
+    // Try to parse function name and parameters.
+    let name: string | null = null;
     const args: Record<string, any> = {};
-    const argRegex = /<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>/g;
-    let argMatch;
-    while ((argMatch = argRegex.exec(body)) !== null) {
-      const key = argMatch[1].trim();
-      const val = argMatch[2].trim();
-      if (key && val) args[key] = val;
+
+    // Variant A: <function=...> and <parameter=...>
+    const funcMatch = body.match(/<function=(\w+)>/);
+    if (funcMatch) {
+      name = funcMatch[1];
+      // Extract parameters: <parameter=key>value</parameter>
+      const paramRegex = /<parameter=(\w+)>([^<]*)<\/parameter>/g;
+      let pMatch;
+      while ((pMatch = paramRegex.exec(body)) !== null) {
+        args[pMatch[1]] = pMatch[2].trim();
+      }
+    } else {
+      // Variant B: <function>name</function> and <arg_key>key</arg_key><arg_value>value</arg_value>
+      const funcNameMatch = body.match(/<function>\s*(\w+)\s*<\/function>/);
+      if (funcNameMatch) {
+        name = funcNameMatch[1];
+        const argRegex = /<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>/g;
+        let aMatch;
+        while ((aMatch = argRegex.exec(body)) !== null) {
+          args[aMatch[1].trim()] = aMatch[2].trim();
+        }
+      } else {
+        // Variant C: just plain arg_key/arg_value without wrapper (already handled later)
+        // Skip here.
+      }
     }
-    return [{
-      id: `call_${Date.now()}`,
-      type: "function",
-      function: {
-        name,
-        arguments: JSON.stringify(args),
-      },
-    }];
+
+    if (name && Object.keys(args).length > 0) {
+      calls.push({
+        id: `call_${Date.now()}_${calls.length}`,
+        type: "function",
+        function: {
+          name,
+          arguments: JSON.stringify(args),
+        },
+      });
+    }
   }
+
+  if (calls.length > 0) return calls;
 
   // 3. Try plain text with arg_key/arg_value (no wrapper)
   const plainRegex = /(\w+)\s*<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>/g;
@@ -296,7 +323,7 @@ router.post("/chat", async (req, res) => {
         throw new Error(`Content blocked by ${provider.name} alignment filter.`);
       }
 
-      // ── Use the new parser ──
+      // ── Use the enhanced parser ──
       let tool_calls = choice?.message?.tool_calls ?? null;
       if (!tool_calls && content) {
         const parsed = parseToolCalls(content);
