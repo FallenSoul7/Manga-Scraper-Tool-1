@@ -21,9 +21,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { storeActions, getStoreSnapshot } from "@/lib/storage";
-// ─── NEW: import shared executor and types ────────────────────────────────
-import { executeSkill } from "@/ai-powers/executor";
-import type { SkillContext } from "@/ai-powers/types";
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const FETCH_TIMEOUT_MS = 60_000;
@@ -92,6 +89,301 @@ function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   return fetch(`${API_BASE}${path}`, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+// ── Helper: format items with thumbnails ──────────────────────────────────
+
+function formatItems(items: any[], sourceId?: string): string {
+  return items.slice(0, 15).map((m: any) => {
+    const title = m.title || "Untitled";
+    const thumb = m.thumbnail || m.imageUrl || m.coverUrl || "/placeholder.png";
+    const type = m.type ? ` [${m.type}]` : "";
+    const src = m.source ? ` (${m.source})` : "";
+    return thumb ? `![${title}](${thumb}) **${title}**${type}${src}` : `• **${title}**${type}${src}`;
+  }).join("\n");
+}
+
+// ── Tool execution (local switch) ─────────────────────────────────────────
+
+async function executeTool(name: string, args: Record<string, any>): Promise<ExecResult> {
+  const state = getStoreSnapshot();
+
+  if (name === "list_sources") {
+    try {
+      const res = await apiFetch("/api/sources/catalog");
+      if (!res.ok) return { result: "Failed to load sources." };
+      const data = await res.json() as any;
+      const supported = (data.extensions ?? []).filter((e: any) => e.supported);
+      if (!supported.length) return { result: "No supported sources found." };
+      const list = supported.map((e: any) => `• ${e.name} (ID: ${e.id}, lang: ${e.lang}${e.isNsfw ? ", 18+" : ""})`).join("\n");
+      return { result: `Available sources (${supported.length}):\n${list}` };
+    } catch {
+      return { result: "Could not fetch sources." };
+    }
+  }
+
+  if (name === "browse_popular") {
+    const { sourceId, page = 1 } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/popular?page=${page}`);
+      if (!res.ok) return { result: `Could not browse ${sourceId}.` };
+      const data = await res.json() as any;
+      const items: any[] = data.items ?? data.results ?? [];
+      if (!items.length) return { result: "No results found." };
+      const formatted = formatItems(items);
+      return { result: `Popular in ${sourceId}:\n${formatted}` };
+    } catch {
+      return { result: `Could not browse ${sourceId}.` };
+    }
+  }
+
+  if (name === "browse_latest") {
+    const { sourceId, page = 1 } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/latest?page=${page}`);
+      if (!res.ok) return { result: `Could not browse latest from ${sourceId}.` };
+      const data = await res.json() as any;
+      const items: any[] = data.items ?? data.results ?? [];
+      if (!items.length) return { result: "No results found." };
+      const formatted = formatItems(items);
+      return { result: `Latest in ${sourceId}:\n${formatted}` };
+    } catch {
+      return { result: `Could not browse latest from ${sourceId}.` };
+    }
+  }
+
+  if (name === "search_manga") {
+    const { sourceId, query, page = 1 } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/search?q=${encodeURIComponent(query)}&page=${page}`);
+      if (!res.ok) return { result: `Search failed in ${sourceId}.` };
+      const data = await res.json() as any;
+      const items: any[] = data.items ?? data.results ?? [];
+      if (!items.length) return { result: `No results for "${query}" in ${sourceId}.` };
+      const formatted = formatItems(items);
+      return { result: `Search results for "${query}" in ${sourceId}:\n${formatted}` };
+    } catch {
+      return { result: `Could not search ${sourceId}.` };
+    }
+  }
+
+  if (name === "global_search") {
+    const { query } = args;
+    try {
+      const res = await apiFetch(`/api/sources/search/global?q=${encodeURIComponent(query)}`);
+      if (!res.ok) return { result: `Global search failed for "${query}".` };
+      const data = await res.json() as any;
+      const items: any[] = data.items ?? data.results ?? [];
+      if (!items.length) return { result: `No results found for "${query}" across all sources.` };
+      const formatted = formatItems(items);
+      return { result: `Global search results for "${query}":\n${formatted}` };
+    } catch {
+      return { result: `Global search failed for "${query}".` };
+    }
+  }
+
+  if (name === "browse_by_tag") {
+    const { sourceId, tagIds, tag, page = 1 } = args;
+    let tagParam = tagIds ? (Array.isArray(tagIds) ? tagIds.join(',') : tagIds) : tag;
+    if (!tagParam) return { result: "No tag provided." };
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tag/${encodeURIComponent(tagParam)}?page=${page}`);
+      if (!res.ok) return { result: `Could not browse tag "${tagParam}" in ${sourceId}.` };
+      const data = await res.json() as any;
+      const items: any[] = data.items ?? data.results ?? [];
+      if (!items.length) return { result: `No results for tag "${tagParam}" in ${sourceId}.` };
+      const formatted = formatItems(items);
+      return { result: `Results for tag "${tagParam}" in ${sourceId}:\n${formatted}` };
+    } catch {
+      return { result: `Could not browse tag "${tagParam}" in ${sourceId}.` };
+    }
+  }
+
+  if (name === "get_source_tags") {
+    const { sourceId } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tags`);
+      if (!res.ok) return { result: `Could not fetch tags for ${sourceId}.` };
+      const tags = await res.json() as any[];
+      if (!tags.length) return { result: `No tags found for ${sourceId}.` };
+      const list = tags.map((t: any) => `• ${t.name} (ID: ${t.id})${t.count ? ` – ${t.count} titles` : ''}`).join('\n');
+      return { result: `Tags for ${sourceId}:\n${list}` };
+    } catch {
+      return { result: `Could not fetch tags for ${sourceId}.` };
+    }
+  }
+
+  if (name === "get_manga_details") {
+    const { sourceId, mangaId } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/manga/${encodeURIComponent(mangaId)}`);
+      if (!res.ok) return { result: `Could not fetch details for manga ${mangaId}.` };
+      const m = await res.json() as any;
+      const genres = m.genres?.join(", ") ?? "N/A";
+      const thumb = m.thumbnail || m.imageUrl || m.coverUrl || "";
+      const detail = [
+        thumb ? `![${m.title}](${thumb})` : "",
+        `**${m.title}**`,
+        m.description ? `${m.description.slice(0, 300)}${m.description.length > 300 ? "…" : ""}` : "",
+        `Author: ${m.author ?? "Unknown"}`,
+        `Status: ${m.status ?? "Unknown"}`,
+        `Genres: ${genres}`,
+        m.chapterCount != null ? `Chapters: ${m.chapterCount}` : "",
+      ].filter(Boolean).join("\n");
+      return { result: detail };
+    } catch {
+      return { result: `Could not fetch details for manga ${mangaId}.` };
+    }
+  }
+
+  if (name === "get_chapters") {
+    const { sourceId, mangaId } = args;
+    try {
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/manga/${encodeURIComponent(mangaId)}/chapters`);
+      if (!res.ok) return { result: `Could not fetch chapters for manga ${mangaId}.` };
+      const data = await res.json() as any;
+      const chapters: any[] = data.chapters ?? data.items ?? [];
+      if (!chapters.length) return { result: "No chapters found." };
+      const preview = chapters.slice(0, 10).map((c: any) =>
+        `• Ch.${c.number ?? "?"} — ${c.title ?? "Untitled"}${c.uploadDate ? ` (${c.uploadDate})` : ""}`
+      ).join("\n");
+      const extra = chapters.length > 10 ? `\n…and ${chapters.length - 10} more chapters.` : "";
+      return { result: `Chapters (${chapters.length} total):\n${preview}${extra}` };
+    } catch {
+      return { result: `Could not fetch chapters for manga ${mangaId}.` };
+    }
+  }
+
+  if (name === "list_categories") {
+    const cats = state.categories.sort((a, b) => a.order - b.order);
+    const lib = state.library;
+    const lines = cats.map(c => {
+      const count = Object.values(lib).filter(m => m.categoryIds.includes(c.id)).length;
+      return `• ${c.name} (ID: ${c.id}, ${count} manga)`;
+    });
+    return { result: `User categories:\n${lines.join("\n")}` };
+  }
+
+  if (name === "list_library") {
+    const { categoryId } = args;
+    const lib = Object.values(state.library);
+    const filtered = categoryId ? lib.filter(m => m.categoryIds.includes(categoryId)) : lib;
+    if (!filtered.length) return { result: "Library is empty (or no manga in that category)." };
+    const lines = filtered.slice(0, 30).map(m =>
+      `• ${m.title} (ID: ${m.id}${m.categoryIds.length ? `, cats: ${m.categoryIds.join(",")}` : ""})`
+    );
+    const extra = filtered.length > 30 ? `\n…and ${filtered.length - 30} more.` : "";
+    return { result: `Library (${filtered.length} manga):\n${lines.join("\n")}${extra}` };
+  }
+
+  if (name === "add_to_library") {
+    const { sourceId, mangaId, categoryId } = args;
+    try {
+      const res = await apiFetch("/api/library/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceId, mangaId, categoryId }),
+      });
+      if (!res.ok) return { result: `Failed to add manga to library.` };
+      const data = await res.json() as any;
+      return { result: `Added "${data.title ?? mangaId}" to library${categoryId ? ` in category ${categoryId}` : ""}.` };
+    } catch {
+      return { result: `Could not add manga to library.` };
+    }
+  }
+
+  if (name === "create_category") {
+    const { name: catName } = args;
+    if (!catName?.trim()) return { result: "Category name cannot be empty." };
+    const existing = state.categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+    if (existing) return { result: `Category "${catName}" already exists (ID: ${existing.id}).` };
+    const cat = storeActions.addCategory(catName.trim());
+    return { result: `Created category "${cat.name}" (ID: ${cat.id}).` };
+  }
+
+  if (name === "delete_category") {
+    const { categoryId, categoryName } = args;
+    if (categoryId === "default") return { result: "Cannot delete the Default category." };
+    const cat = state.categories.find(c => c.id === categoryId);
+    if (!cat) return { result: `Category "${categoryName}" not found.` };
+    const count = Object.values(state.library).filter(m => m.categoryIds.includes(categoryId)).length;
+    const desc = `Delete category **"${cat.name}"**${count > 0 ? ` — ${count} manga will be moved to Default` : " (empty category)"}.`;
+    return {
+      result: `PERMISSION_REQUIRED to delete "${cat.name}". Waiting for user confirmation.`,
+      permissionRequest: {
+        description: desc,
+        execute: () => {
+          storeActions.removeCategory(categoryId);
+          return `Deleted category "${cat.name}".${count > 0 ? ` ${count} manga moved to Default.` : ""}`;
+        },
+      },
+    };
+  }
+
+  if (name === "move_manga_category") {
+    const { mangaId, targetCategoryId } = args;
+    const manga = state.library[mangaId];
+    if (!manga) return { result: `Manga ID "${mangaId}" not found in library.` };
+    const cat = state.categories.find(c => c.id === targetCategoryId);
+    if (!cat) return { result: `Category ID "${targetCategoryId}" not found.` };
+    storeActions.setMangaCategories(mangaId, [targetCategoryId]);
+    return { result: `Moved "${manga.title}" to category "${cat.name}".` };
+  }
+
+  // ─── NEW SKILLS ────────────────────────────────────────────────────────────
+
+  if (name === "web_search") {
+    const { query } = args;
+    try {
+      const res = await apiFetch(`/api/search/web?q=${encodeURIComponent(query)}`);
+      if (!res.ok) return { result: `Web search failed.` };
+      const data = await res.json() as any;
+      const results = data.results || [];
+      if (!results.length) return { result: `No web results for "${query}".` };
+      const list = results.slice(0, 5).map((r: any) =>
+        `• ${r.title}\n  ${r.snippet}\n  ${r.url}`
+      ).join('\n\n');
+      return { result: `Web results for "${query}":\n${list}` };
+    } catch {
+      return { result: `Web search failed for "${query}".` };
+    }
+  }
+
+  if (name === "manga_unified_search") {
+    const { query, source = 'all' } = args;
+    try {
+      const res = await apiFetch(`/api/search/manga-unified?q=${encodeURIComponent(query)}&source=${encodeURIComponent(source)}`);
+      if (!res.ok) return { result: `Unified search failed.` };
+      const data = await res.json() as any;
+      const items = data.items || [];
+      if (!items.length) return { result: `No results found for "${query}".` };
+      const list = items.slice(0, 10).map((m: any) =>
+        `• **${m.title}** (${m.source})${m.genres ? ` – ${m.genres.join(', ')}` : ''}`
+      ).join('\n');
+      return { result: `Unified search results for "${query}":\n${list}` };
+    } catch {
+      return { result: `Unified search failed for "${query}".` };
+    }
+  }
+
+  if (name === "ai_source_search") {
+    const { sourceId, query, page = 1 } = args;
+    try {
+      const res = await apiFetch(`/api/ai/sources/${encodeURIComponent(sourceId)}/search?q=${encodeURIComponent(query)}&page=${page}`);
+      if (!res.ok) return { result: `AI search failed in ${sourceId}.` };
+      const data = await res.json() as any;
+      const items = data.items ?? data.results ?? [];
+      if (!items.length) return { result: `No results for "${query}" in ${sourceId} (AI-only).` };
+      const list = items.slice(0, 12).map((m: any) =>
+        `• ${m.title}${m.type ? ` [${m.type}]` : ''}${m.coverUrl ? ` (${m.coverUrl})` : ''}`
+      ).join('\n');
+      return { result: `AI-only search results for "${query}" in ${sourceId}:\n${list}` };
+    } catch {
+      return { result: `Could not perform AI search in ${sourceId}.` };
+    }
+  }
+
+  return { result: `Unknown tool: ${name}` };
 }
 
 // ── Welcome message ────────────────────────────────────────────────────────
@@ -180,7 +472,7 @@ export default function ComiAIPage() {
     addMsg("❌ Action cancelled.");
   }, [addMsg]);
 
-  // ── Tool-call loop (now uses shared executor) ─────────────────────────────
+  // ── Tool-call loop ───────────────────────────────────────────────────────
 
   const runToolLoop = useCallback(async (groqMsgs: GroqMsg[]) => {
     const MAX_ROUNDS = 8;
@@ -202,13 +494,7 @@ export default function ComiAIPage() {
           let args: Record<string, any> = {};
           try { args = JSON.parse(tc.function.arguments); } catch { /**/ }
 
-          // ─── Use shared executor ──────────────────────────────────────────
-          const context: SkillContext = {
-            store: getStoreSnapshot(),
-            actions: storeActions,
-            apiFetch,
-          };
-          const { result, permissionRequest } = await executeSkill(tc.function.name, args, context);
+          const { result, permissionRequest } = await executeTool(tc.function.name, args);
 
           if (permissionRequest) {
             const content = `🔐 **Permission required**\n\n${permissionRequest.description}\n\nClick **Grant Permission** below to proceed, or **Cancel** to skip.`;
