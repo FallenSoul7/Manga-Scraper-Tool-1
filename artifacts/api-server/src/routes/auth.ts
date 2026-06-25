@@ -4,6 +4,10 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
 
 import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase";
+// 🚀 NEW: Import Drizzle DB to bypass RLS natively
+import { getDb } from "../db";
+import { users } from "../schema";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
@@ -33,52 +37,52 @@ export interface GoogleUser {
   photo: string;
 }
 
-// ── Supabase user helpers ─────────────────────────────────────────────────────
+// ── Drizzle Database Helpers (BYPASSES RLS) ───────────────────────────────────
 
 async function upsertUser(user: GoogleUser): Promise<GoogleUser> {
-  const sb = getSupabaseAdmin();
-  if (!sb) return user;
-
-  const { data: existing } = await sb
-    .from("comihub_users")
-    .select("id, username")
-    .eq("email", user.email)
-    .maybeSingle();
-
-  const username = (existing as any)?.username ?? user.displayName;
-
-  const { error } = await sb.from("comihub_users").upsert(
-    {
+  try {
+    const db = getDb();
+    const username = user.username || user.displayName || user.email.split("@")[0];
+    
+    // 🚀 Uses Drizzle to insert directly into the new users table
+    await db.insert(users).values({
       id: user.id,
-      display_name: user.displayName,
-      username,
       email: user.email,
-      photo: user.photo,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "id" },
-  );
-  if (error) console.error("Supabase upsert error:", error.message);
-  return { ...user, username };
+      username: username,
+    }).onConflictDoUpdate({
+      target: users.id,
+      set: {
+        email: user.email,
+        username: username,
+      },
+    });
+    
+    return { ...user, username };
+  } catch (error: any) {
+    console.error("Drizzle upsert error:", error.message);
+    return user; // Fallback to memory if DB fails
+  }
 }
 
 async function loadUserById(id: string): Promise<GoogleUser | null> {
-  const sb = getSupabaseAdmin();
-  if (!sb) return null;
-  const { data, error } = await sb
-    .from("comihub_users")
-    .select("id, display_name, username, email, photo")
-    .eq("id", id)
-    .single();
-  if (error || !data) return null;
-  const row = data as Record<string, string>;
-  return {
-    id: row["id"],
-    displayName: row["display_name"],
-    username: row["username"] ?? row["display_name"],
-    email: row["email"],
-    photo: row["photo"] ?? "",
-  };
+  try {
+    const db = getDb();
+    const rows = await db.select().from(users).where(eq(users.id, id));
+    
+    if (!rows || rows.length === 0) return null;
+    
+    const row = rows[0];
+    return {
+      id: row.id,
+      displayName: row.username || "Reader",
+      username: row.username || "Reader",
+      email: row.email,
+      photo: "",
+    };
+  } catch (error) {
+    console.error("Drizzle load user error:", error);
+    return null;
+  }
 }
 
 const memUsers = new Map<string, GoogleUser>();
@@ -289,23 +293,21 @@ router.put("/profile", async (req, res) => {
   const trimmed = username.trim().slice(0, 32);
   const currentUser = req.user as GoogleUser;
 
-  const sb = getSupabaseAdmin();
-  if (sb) {
-    const { error } = await sb
-      .from("comihub_users")
-      .update({ username: trimmed, updated_at: new Date().toISOString() })
-      .eq("id", currentUser.id);
-    if (error) {
-      res.status(500).json({ error: "Failed to update username" });
-      return;
-    }
+  try {
+    const db = getDb();
+    // 🚀 Drizzle update directly to schema
+    await db.update(users)
+      .set({ username: trimmed })
+      .where(eq(users.id, currentUser.id));
+      
+    const updated: GoogleUser = { ...currentUser, username: trimmed };
+    memUsers.set(updated.id, updated);
+    (req.user as any).username = trimmed;
+
+    res.json({ ok: true, user: updated });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update username" });
   }
-
-  const updated: GoogleUser = { ...currentUser, username: trimmed };
-  memUsers.set(updated.id, updated);
-  (req.user as any).username = trimmed;
-
-  res.json({ ok: true, user: updated });
 });
 
 router.post("/logout", (req, res) => {
@@ -314,13 +316,12 @@ router.post("/logout", (req, res) => {
   req.logout(() => res.json({ ok: true }));
 });
 
-// 🚀 NEW: Register Route (Email & Password) WITH TRAP
+// 🚀 Register Route (Email & Password)
 router.post("/register", async (req, res) => {
   const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
   const username = typeof req.body.username === "string" ? req.body.username.trim() : "";
   const password = typeof req.body.password === "string" ? req.body.password : "";
 
-  // 🔍 THE TRAP: Print the exact text and length to the Render logs
   console.log("--- REGISTRATION ATTEMPT ---");
   console.log("Email:", `"${email}"`, `(Length: ${email.length})`);
   console.log("Username:", `"${username}"`, `(Length: ${username.length})`);
@@ -363,7 +364,7 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// 🚀 NEW: Login Route (Email & Password)
+// 🚀 Login Route (Email & Password)
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   const sb = getSupabaseAdmin();
