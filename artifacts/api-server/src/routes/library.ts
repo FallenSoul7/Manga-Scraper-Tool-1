@@ -2,17 +2,10 @@ import { Router } from "express";
 import { getDb, isDbConfigured } from "../db";
 import { users, librarySync } from "../schema";
 import { eq } from "drizzle-orm";
-import { createClient } from "@supabase/supabase-js";
 
 const router = Router();
 
-// 🚀 Initialize Supabase for verifying user tokens
-const supabase = createClient(
-  process.env["SUPABASE_URL"] || "",
-  process.env["SUPABASE_ANON_KEY"] || ""
-);
-
-// 🚀 UPDATED: Checks for Supabase Bearer token instead of Google Cookies
+// 🚀 NO SDK NEEDED: Uses native fetch to verify the token with Supabase directly
 async function requireAuth(req: any, res: any, next: any) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -20,14 +13,33 @@ async function requireAuth(req: any, res: any, next: any) {
   }
 
   const token = authHeader.split(" ")[1];
-  const { data: { user }, error } = await supabase.auth.getUser(token);
+  const supabaseUrl = process.env["SUPABASE_URL"];
+  // Grabs whichever key you have saved in Render
+  const apiKey = process.env["SUPABASE_SERVICE_KEY"] || process.env["SUPABASE_ANON_KEY"] || "";
 
-  if (error || !user) {
-    return res.status(401).json({ error: "Invalid or expired session" });
+  if (!supabaseUrl || !apiKey) {
+    console.error("Missing Supabase URL or Key in Render environment variables.");
+    return res.status(500).json({ error: "Server configuration error" });
   }
 
-  req.user = user; // Attach the verified Supabase user object
-  next();
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "apikey": apiKey
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(401).json({ error: "Invalid or expired session" });
+    }
+
+    const user = await response.json();
+    req.user = user; // Attach the verified Supabase user object
+    next();
+  } catch (error) {
+    return res.status(500).json({ error: "Auth verification failed" });
+  }
 }
 
 // GET /api/library/sync — fetch stored library from DB
@@ -64,7 +76,7 @@ router.post("/sync", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "library must be an object" });
     }
 
-    // 🚀 UPDATED: Matches your new Drizzle schema.ts structure (removed photo/displayName)
+    // Ensure user row exists in the new Drizzle schema
     await db.insert(users).values({
       id: userId,
       email: (req.user as any).email || "",
