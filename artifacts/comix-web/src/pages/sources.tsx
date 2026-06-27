@@ -191,7 +191,7 @@ export default function SourcesPage() {
     // Fetch each source individually and update as results arrive
     installed.forEach(async (src) => {
       try {
-        const res = await fetch(`/api/search?query=${encodeURIComponent(urlQ)}&page=1`, { headers: { "X-Source": src.id } });
+        const res = await fetch(`${API_ORIGIN}/api/search?query=${encodeURIComponent(urlQ)}&page=1`, { headers: { "X-Source": src.id } });
         const data = await res.json();
         const items = (data.items ?? []).slice(0, 12);
         setGlobalResults(prev => prev.map(r => r.source.id === src.id ? { ...r, items, loading: false } : r));

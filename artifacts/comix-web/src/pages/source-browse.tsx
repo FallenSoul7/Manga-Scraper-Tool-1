@@ -259,7 +259,12 @@ export default function SourceBrowsePage() {
   }, [searchInput]);
 
   const appliedTagKey = JSON.stringify(appliedTagState);
-  useEffect(() => { setFilterPage(1); setFilterItems([]); }, [searchQuery, appliedTagKey]);
+  // Skip on first mount so restored snapshot items + scroll position aren't wiped
+  const filterClearFirstMount = useRef(true);
+  useEffect(() => {
+    if (filterClearFirstMount.current) { filterClearFirstMount.current = false; return; }
+    setFilterPage(1); setFilterItems([]);
+  }, [searchQuery, appliedTagKey]);
 
   const includedTagIds = useMemo(
     () => Object.entries(appliedTagState).filter(([, s]) => s === "include").map(([id]) => id),
@@ -722,8 +727,13 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
   useEffect(() => { fetchingRef.current = fetching; }, [fetching]);
   useEffect(() => { onLoadMoreRef.current = onLoadMore; }, [onLoadMore]);
 
-  // Create the observer once — never recreate it on hasNext/fetching changes.
+  // Create (or recreate) the observer whenever items go from 0→>0.
+  // Previously the effect ran with empty deps and the sentinel wasn't in the DOM
+  // yet (loading=true), so the observer was never set up. Now we re-run when
+  // hasItems changes so the sentinel is guaranteed to exist.
+  const hasItems = items.length > 0;
   useEffect(() => {
+    if (!hasItems) return;
     const el = sentinelRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
@@ -736,7 +746,7 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;

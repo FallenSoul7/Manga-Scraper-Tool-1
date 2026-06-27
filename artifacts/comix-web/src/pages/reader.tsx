@@ -427,6 +427,12 @@ export default function Reader() {
             );
           }
 
+          // Determine load strategy: eager for ±5 pages around current, lazy otherwise
+          const distToPage = Math.abs(idx - currentPage);
+          const loadStrategy: 'eager' | 'lazy' = isPaged
+            ? (idx < 3 ? 'eager' : 'lazy')
+            : (distToPage <= 5 ? 'eager' : 'lazy');
+
           return (
             <div
               key={page.index}
@@ -437,34 +443,57 @@ export default function Reader() {
                 : isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full'
               } ${readerSettings.direction === 'vertical' ? 'mb-8' : ''}`}
             >
-              {!isLoaded && (
-                <div className="flex flex-col items-center justify-center min-h-[40vw] w-full bg-black text-white/40 pointer-events-none">
-                  <Loader2 className="h-10 w-10 animate-spin" />
-                  <div className="mt-3 text-xs tabular-nums">{idx + 1} / {pagesData.pages.length}</div>
-                </div>
-              )}
               {readerSettings.direction === 'vertical' && (
                 <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
               )}
-              <img
-                src={getProxiedImageUrl(page.url, sourceId ?? "")}
-                alt={`Page ${page.index}`}
-                className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
-                loading={isPaged ? (idx < 3 ? 'eager' : 'lazy') : 'eager'}
-                decoding="async"
-                onLoad={(e) => {
-                  // Store rendered height for placeholder accuracy
-                  const el = (e.target as HTMLImageElement).parentElement;
-                  if (el) pageHeightsRef.current[idx] = el.offsetHeight;
-                  setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
-                }}
-                onError={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
-                style={
-                  isWebtoon
-                    ? { display: 'block', width: '100%', height: 'auto', margin: 0, padding: 0, verticalAlign: 'top', lineHeight: 0 }
-                    : { display: 'block', maxWidth: '100%', objectFit: 'contain' }
-                }
-              />
+              {/* Webtoon / vertical: keep image in normal flow to avoid layout shift.
+                  Loader overlays the image while it loads — no opacity-0+absolute swap. */}
+              {isWebtoon ? (
+                <div className="relative w-full" style={{ minHeight: isLoaded ? undefined : '40vw' }}>
+                  <img
+                    src={getProxiedImageUrl(page.url, sourceId ?? "")}
+                    alt={`Page ${page.index}`}
+                    loading={loadStrategy}
+                    decoding="async"
+                    onLoad={(e) => {
+                      const el = (e.target as HTMLImageElement).parentElement;
+                      if (el) pageHeightsRef.current[idx] = el.offsetHeight;
+                      setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
+                    }}
+                    onError={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
+                    style={{ display: 'block', width: '100%', height: 'auto', margin: 0, padding: 0, verticalAlign: 'top', lineHeight: 0 }}
+                  />
+                  {!isLoaded && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center min-h-[40vw] bg-black text-white/40 pointer-events-none">
+                      <Loader2 className="h-10 w-10 animate-spin" />
+                      <div className="mt-3 text-xs tabular-nums">{idx + 1} / {pagesData.pages.length}</div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {!isLoaded && (
+                    <div className="flex flex-col items-center justify-center min-h-[40vw] w-full bg-black text-white/40 pointer-events-none">
+                      <Loader2 className="h-10 w-10 animate-spin" />
+                      <div className="mt-3 text-xs tabular-nums">{idx + 1} / {pagesData.pages.length}</div>
+                    </div>
+                  )}
+                  <img
+                    src={getProxiedImageUrl(page.url, sourceId ?? "")}
+                    alt={`Page ${page.index}`}
+                    className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
+                    loading={loadStrategy}
+                    decoding="async"
+                    onLoad={(e) => {
+                      const el = (e.target as HTMLImageElement).parentElement;
+                      if (el) pageHeightsRef.current[idx] = el.offsetHeight;
+                      setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
+                    }}
+                    onError={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
+                    style={{ display: 'block', maxWidth: '100%', objectFit: 'contain' }}
+                  />
+                </>
+              )}
             </div>
           );
         })}

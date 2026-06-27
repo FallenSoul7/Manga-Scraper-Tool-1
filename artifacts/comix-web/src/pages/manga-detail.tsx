@@ -1,4 +1,4 @@
-import { useLocation, useParams } from "wouter";
+import { useLocation, useParams, useSearch } from "wouter";
 import {
   useGetMangaDetails,
   useGetChapters,
@@ -89,6 +89,24 @@ export default function MangaDetail() {
   const id = params.id ?? params.mangaId ?? null;
   const sourceContext = params.sourceId ?? null;
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
+  const fromParam = new URLSearchParams(searchString).get("from");
+  const catParam  = new URLSearchParams(searchString).get("cat");
+
+  // Builds the correct back destination depending on how the user arrived here:
+  //  • from library/category  → /?cat=<id>  (restores category tab + scroll)
+  //  • from an extension page → /sources/<sourceId>  (restores list + scroll)
+  //  • fallback               → /sources
+  const goBack = () => {
+    if (fromParam === "library") {
+      // Stamp from=library on the return URL so the library page knows it's a
+      // real back-navigation and not a fresh deep-link — it uses this to decide
+      // whether to restore scroll position.
+      setLocation(catParam ? `/?cat=${catParam}&from=library` : "/?from=library");
+    } else {
+      setLocation(sourceContext ? `/sources/${sourceContext}` : "/sources");
+    }
+  };
   const { settings } = useSettings();
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
@@ -318,7 +336,7 @@ export default function MangaDetail() {
           <div className="text-muted-foreground text-sm">Could not load details from source.</div>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => setLocation(sourceContext ? `/sources/${sourceContext}` : "/sources")}>Go back</Button>
+          <Button variant="outline" onClick={goBack}>Go back</Button>
           <Button onClick={() => window.location.reload()}>Retry</Button>
         </div>
       </div>
@@ -347,7 +365,7 @@ export default function MangaDetail() {
           {/* Floating back arrow — top-left, over the blurred hero */}
           <button
             type="button"
-            onClick={() => setLocation(sourceContext ? `/sources/${sourceContext}` : "/sources")}
+            onClick={goBack}
             className="absolute top-3 left-3 z-20 flex items-center justify-center h-9 w-9 rounded-full bg-black/25 backdrop-blur-sm text-white hover:bg-black/40 active:scale-90 transition-all"
           >
             <ArrowLeft className="h-5 w-5" />
