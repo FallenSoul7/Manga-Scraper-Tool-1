@@ -188,8 +188,8 @@ class SupabaseSessionStore extends session.Store {
 
 const sessionStore = isSupabaseConfigured() ? new SupabaseSessionStore() : undefined;
 
-router.use(
-  session({
+export function buildSessionMiddleware() {
+  return session({
     store: sessionStore,
     secret: SESSION_SECRET,
     resave: false,
@@ -200,8 +200,8 @@ router.use(
       sameSite: process.env["NODE_ENV"] === "production" ? "none" : "lax",
       maxAge: SESSION_MAX_AGE,
     },
-  }),
-);
+  });
+}
 
 let strategyRegistered = false;
 function ensureStrategy() {
@@ -239,9 +239,6 @@ passport.deserializeUser(async (id: string, done) => {
     done(err, null);
   }
 });
-
-router.use(passport.initialize());
-router.use(passport.session());
 
 router.get("/status", (_req, res) => {
   res.json({ googleConfigured: isConfigured(), dbConfigured: isSupabaseConfigured() });

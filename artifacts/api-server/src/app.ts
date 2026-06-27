@@ -1,7 +1,9 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import passport from "passport";
 import router from "./routes";
+import { buildSessionMiddleware } from "./routes/auth";
 import { logger } from "./lib/logger";
 import http from "http";
 import path from "path";  
@@ -54,6 +56,11 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Apply session + passport globally so ALL routes (including /api/library) can use req.isAuthenticated()
+app.use(buildSessionMiddleware());
+app.use(passport.initialize());
+app.use(passport.session());
 
 const iconPath = path.join(__dirname, "../../comix-web/public/public/source-icons");
 app.use("/public/source-icons", express.static(iconPath));
