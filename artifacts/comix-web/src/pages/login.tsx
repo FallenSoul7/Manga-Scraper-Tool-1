@@ -1,13 +1,51 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { getCachedUser } from "@/lib/auth-cache";
+
+const API = "https://comihub-backend.onrender.com";
+
+// ✅ FIX: Reads local library from window state OR localStorage.
+//         Adjust the localStorage key below to match your Zustand persist key.
+function getLocalLibrary(): Record<string, any> {
+  try {
+    if ((window as any).mangaLibrary && typeof (window as any).mangaLibrary === "object") {
+      return (window as any).mangaLibrary;
+    }
+    // ⚠️ Change "comihub-library" to whatever key your Zustand store uses
+    const raw = localStorage.getItem("comihub-library");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Handle Zustand's wrapped format: { state: { library: {...} } }
+      return parsed?.state?.library ?? parsed?.library ?? parsed ?? {};
+    }
+  } catch {}
+  return {};
+}
+
+// ✅ FIX: Writes merged library back to both window state and localStorage.
+function setLocalLibrary(library: Record<string, any>) {
+  try {
+    (window as any).mangaLibrary = library;
+    // ⚠️ Change "comihub-library" to whatever key your Zustand store uses
+    const raw = localStorage.getItem("comihub-library");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Preserve Zustand's wrapper structure if it exists
+      if (parsed?.state) {
+        parsed.state.library = library;
+        localStorage.setItem("comihub-library", JSON.stringify(parsed));
+      } else {
+        localStorage.setItem("comihub-library", JSON.stringify(library));
+      }
+    } else {
+      localStorage.setItem("comihub-library", JSON.stringify(library));
+    }
+  } catch {}
+}
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<"email" | "details" | "verify">("email");
-  
-  // 🚀 NEW: State to track if we are Logging In or Signing Up
-  const [isLoginMode, setIsLoginMode] = useState(false); 
+  const [isLoginMode, setIsLoginMode] = useState(false);
 
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -25,20 +63,19 @@ export default function LoginPage() {
     setStep("details");
   };
 
-    const handleAuthSubmit = async (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
 
     try {
       const endpoint = isLoginMode ? "/api/auth/login" : "/api/auth/register";
-      const url = `https://comihub-backend.onrender.com${endpoint}`;
 
-      const bodyData = isLoginMode 
-        ? { email, password } 
+      const bodyData = isLoginMode
+        ? { email, password }
         : { email, username, password };
 
-      const res = await fetch(url, {
+      const res = await fetch(`${API}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bodyData),
@@ -48,30 +85,45 @@ export default function LoginPage() {
       if (!res.ok) throw new Error(data.error || "Authentication failed");
 
       if (isLoginMode) {
-        // 🚀 THE FIX: Sync the current state to Supabase via our API
-        // Assuming you have access to your 'library' state here, 
-        // or you can pull it directly from your global store if needed.
-        try {
-          // If you have a global library state, use it here. 
-          // If not, this logic remains safe even if empty.
-          const currentLibrary = (window as any).mangaLibrary || {}; 
-          
-          await fetch("https://comihub-backend.onrender.com/api/library/sync", {
-            method: "POST",
-            headers: { 
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${data.user?.token || ""}` 
-            },
-            body: JSON.stringify({
-              library: currentLibrary,
-              strategy: "merge"
-            })
-          });
-        } catch (syncErr) {
-          console.error("Sync attempted, but skip if no data exists");
+        // ✅ FIX: accessToken now comes from the fixed auth.ts login response
+        const accessToken: string = data.accessToken ?? "";
+
+        if (accessToken) {
+          // Step 1: Snapshot whatever the user had locally before logging in
+          const localLibrary = getLocalLibrary();
+
+          // Step 2: Push local library up to server (merges with any existing server data)
+          try {
+            await fetch(`${API}/api/library/sync`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${accessToken}`,
+              },
+              body: JSON.stringify({ library: localLibrary, strategy: "merge" }),
+            });
+          } catch (uploadErr) {
+            console.warn("Library upload skipped:", uploadErr);
+          }
+
+          // Step 3: Pull the fully merged result back from the server
+          try {
+            const getRes = await fetch(`${API}/api/library/sync`, {
+              headers: { "Authorization": `Bearer ${accessToken}` },
+            });
+
+            if (getRes.ok) {
+              const syncData = await getRes.json();
+              const mergedLibrary: Record<string, any> = syncData.library ?? {};
+              // Step 4: Restore merged library locally so the app sees it immediately
+              setLocalLibrary(mergedLibrary);
+            }
+          } catch (downloadErr) {
+            console.warn("Library restore skipped:", downloadErr);
+          }
         }
 
-        setLocation("/"); 
+        setLocation("/");
       } else {
         setStep("verify");
       }
@@ -82,12 +134,10 @@ export default function LoginPage() {
     }
   };
 
-
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div className="relative w-full max-w-sm rounded-2xl bg-background overflow-hidden shadow-2xl">
-        
-        <button 
+        <button
           onClick={() => setLocation("/system")}
           className="absolute right-4 top-4 z-10 p-2 text-muted-foreground hover:text-foreground transition-colors"
         >
@@ -118,10 +168,8 @@ export default function LoginPage() {
               <button type="submit" className="w-full rounded-xl bg-primary py-3 font-medium text-primary-foreground hover:opacity-90">
                 Continue
               </button>
-              
-              {/* 🚀 THE FIX: Toggle Button */}
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setIsLoginMode(!isLoginMode)}
                 className="w-full text-sm text-muted-foreground hover:text-primary mt-2"
               >
@@ -132,8 +180,6 @@ export default function LoginPage() {
 
           {step === "details" && (
             <form onSubmit={handleAuthSubmit} noValidate className="space-y-4">
-              
-              {/* Hide username field if they are just logging in */}
               {!isLoginMode && (
                 <input
                   type="text"
@@ -144,7 +190,6 @@ export default function LoginPage() {
                   onChange={(e) => setUsername(e.target.value)}
                 />
               )}
-
               <input
                 type="password"
                 required
@@ -153,15 +198,14 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 disabled={isLoading}
                 className="w-full rounded-xl bg-primary py-3 font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
               >
-                {isLoading 
-                  ? (isLoginMode ? "Logging in..." : "Creating...") 
-                  : (isLoginMode ? "Log In" : "Sign Up")
-                }
+                {isLoading
+                  ? (isLoginMode ? "Logging in..." : "Creating...")
+                  : (isLoginMode ? "Log In" : "Sign Up")}
               </button>
             </form>
           )}
