@@ -1,11 +1,14 @@
 import { useState, useCallback } from "react";
 import { apiUrl } from "@/lib/api-url";
-import { useStore, storeActions, type SavedManga } from "@/lib/storage";
+import { useStore, storeActions } from "@/lib/storage";
 
 export type SyncState = "idle" | "uploading" | "downloading" | "done" | "error";
 
 export function useLibrarySync() {
   const library = useStore(s => s.library);
+  const categories = useStore(s => s.categories);
+  const installedSources = useStore(s => s.installedSources);
+  
   const [state, setState] = useState<SyncState>("idle");
   const [message, setMessage] = useState("");
 
@@ -17,26 +20,26 @@ export function useLibrarySync() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ library, strategy: "merge" }),
+        // ✅ Send everything
+        body: JSON.stringify({ library, categories, installedSources, strategy: "merge" }),
       });
+      
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error ?? `Server error ${res.status}`);
-      }
-      // ✅ FIX: Handle partial failure (DB issue) — library.ts now returns 200
-      //         with ok:false + warning instead of crashing with 500.
+      if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`);
+      
       if (!data.ok && data.warning) {
         setState("error");
         setMessage(`⚠️ ${data.warning}`);
         return;
       }
+      
       setState("done");
-      setMessage(`${data.count} titles saved to the cloud`);
+      setMessage(`Cloud sync completed successfully`);
     } catch (err: any) {
       setState("error");
       setMessage(err.message ?? "Upload failed");
     }
-  }, [library]);
+  }, [library, categories, installedSources]);
 
   const downloadLibrary = useCallback(async () => {
     setState("downloading");
@@ -45,31 +48,26 @@ export function useLibrarySync() {
       const res = await fetch(apiUrl("/api/library/sync"), {
         credentials: "include",
       });
+      
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? `Server error ${res.status}`);
       }
-      const data = await res.json();
-      const cloud = data.library as Record<string, SavedManga>;
-
-      // Merge cloud into local — cloud entry wins if it has a newer or equal addedAt
-      const merged = { ...library };
-      let added = 0;
-      for (const [id, entry] of Object.entries(cloud)) {
-        if (!merged[id] || (entry.addedAt ?? 0) >= (merged[id].addedAt ?? 0)) {
-          merged[id] = entry;
-          added++;
-        }
+      
+      const responseData = await res.json();
+      
+      // ✅ Use our new action to restore everything perfectly
+      if (responseData.data) {
+        storeActions.restoreCloudSync(responseData.data);
       }
-      storeActions.setLibrary(merged);
 
       setState("done");
-      setMessage(`${added} titles restored from the cloud`);
+      setMessage(`Data restored from the cloud`);
     } catch (err: any) {
       setState("error");
       setMessage(err.message ?? "Download failed");
     }
-  }, [library]);
+  }, []);
 
   return { state, message, uploadLibrary, downloadLibrary, setState };
 }
