@@ -19,11 +19,17 @@ export function useLibrarySync() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ library, strategy: "merge" }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? `Server error ${res.status}`);
       }
-      const data = await res.json();
+      // ✅ FIX: Handle partial failure (DB issue) — library.ts now returns 200
+      //         with ok:false + warning instead of crashing with 500.
+      if (!data.ok && data.warning) {
+        setState("error");
+        setMessage(`⚠️ ${data.warning}`);
+        return;
+      }
       setState("done");
       setMessage(`${data.count} titles saved to the cloud`);
     } catch (err: any) {
