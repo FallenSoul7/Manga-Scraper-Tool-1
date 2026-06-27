@@ -235,12 +235,6 @@ export default function SourcesPage() {
                 Sources
               </TabsTrigger>
               <TabsTrigger
-                value="anime"
-                className="rounded-none h-12 px-5 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground bg-transparent shadow-none"
-              >
-                Anime
-              </TabsTrigger>
-              <TabsTrigger
                 value="extensions"
                 className="rounded-none h-12 px-5 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground bg-transparent shadow-none flex items-center gap-1.5"
               >
@@ -250,6 +244,12 @@ export default function SourcesPage() {
                     {extensionCount > 99 ? "99+" : extensionCount}
                   </span>
                 )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="anime"
+                className="rounded-none h-12 px-5 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground bg-transparent shadow-none"
+              >
+                Anime
               </TabsTrigger>
             </TabsList>
           </div>

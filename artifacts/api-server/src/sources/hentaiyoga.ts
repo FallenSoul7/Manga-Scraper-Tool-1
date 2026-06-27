@@ -39,10 +39,21 @@ function slugToTitle(slug: string): string {
 // ── Parse a listing page into MangaSummary[] ─────────────────────────────────
 async function parseListing(path: string): Promise<{ items: MangaSummary[]; hasNextPage: boolean }> {
   let $: ReturnType<typeof import("cheerio").load>;
+  let html: string;
   try {
-    ({ $ } = await fetchHtml(http, path));
-  } catch {
-    return { items: [], hasNextPage: false };
+    ({ $, html } = await fetchHtml(http, path));
+  } catch (err) {
+    throw new Error(`Hentai Yoga is unreachable: ${(err as Error).message}`);
+  }
+
+  // Cloudflare challenge page — less than 5 KB or missing <body> with real content
+  const isCloudflareBlock =
+    html.length < 5000 ||
+    html.includes("cf-browser-verification") ||
+    html.includes("Just a moment") ||
+    html.includes("Enable JavaScript and cookies to continue");
+  if (isCloudflareBlock) {
+    throw new Error("Hentai Yoga is protected by Cloudflare and could not be reached from this server.");
   }
 
   const items: MangaSummary[] = [];
