@@ -1,7 +1,5 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-// ✅ FIX: Import Zustand store so we can update it in-memory after login
-//         Writing only to localStorage doesn't re-render the UI.
 import { useStore, storeActions } from "@/lib/storage";
 
 const API = "https://comihub-backend.onrender.com";
@@ -17,9 +15,10 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // ✅ FIX: Read the current local library from Zustand directly — this is the
-  //         pre-login library the user had. No localStorage hacks needed.
+  // ✅ Read EVERYTHING we want to sync
   const localLibrary = useStore(s => s.library);
+  const localCategories = useStore(s => s.categories);
+  const localSources = useStore(s => s.installedSources);
 
   const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,10 +37,7 @@ export default function LoginPage() {
 
     try {
       const endpoint = isLoginMode ? "/api/auth/login" : "/api/auth/register";
-
-      const bodyData = isLoginMode
-        ? { email, password }
-        : { email, username, password };
+      const bodyData = isLoginMode ? { email, password } : { email, username, password };
 
       const res = await fetch(`${API}${endpoint}`, {
         method: "POST",
@@ -53,22 +49,25 @@ export default function LoginPage() {
       if (!res.ok) throw new Error(data.error || "Authentication failed");
 
       if (isLoginMode) {
-        // accessToken comes from the fixed auth.ts login response
         const accessToken: string = data.accessToken ?? "";
 
         if (accessToken) {
-          // Step 1: Push local (pre-login) library up so it merges with server data
-          // We don't await or error on this — even if it fails (DB issue) we continue
-          fetch(`${API}/api/library/sync`, {
+          // Step 1: Push everything up so the backend can merge it
+          await fetch(`${API}/api/library/sync`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               "Authorization": `Bearer ${accessToken}`,
             },
-            body: JSON.stringify({ library: localLibrary, strategy: "merge" }),
+            body: JSON.stringify({ 
+              library: localLibrary, 
+              categories: localCategories,
+              installedSources: localSources,
+              strategy: "merge" 
+            }),
           }).catch(() => {});
 
-          // Step 2: Pull the merged result back from the server
+          // Step 2: Pull the final merged data back down
           try {
             const getRes = await fetch(`${API}/api/library/sync`, {
               headers: { "Authorization": `Bearer ${accessToken}` },
@@ -76,30 +75,15 @@ export default function LoginPage() {
 
             if (getRes.ok) {
               const syncData = await getRes.json();
-              const serverLibrary: Record<string, any> = syncData.library ?? {};
-
-              // Step 3: Merge server data with local data
-              // Server is the base; keep local items that are newer or not on server
-              const merged: Record<string, any> = { ...serverLibrary };
-              for (const [id, localItem] of Object.entries(localLibrary)) {
-                const serverItem = serverLibrary[id];
-                if (!serverItem || (localItem.addedAt ?? 0) > (serverItem.addedAt ?? 0)) {
-                  merged[id] = localItem;
-                }
+              // ✅ Step 3: Update Zustand with all the data
+              if (syncData.data) {
+                storeActions.restoreCloudSync(syncData.data);
               }
-
-              // ✅ FIX: Update Zustand store directly — this triggers an immediate
-              //         re-render on all subscribers (LibraryPage etc) AND persists
-              //         to localStorage via Zustand's persist middleware.
-              //         Previously setLocalLibrary() only wrote localStorage, so the
-              //         UI never updated without a page refresh.
-              storeActions.setLibrary(merged);
             }
           } catch (downloadErr) {
             console.warn("Library restore skipped:", downloadErr);
           }
         }
-
         setLocation("/");
       } else {
         setStep("verify");
@@ -180,9 +164,7 @@ export default function LoginPage() {
                 disabled={isLoading}
                 className="w-full rounded-xl bg-primary py-3 font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
               >
-                {isLoading
-                  ? (isLoginMode ? "Logging in..." : "Creating...")
-                  : (isLoginMode ? "Log In" : "Sign Up")}
+                {isLoading ? (isLoginMode ? "Logging in..." : "Creating...") : (isLoginMode ? "Log In" : "Sign Up")}
               </button>
             </form>
           )}
