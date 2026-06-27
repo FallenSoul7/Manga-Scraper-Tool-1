@@ -29,6 +29,9 @@ const SavedMangaSchema = z.object({
   sourceId: z.string().optional(),
   downloadedAt: z.number().optional(),
   addedAt: z.number(),
+  // updatedAt is stamped on every mutation so the cloud merge can always pick
+  // the truly-newest version of a manga entry, regardless of addedAt.
+  updatedAt: z.number().optional(),
   categoryIds: z.array(z.string()),
   lastChapterCountSeen: z.number(),
   pendingUpdates: z.array(PendingChapterSchema).default([]),
@@ -336,7 +339,7 @@ export const storeActions = {
       ...memoryState,
       library: {
         ...memoryState.library,
-        [manga.id]: manga
+        [manga.id]: { ...manga, updatedAt: Date.now() }
       }
     });
   },
@@ -358,7 +361,7 @@ export const storeActions = {
       ...memoryState,
       library: {
         ...memoryState.library,
-        [mangaId]: { ...manga, categoryIds }
+        [mangaId]: { ...manga, categoryIds, updatedAt: Date.now() }
       }
     });
   },
@@ -467,8 +470,9 @@ export const storeActions = {
   // Batch-patch any fields on multiple library entries in a single state write.
   batchPatchLibrary(patches: Array<{ mangaId: string; patch: Partial<Pick<SavedManga, 'categoryIds' | 'sourceId'>> }>) {
     const newLib = { ...memoryState.library };
+    const now = Date.now();
     for (const { mangaId, patch } of patches) {
-      if (newLib[mangaId]) newLib[mangaId] = { ...newLib[mangaId], ...patch };
+      if (newLib[mangaId]) newLib[mangaId] = { ...newLib[mangaId], ...patch, updatedAt: now };
     }
     saveState({ ...memoryState, library: newLib });
   },

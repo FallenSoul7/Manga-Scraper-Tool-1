@@ -105,12 +105,17 @@ router.post("/sync", requireAuth, async (req, res) => {
       const storedCats = rawStored.categories || [];
       const storedSrcs = rawStored.installedSources || {};
 
-      // Merge Library
+      // Merge Library — use the highest of addedAt/updatedAt so that mutations
+      // like category changes (which bump updatedAt but not addedAt) always win
+      // over older pushes carrying a stale snapshot of the same entry.
+      const effectiveTs = (e: any) =>
+        Math.max((e.addedAt ?? 0), (e.updatedAt ?? 0));
+
       const finalLibrary = { ...storedLib };
       if (incomingLib) {
         for (const [id, entry] of Object.entries(incomingLib)) {
           const current = storedLib[id];
-          if (!current || ((entry as any).addedAt ?? 0) >= ((current as any).addedAt ?? 0)) {
+          if (!current || effectiveTs(entry) >= effectiveTs(current)) {
             finalLibrary[id] = entry;
           }
         }
