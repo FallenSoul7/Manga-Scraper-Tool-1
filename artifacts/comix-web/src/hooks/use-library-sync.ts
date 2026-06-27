@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api-url";
 import { useStore, storeActions, getStoreSnapshot } from "@/lib/storage";
 import { getAccessToken } from "@/lib/auth-cache";
+import { setSyncStatus } from "@/lib/sync-status";
 
 function authHeaders(): Record<string, string> {
   const token = getAccessToken();
@@ -37,6 +38,7 @@ export function useLibrarySync() {
     const snap = getStoreSnapshot();
 
     (async () => {
+      setSyncStatus("syncing");
       try {
         // Step 1: push local → cloud (merge)
         await fetch(apiUrl("/api/library/sync"), {
@@ -60,8 +62,10 @@ export function useLibrarySync() {
           const data = await res.json();
           if (data?.data) storeActions.restoreCloudSync(data.data);
         }
+        setSyncStatus("done");
       } catch {
         // Offline or network error — silently skip, local data is fine
+        setSyncStatus("error");
       }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
