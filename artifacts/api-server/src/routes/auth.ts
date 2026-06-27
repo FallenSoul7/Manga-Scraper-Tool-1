@@ -4,7 +4,6 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
 
 import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase";
-// 🚀 NEW: Import Drizzle DB to bypass RLS natively
 import { getDb } from "../db";
 import { users } from "../schema";
 import { eq } from "drizzle-orm";
@@ -12,7 +11,7 @@ import { eq } from "drizzle-orm";
 const router = Router();
 
 const SESSION_SECRET = process.env["SESSION_SECRET"] ?? "comihub-dev-secret-change-in-prod";
-const SESSION_MAX_AGE = 90 * 24 * 3600 * 1000; // 90 days
+const SESSION_MAX_AGE = 90 * 24 * 3600 * 1000;
 
 function getFrontendURL() {
   return (process.env["FRONTEND_URL"] ?? "").replace(/\/+$/, "");
@@ -28,7 +27,6 @@ function isConfigured() {
   return !!(clientID && clientSecret);
 }
 
-// ── User type ─────────────────────────────────────────────────────────────────
 export interface GoogleUser {
   id: string;
   displayName: string;
@@ -37,14 +35,10 @@ export interface GoogleUser {
   photo: string;
 }
 
-// ── Drizzle Database Helpers (BYPASSES RLS) ───────────────────────────────────
-
 async function upsertUser(user: GoogleUser): Promise<GoogleUser> {
   try {
     const db = getDb();
     const username = user.username || user.displayName || user.email.split("@")[0];
-    
-    // 🚀 Uses Drizzle to insert directly into the new users table
     await db.insert(users).values({
       id: user.id,
       email: user.email,
@@ -56,11 +50,10 @@ async function upsertUser(user: GoogleUser): Promise<GoogleUser> {
         username: username,
       },
     });
-    
     return { ...user, username };
   } catch (error: any) {
     console.error("Drizzle upsert error:", error.message);
-    return user; // Fallback to memory if DB fails
+    return user;
   }
 }
 
@@ -68,9 +61,7 @@ async function loadUserById(id: string): Promise<GoogleUser | null> {
   try {
     const db = getDb();
     const rows = await db.select().from(users).where(eq(users.id, id));
-    
     if (!rows || rows.length === 0) return null;
-    
     const row = rows[0];
     return {
       id: row.id,
@@ -100,7 +91,6 @@ async function loadUser(id: string): Promise<GoogleUser | null> {
   return fromDb;
 }
 
-// ── Supabase-backed persistent session store ──────────────────────────────────
 class SupabaseSessionStore extends session.Store {
   private tableReady = false;
 
@@ -127,13 +117,12 @@ class SupabaseSessionStore extends session.Store {
         this.tableReady = true;
       }
     }).catch(() => {});
-    this.tableReady = true; 
+    this.tableReady = true;
   }
 
   get(sid: string, callback: (err: any, session?: session.SessionData | null) => void) {
     const sb = getSupabaseAdmin();
     if (!sb) return callback(null, null);
-
     this.ensureTable().then(async () => {
       try {
         const { data, error } = await sb
@@ -141,14 +130,11 @@ class SupabaseSessionStore extends session.Store {
           .select("data, expires_at")
           .eq("sid", sid)
           .maybeSingle();
-
         if (error || !data) return callback(null, null);
-
         if (new Date((data as any).expires_at) < new Date()) {
           await sb.from("comihub_sessions").delete().eq("sid", sid).then(() => {});
           return callback(null, null);
         }
-
         callback(null, JSON.parse((data as any).data));
       } catch (err) {
         callback(err);
@@ -159,11 +145,9 @@ class SupabaseSessionStore extends session.Store {
   set(sid: string, sessionData: session.SessionData, callback?: (err?: any) => void) {
     const sb = getSupabaseAdmin();
     if (!sb) return callback?.();
-
     const expiresAt = (sessionData.cookie?.expires instanceof Date)
       ? sessionData.cookie.expires
       : new Date(Date.now() + SESSION_MAX_AGE);
-
     this.ensureTable().then(async () => {
       try {
         await sb.from("comihub_sessions").upsert(
@@ -180,7 +164,6 @@ class SupabaseSessionStore extends session.Store {
   destroy(sid: string, callback?: (err?: any) => void) {
     const sb = getSupabaseAdmin();
     if (!sb) return callback?.();
-
     getSupabaseAdmin()!
       .from("comihub_sessions")
       .delete()
@@ -192,11 +175,9 @@ class SupabaseSessionStore extends session.Store {
   touch(sid: string, sessionData: session.SessionData, callback?: (err?: any) => void) {
     const sb = getSupabaseAdmin();
     if (!sb) return callback?.();
-
     const expiresAt = (sessionData.cookie?.expires instanceof Date)
       ? sessionData.cookie.expires
       : new Date(Date.now() + SESSION_MAX_AGE);
-
     sb.from("comihub_sessions")
       .update({ expires_at: expiresAt.toISOString() })
       .eq("sid", sid)
@@ -205,7 +186,6 @@ class SupabaseSessionStore extends session.Store {
   }
 }
 
-// ── Session middleware ─────────────────────────────────────────────────────────
 const sessionStore = isSupabaseConfigured() ? new SupabaseSessionStore() : undefined;
 
 router.use(
@@ -223,20 +203,17 @@ router.use(
   }),
 );
 
-// ── Passport ──────────────────────────────────────────────────────────────────
 let strategyRegistered = false;
 function ensureStrategy() {
   if (strategyRegistered) return;
   const { clientID, clientSecret } = getGoogleCreds();
   if (!clientID || !clientSecret) return;
-
   const callbackURL =
     process.env["NODE_ENV"] === "production"
       ? `${(process.env["API_BASE_URL"] ?? "").replace(/\/+$/, "")}/api/auth/google/callback`
       : process.env["REPLIT_DEV_DOMAIN"]
         ? `https://${process.env["REPLIT_DEV_DOMAIN"]}/api/auth/google/callback`
         : "http://localhost:8080/api/auth/google/callback";
-
   passport.use(
     new GoogleStrategy({ clientID, clientSecret, callbackURL }, async (_at, _rt, profile, done) => {
       const raw: GoogleUser = {
@@ -266,8 +243,6 @@ passport.deserializeUser(async (id: string, done) => {
 router.use(passport.initialize());
 router.use(passport.session());
 
-// ── Routes ────────────────────────────────────────────────────────────────────
-
 router.get("/status", (_req, res) => {
   res.json({ googleConfigured: isConfigured(), dbConfigured: isSupabaseConfigured() });
 });
@@ -292,18 +267,14 @@ router.put("/profile", async (req, res) => {
   }
   const trimmed = username.trim().slice(0, 32);
   const currentUser = req.user as GoogleUser;
-
   try {
     const db = getDb();
-    // 🚀 Drizzle update directly to schema
     await db.update(users)
       .set({ username: trimmed })
       .where(eq(users.id, currentUser.id));
-      
     const updated: GoogleUser = { ...currentUser, username: trimmed };
     memUsers.set(updated.id, updated);
     (req.user as any).username = trimmed;
-
     res.json({ ok: true, user: updated });
   } catch (error) {
     res.status(500).json({ error: "Failed to update username" });
@@ -316,7 +287,6 @@ router.post("/logout", (req, res) => {
   req.logout(() => res.json({ ok: true }));
 });
 
-// 🚀 Register Route (Email & Password)
 router.post("/register", async (req, res) => {
   const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
   const username = typeof req.body.username === "string" ? req.body.username.trim() : "";
@@ -329,30 +299,25 @@ router.post("/register", async (req, res) => {
   console.log("----------------------------");
 
   const sb = getSupabaseAdmin();
-  
   if (!sb) {
     res.status(500).json({ error: "Database not configured" });
     return;
   }
-
   if (!email || !email.includes("@")) {
     res.status(400).json({ error: "Please provide a valid email address." });
     return;
   }
-
   try {
     const { data, error } = await sb.auth.signUp({
       email,
       password,
       options: { data: { username: username } },
     });
-
     if (error) {
       console.log("❌ SUPABASE REJECTED:", error.message);
       res.status(400).json({ error: error.message });
       return;
     }
-
     console.log("✅ SUPABASE ACCEPTED!");
     res.status(200).json({
       message: "Check your email to verify your account!",
@@ -364,27 +329,19 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// 🚀 Login Route (Email & Password)
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   const sb = getSupabaseAdmin();
-  
   if (!sb) {
     res.status(500).json({ error: "Database not configured" });
     return;
   }
-
   try {
-    const { data, error } = await sb.auth.signInWithPassword({
-      email,
-      password,
-    });
-
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
     if (error) {
       res.status(400).json({ error: error.message });
       return;
     }
-
     const rawUser: GoogleUser = {
       id: data.user.id,
       displayName: data.user.user_metadata?.username || email.split("@")[0],
@@ -392,15 +349,18 @@ router.post("/login", async (req, res) => {
       email: email,
       photo: "",
     };
-
     const user = await saveUser(rawUser);
-
     req.login(user, (err) => {
       if (err) {
         res.status(500).json({ error: "Session creation failed" });
         return;
       }
-      res.status(200).json({ message: "Login successful!", user });
+      // ✅ FIX: Return the Supabase access token so the frontend can use it for Bearer auth
+      res.status(200).json({
+        message: "Login successful!",
+        user,
+        accessToken: data.session?.access_token ?? "",
+      });
     });
   } catch (err: any) {
     console.error("Login Error:", err);
@@ -408,7 +368,6 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// ── Google Routes ─────────────────────────────────────────────────────────────
 router.get("/google", (req, res, next) => {
   if (!isConfigured()) {
     res.status(503).json({ error: "Google OAuth not configured." });
@@ -423,7 +382,6 @@ function authRelayPage(status: "success" | "error", frontendURL: string): string
   const redirectScript = dest ? `<script>window.location.replace(${JSON.stringify(dest)});</script>` : `<script>if(window.history.length>1){window.history.back();}</script>`;
   const buttonHTML = dest ? `<a href="${dest}" style="display:inline-block;margin-top:24px;padding:14px 28px;background:#7c3aed;color:#fff;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px;">Return to ComiHub</a>` : `<p style="color:#888;margin-top:16px;">Please close this tab and return to the app.</p>`;
   const isError = status === "error";
-
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -453,9 +411,7 @@ function authRelayPage(status: "success" | "error", frontendURL: string): string
 
 router.get("/google/callback", (req, res, next) => {
   const frontendURL = getFrontendURL();
-  passport.authenticate("google", {
-    failureMessage: true,
-  })(req, res, (err: any) => {
+  passport.authenticate("google", { failureMessage: true })(req, res, (err: any) => {
     if (err || !req.user) {
       res.status(200).send(authRelayPage("error", frontendURL));
       return;
