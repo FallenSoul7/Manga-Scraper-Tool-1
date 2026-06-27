@@ -1,6 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api-url";
 import { useStore, storeActions } from "@/lib/storage";
+import { getAccessToken } from "@/lib/auth-cache";
+
+function authHeaders(): Record<string, string> {
+  const token = getAccessToken();
+  return token ? { "Authorization": `Bearer ${token}` } : {};
+}
 
 export type SyncState = "idle" | "uploading" | "downloading" | "done" | "error";
 
@@ -15,22 +21,22 @@ export function useLibrarySync() {
   // ✅ Prevent the app from uploading the exact second it opens
   const isFirstRender = useRef(true);
 
-  // ✅ NEW: Auto-Sync Background Watcher
+  // Auto-Sync Background Watcher
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
-      return; // Skip the first render
+      return;
     }
 
     // Silently push to the cloud whenever data changes
     fetch(apiUrl("/api/library/sync"), {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ library, categories, installedSources, strategy: "merge" }),
     }).catch((err) => console.warn("Background auto-sync failed:", err));
 
-  }, [library, categories, installedSources]); // The trigger
+  }, [library, categories, installedSources]);
 
   const uploadLibrary = useCallback(async () => {
     setState("uploading");
@@ -39,7 +45,7 @@ export function useLibrarySync() {
       const res = await fetch(apiUrl("/api/library/sync"), {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ library, categories, installedSources, strategy: "merge" }),
       });
       
@@ -66,6 +72,7 @@ export function useLibrarySync() {
     try {
       const res = await fetch(apiUrl("/api/library/sync"), {
         credentials: "include",
+        headers: { ...authHeaders() },
       });
       
       if (!res.ok) {

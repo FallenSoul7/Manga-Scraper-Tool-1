@@ -1,4 +1,5 @@
 const KEY = "comihub-user-v1";
+const TOKEN_KEY = "comihub-access-token-v1";
 const AUTH_EVENT = "comihub-auth-changed";
 
 export interface CachedUser {
@@ -29,7 +30,28 @@ export function setCachedUser(user: CachedUser) {
 export function clearCachedUser() {
   try {
     localStorage.removeItem(KEY);
+    localStorage.removeItem(TOKEN_KEY);
     window.dispatchEvent(new Event(AUTH_EVENT));
+  } catch { /* */ }
+}
+
+export function setAccessToken(token: string) {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch { /* */ }
+}
+
+export function getAccessToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function clearAccessToken() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
   } catch { /* */ }
 }
 

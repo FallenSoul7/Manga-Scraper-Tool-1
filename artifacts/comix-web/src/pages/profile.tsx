@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { ArrowLeft, Loader2, Check, AlertCircle, Pencil } from "lucide-react";
-import { getCachedUser, setCachedUser, clearCachedUser, type CachedUser } from "@/lib/auth-cache";
+import { getCachedUser, setCachedUser, clearCachedUser, getAccessToken, type CachedUser } from "@/lib/auth-cache";
 import { apiUrl } from "@/lib/api-url";
 
 export default function ProfilePage() {
@@ -57,7 +57,12 @@ export default function ProfilePage() {
   }
 
   async function handleLogout() {
-    await fetch(apiUrl("/api/auth/logout"), { method: "POST", credentials: "include" }).catch(() => {});
+    const token = getAccessToken();
+    await fetch(apiUrl("/api/auth/logout"), {
+      method: "POST",
+      credentials: "include",
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
+    }).catch(() => {});
     clearCachedUser();
     setLocation("/system");
   }
@@ -74,7 +79,7 @@ export default function ProfilePage() {
         </button>
         <div className="rounded-2xl border border-dashed border-border bg-card/50 p-10 text-center">
           <p className="text-muted-foreground font-medium mb-2">Not signed in</p>
-          <p className="text-sm text-muted-foreground mb-4">Sign in with Google to view your profile.</p>
+          <p className="text-sm text-muted-foreground mb-4">Sign in to view your profile.</p>
           <button
             onClick={() => setLocation("/login")}
             className="rounded-xl bg-primary text-primary-foreground px-5 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors"
@@ -178,7 +183,7 @@ export default function ProfilePage() {
           {/* Google name (read-only) */}
           <div>
             <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-              Google name
+              Display name
             </label>
             <div className="rounded-xl border border-border bg-background/50 px-3 py-2.5">
               <span className="text-sm text-muted-foreground">{user.displayName}</span>

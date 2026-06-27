@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useStore, storeActions } from "@/lib/storage";
+import { setCachedUser, setAccessToken } from "@/lib/auth-cache";
 
 const API = "https://comihub-backend.onrender.com";
 
@@ -51,14 +52,20 @@ export default function LoginPage() {
       if (isLoginMode) {
         const accessToken: string = data.accessToken ?? "";
 
+        // Persist the token and user so future syncs always have auth
+        if (accessToken) setAccessToken(accessToken);
+        if (data.user) setCachedUser(data.user);
+
         if (accessToken) {
+          const bearerHeaders = {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${accessToken}`,
+          };
+
           // Step 1: Push everything up so the backend can merge it
           await fetch(`${API}/api/library/sync`, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${accessToken}`,
-            },
+            headers: bearerHeaders,
             body: JSON.stringify({ 
               library: localLibrary, 
               categories: localCategories,
@@ -75,7 +82,6 @@ export default function LoginPage() {
 
             if (getRes.ok) {
               const syncData = await getRes.json();
-              // ✅ Step 3: Update Zustand with all the data
               if (syncData.data) {
                 storeActions.restoreCloudSync(syncData.data);
               }
