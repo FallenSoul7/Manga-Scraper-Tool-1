@@ -5,41 +5,53 @@ import { eq } from "drizzle-orm";
 
 const router = Router();
 
-// 🚀 NO SDK NEEDED: Uses native fetch to verify the token with Supabase directly
+// ✅ FIX: Empty Bearer token no longer causes a 401 — falls through to session.
+//         If Bearer token is present AND non-empty, it's verified with Supabase.
+//         If absent or empty, falls back to Passport session (Google OAuth / email login).
 async function requireAuth(req: any, res: any, next: any) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Missing auth token" });
-  }
 
-  const token = authHeader.split(" ")[1];
-  const supabaseUrl = process.env["SUPABASE_URL"];
-  // Grabs whichever key you have saved in Render
-  const apiKey = process.env["SUPABASE_SERVICE_KEY"] || process.env["SUPABASE_ANON_KEY"] || "";
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.split(" ")[1];
 
-  if (!supabaseUrl || !apiKey) {
-    console.error("Missing Supabase URL or Key in Render environment variables.");
-    return res.status(500).json({ error: "Server configuration error" });
-  }
+    // Only attempt Supabase verification if token is actually present
+    if (token) {
+      const supabaseUrl = process.env["SUPABASE_URL"];
+      const apiKey = process.env["SUPABASE_SERVICE_KEY"] || process.env["SUPABASE_ANON_KEY"] || "";
 
-  try {
-    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "apikey": apiKey
+      if (!supabaseUrl || !apiKey) {
+        console.error("Missing Supabase URL or Key in Render environment variables.");
+        return res.status(500).json({ error: "Server configuration error" });
       }
-    });
 
-    if (!response.ok) {
-      return res.status(401).json({ error: "Invalid or expired session" });
+      try {
+        const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "apikey": apiKey,
+          },
+        });
+
+        if (response.ok) {
+          const user = await response.json();
+          req.user = user;
+          return next();
+        }
+
+        // Token was present and non-empty but Supabase rejected it — hard 401
+        return res.status(401).json({ error: "Invalid or expired session" });
+      } catch (error) {
+        return res.status(500).json({ error: "Auth verification failed" });
+      }
     }
-
-    const user = await response.json();
-    req.user = user; // Attach the verified Supabase user object
-    next();
-  } catch (error) {
-    return res.status(500).json({ error: "Auth verification failed" });
   }
+
+  // No Bearer token (or empty) — fall back to Passport session
+  if (typeof req.isAuthenticated === "function" && req.isAuthenticated() && req.user) {
+    return next();
+  }
+
+  return res.status(401).json({ error: "Missing auth token" });
 }
 
 // GET /api/library/sync — fetch stored library from DB
@@ -76,7 +88,6 @@ router.post("/sync", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "library must be an object" });
     }
 
-    // 🚀 THE FIX: Wrapped in try/catch to prevent the UPSERT crash if DB isn't pushed
     try {
       await db.insert(users).values({
         id: userId,
@@ -109,7 +120,6 @@ router.post("/sync", requireAuth, async (req, res) => {
       }
     }
 
-    // 🚀 Wrapped library sync in try/catch to catch foreign key errors safely
     try {
       await db.insert(librarySync).values({
         userId,
@@ -124,7 +134,6 @@ router.post("/sync", requireAuth, async (req, res) => {
       console.error("⚠️ Library save failed:", libErr.message);
       res.status(500).json({ error: "Failed to save library to database" });
     }
-
   } catch (err) {
     console.error("library sync POST failed:", err);
     res.status(500).json({ error: "Database error" });
