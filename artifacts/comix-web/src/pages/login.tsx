@@ -25,17 +25,15 @@ export default function LoginPage() {
     setStep("details");
   };
 
-  const handleAuthSubmit = async (e: React.FormEvent) => {
+    const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
 
     try {
-      // 🚀 THE FIX: Dynamically choose between login and register endpoints
       const endpoint = isLoginMode ? "/api/auth/login" : "/api/auth/register";
       const url = `https://comihub-backend.onrender.com${endpoint}`;
 
-      // Only send username if we are registering
       const bodyData = isLoginMode 
         ? { email, password } 
         : { email, username, password };
@@ -46,20 +44,34 @@ export default function LoginPage() {
         body: JSON.stringify(bodyData),
       });
 
-      const contentType = res.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error(`Connection error (${res.status}). Server returned text instead of data.`);
-      }
-
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Authentication failed");
 
-      if (!res.ok) {
-        throw new Error(data.error || "Authentication failed");
-      }
-
-      // 🚀 THE FIX: If it's a login, we are done! Go to home. If register, go to verify.
       if (isLoginMode) {
-        setLocation("/"); // Adjust this to whatever your home/dashboard route is
+        // 🚀 THE FIX: Sync the current state to Supabase via our API
+        // Assuming you have access to your 'library' state here, 
+        // or you can pull it directly from your global store if needed.
+        try {
+          // If you have a global library state, use it here. 
+          // If not, this logic remains safe even if empty.
+          const currentLibrary = (window as any).mangaLibrary || {}; 
+          
+          await fetch("https://comihub-backend.onrender.com/api/library/sync", {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${data.user?.token || ""}` 
+            },
+            body: JSON.stringify({
+              library: currentLibrary,
+              strategy: "merge"
+            })
+          });
+        } catch (syncErr) {
+          console.error("Sync attempted, but skip if no data exists");
+        }
+
+        setLocation("/"); 
       } else {
         setStep("verify");
       }
@@ -69,6 +81,7 @@ export default function LoginPage() {
       setIsLoading(false);
     }
   };
+
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
