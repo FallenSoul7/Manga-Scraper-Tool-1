@@ -412,9 +412,24 @@ export const storeActions = {
     saveState({ ...memoryState, library: newLib });
   },
 
-  setLibrary(newLibrary: Record<string, SavedManga>) {
+    setLibrary(newLibrary: Record<string, SavedManga>) {
     saveState({ ...memoryState, library: newLibrary });
   },
+
+  // ✅ NEW: Restores library, categories, and extensions from the cloud
+  restoreCloudSync(data: { 
+    library?: Record<string, SavedManga>; 
+    categories?: Category[]; 
+    installedSources?: Record<string, InstalledSource> 
+  }) {
+    saveState({
+      ...memoryState,
+      library: data.library || memoryState.library,
+      categories: data.categories || memoryState.categories,
+      installedSources: data.installedSources || memoryState.installedSources,
+    });
+  },
+
 
   addCategory(name: string): Category {
     const id = Math.random().toString(36).substring(2, 9);
