@@ -76,18 +76,22 @@ router.post("/sync", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "library must be an object" });
     }
 
-    // Ensure user row exists in the new Drizzle schema
-    await db.insert(users).values({
-      id: userId,
-      email: (req.user as any).email || "",
-      username: (req.user as any).user_metadata?.username || "Reader",
-    }).onConflictDoUpdate({
-      target: users.id,
-      set: {
+    // 🚀 THE FIX: Wrapped in try/catch to prevent the UPSERT crash if DB isn't pushed
+    try {
+      await db.insert(users).values({
+        id: userId,
         email: (req.user as any).email || "",
         username: (req.user as any).user_metadata?.username || "Reader",
-      },
-    });
+      }).onConflictDoUpdate({
+        target: users.id,
+        set: {
+          email: (req.user as any).email || "",
+          username: (req.user as any).user_metadata?.username || "Reader",
+        },
+      });
+    } catch (userErr: any) {
+      console.warn("⚠️ User sync skipped (Check database schema!):", userErr.message);
+    }
 
     let finalLibrary: Record<string, any>;
 
@@ -105,16 +109,22 @@ router.post("/sync", requireAuth, async (req, res) => {
       }
     }
 
-    await db.insert(librarySync).values({
-      userId,
-      data: finalLibrary,
-      updatedAt: new Date(),
-    }).onConflictDoUpdate({
-      target: librarySync.userId,
-      set: { data: finalLibrary, updatedAt: new Date() },
-    });
+    // 🚀 Wrapped library sync in try/catch to catch foreign key errors safely
+    try {
+      await db.insert(librarySync).values({
+        userId,
+        data: finalLibrary,
+        updatedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: librarySync.userId,
+        set: { data: finalLibrary, updatedAt: new Date() },
+      });
+      res.json({ ok: true, count: Object.keys(finalLibrary).length });
+    } catch (libErr: any) {
+      console.error("⚠️ Library save failed:", libErr.message);
+      res.status(500).json({ error: "Failed to save library to database" });
+    }
 
-    res.json({ ok: true, count: Object.keys(finalLibrary).length });
   } catch (err) {
     console.error("library sync POST failed:", err);
     res.status(500).json({ error: "Database error" });
