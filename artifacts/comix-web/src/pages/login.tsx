@@ -1,46 +1,10 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+// ✅ FIX: Import Zustand store so we can update it in-memory after login
+//         Writing only to localStorage doesn't re-render the UI.
+import { useStore, storeActions } from "@/lib/storage";
 
 const API = "https://comihub-backend.onrender.com";
-
-// ✅ FIX: Reads local library from window state OR localStorage.
-//         Adjust the localStorage key below to match your Zustand persist key.
-function getLocalLibrary(): Record<string, any> {
-  try {
-    if ((window as any).mangaLibrary && typeof (window as any).mangaLibrary === "object") {
-      return (window as any).mangaLibrary;
-    }
-    // ⚠️ Change "comihub-library" to whatever key your Zustand store uses
-    const raw = localStorage.getItem("comihub-library");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      // Handle Zustand's wrapped format: { state: { library: {...} } }
-      return parsed?.state?.library ?? parsed?.library ?? parsed ?? {};
-    }
-  } catch {}
-  return {};
-}
-
-// ✅ FIX: Writes merged library back to both window state and localStorage.
-function setLocalLibrary(library: Record<string, any>) {
-  try {
-    (window as any).mangaLibrary = library;
-    // ⚠️ Change "comihub-library" to whatever key your Zustand store uses
-    const raw = localStorage.getItem("comihub-library");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      // Preserve Zustand's wrapper structure if it exists
-      if (parsed?.state) {
-        parsed.state.library = library;
-        localStorage.setItem("comihub-library", JSON.stringify(parsed));
-      } else {
-        localStorage.setItem("comihub-library", JSON.stringify(library));
-      }
-    } else {
-      localStorage.setItem("comihub-library", JSON.stringify(library));
-    }
-  } catch {}
-}
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
@@ -52,6 +16,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  // ✅ FIX: Read the current local library from Zustand directly — this is the
+  //         pre-login library the user had. No localStorage hacks needed.
+  const localLibrary = useStore(s => s.library);
 
   const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,28 +53,22 @@ export default function LoginPage() {
       if (!res.ok) throw new Error(data.error || "Authentication failed");
 
       if (isLoginMode) {
-        // ✅ FIX: accessToken now comes from the fixed auth.ts login response
+        // accessToken comes from the fixed auth.ts login response
         const accessToken: string = data.accessToken ?? "";
 
         if (accessToken) {
-          // Step 1: Snapshot whatever the user had locally before logging in
-          const localLibrary = getLocalLibrary();
+          // Step 1: Push local (pre-login) library up so it merges with server data
+          // We don't await or error on this — even if it fails (DB issue) we continue
+          fetch(`${API}/api/library/sync`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ library: localLibrary, strategy: "merge" }),
+          }).catch(() => {});
 
-          // Step 2: Push local library up to server (merges with any existing server data)
-          try {
-            await fetch(`${API}/api/library/sync`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${accessToken}`,
-              },
-              body: JSON.stringify({ library: localLibrary, strategy: "merge" }),
-            });
-          } catch (uploadErr) {
-            console.warn("Library upload skipped:", uploadErr);
-          }
-
-          // Step 3: Pull the fully merged result back from the server
+          // Step 2: Pull the merged result back from the server
           try {
             const getRes = await fetch(`${API}/api/library/sync`, {
               headers: { "Authorization": `Bearer ${accessToken}` },
@@ -114,9 +76,24 @@ export default function LoginPage() {
 
             if (getRes.ok) {
               const syncData = await getRes.json();
-              const mergedLibrary: Record<string, any> = syncData.library ?? {};
-              // Step 4: Restore merged library locally so the app sees it immediately
-              setLocalLibrary(mergedLibrary);
+              const serverLibrary: Record<string, any> = syncData.library ?? {};
+
+              // Step 3: Merge server data with local data
+              // Server is the base; keep local items that are newer or not on server
+              const merged: Record<string, any> = { ...serverLibrary };
+              for (const [id, localItem] of Object.entries(localLibrary)) {
+                const serverItem = serverLibrary[id];
+                if (!serverItem || (localItem.addedAt ?? 0) > (serverItem.addedAt ?? 0)) {
+                  merged[id] = localItem;
+                }
+              }
+
+              // ✅ FIX: Update Zustand store directly — this triggers an immediate
+              //         re-render on all subscribers (LibraryPage etc) AND persists
+              //         to localStorage via Zustand's persist middleware.
+              //         Previously setLocalLibrary() only wrote localStorage, so the
+              //         UI never updated without a page refresh.
+              storeActions.setLibrary(merged);
             }
           } catch (downloadErr) {
             console.warn("Library restore skipped:", downloadErr);
