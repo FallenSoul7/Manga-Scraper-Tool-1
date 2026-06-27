@@ -16,7 +16,7 @@ async function requireAuth(req: any, res: any, next: any) {
       const apiKey = process.env["SUPABASE_SERVICE_KEY"] || process.env["SUPABASE_ANON_KEY"] || "";
 
       if (!supabaseUrl || !apiKey) {
-        console.error("Missing Supabase URL or Key in Render environment variables.");
+        console.error("Missing Supabase URL or Key");
         return res.status(500).json({ error: "Server configuration error" });
       }
 
@@ -33,7 +33,6 @@ async function requireAuth(req: any, res: any, next: any) {
           req.user = user;
           return next();
         }
-
         return res.status(401).json({ error: "Invalid or expired session" });
       } catch (error) {
         return res.status(500).json({ error: "Auth verification failed" });
@@ -41,7 +40,6 @@ async function requireAuth(req: any, res: any, next: any) {
     }
   }
 
-  // No Bearer token — fall back to Passport session cookie
   if (typeof req.isAuthenticated === "function" && req.isAuthenticated() && req.user) {
     return next();
   }
@@ -49,41 +47,35 @@ async function requireAuth(req: any, res: any, next: any) {
   return res.status(401).json({ error: "Missing auth token" });
 }
 
-// GET /api/library/sync — fetch stored library from DB
+// GET /api/library/sync
 router.get("/sync", requireAuth, async (req, res) => {
-  if (!isDbConfigured()) {
-    return res.status(503).json({ error: "Database not configured" });
-  }
+  if (!isDbConfigured()) return res.status(503).json({ error: "Database not configured" });
+  
   try {
     const db = getDb();
     const userId = (req.user as any).id as string;
     const rows = await db.select().from(librarySync).where(eq(librarySync.userId, userId));
-    const library = rows[0]?.data ?? {};
-    res.json({ library, updatedAt: rows[0]?.updatedAt ?? null });
+    
+    // ✅ Fix: Return the entire data payload, not just the library object
+    const data = rows[0]?.data ?? {};
+    res.json({ data, updatedAt: rows[0]?.updatedAt ?? null });
   } catch (err) {
     console.error("library sync GET failed:", err);
     res.status(500).json({ error: "Database error" });
   }
 });
 
-// POST /api/library/sync — save/merge library to DB
+// POST /api/library/sync
 router.post("/sync", requireAuth, async (req, res) => {
-  if (!isDbConfigured()) {
-    return res.status(503).json({ error: "Database not configured" });
-  }
+  if (!isDbConfigured()) return res.status(503).json({ error: "Database not configured" });
+  
   try {
     const db = getDb();
     const userId = (req.user as any).id as string;
-    const { library: incoming, strategy = "merge" } = req.body as {
-      library: Record<string, any>;
-      strategy?: "upload" | "merge";
-    };
+    
+    // ✅ Fix: Accept library, categories, and installedSources
+    const { library: incomingLib, categories: incomingCats, installedSources: incomingSrcs, strategy = "merge" } = req.body as any;
 
-    if (!incoming || typeof incoming !== "object") {
-      return res.status(400).json({ error: "library must be an object" });
-    }
-
-    // Try to upsert the user row — if this fails (RLS / schema mismatch) we warn and continue
     try {
       await db.insert(users).values({
         id: userId,
@@ -97,71 +89,66 @@ router.post("/sync", requireAuth, async (req, res) => {
         },
       });
     } catch (userErr: any) {
-      // ✅ FIX: Log the real Postgres cause so you can see if it's RLS, FK, schema etc.
-      console.warn(
-        "⚠️ User upsert skipped — real cause:",
-        userErr.cause?.message ?? userErr.cause ?? userErr.message,
-        "\nHint: check RLS on the `users` table in Supabase dashboard.",
-      );
+      console.warn("⚠️ User upsert skipped — real cause:", userErr.cause?.message ?? userErr.message);
     }
 
-    let finalLibrary: Record<string, any>;
+    let finalData: any = {};
 
     if (strategy === "upload") {
-      finalLibrary = incoming;
+      finalData = { library: incomingLib, categories: incomingCats, installedSources: incomingSrcs };
     } else {
       const existing = await db.select().from(librarySync).where(eq(librarySync.userId, userId));
-      const stored = (existing[0]?.data ?? {}) as Record<string, any>;
-      finalLibrary = { ...stored };
-      for (const [id, entry] of Object.entries(incoming)) {
-        const current = stored[id];
-        if (!current || (entry.addedAt ?? 0) >= (current.addedAt ?? 0)) {
-          finalLibrary[id] = entry;
+      const rawStored = (existing[0]?.data ?? {}) as any;
+      
+      // Backwards compatibility for old accounts that only saved the library object
+      const storedLib = rawStored.library ? rawStored.library : rawStored;
+      const storedCats = rawStored.categories || [];
+      const storedSrcs = rawStored.installedSources || {};
+
+      // Merge Library
+      const finalLibrary = { ...storedLib };
+      if (incomingLib) {
+        for (const [id, entry] of Object.entries(incomingLib)) {
+          const current = storedLib[id];
+          if (!current || ((entry as any).addedAt ?? 0) >= ((current as any).addedAt ?? 0)) {
+            finalLibrary[id] = entry;
+          }
         }
       }
+
+      // Merge Categories (Keep existing, add any new ones)
+      const finalCategories = [...storedCats];
+      if (incomingCats) {
+        for (const cat of incomingCats) {
+          if (!finalCategories.find((c: any) => c.id === cat.id)) finalCategories.push(cat);
+        }
+      }
+
+      // Merge Extensions (Local overwrites if conflict)
+      const finalSources = { ...storedSrcs, ...(incomingSrcs || {}) };
+
+      finalData = { library: finalLibrary, categories: finalCategories, installedSources: finalSources };
     }
 
     try {
       await db.insert(librarySync).values({
         userId,
-        data: finalLibrary,
+        data: finalData,
         updatedAt: new Date(),
       }).onConflictDoUpdate({
         target: librarySync.userId,
-        set: { data: finalLibrary, updatedAt: new Date() },
+        set: { data: finalData, updatedAt: new Date() },
       });
-      res.json({ ok: true, count: Object.keys(finalLibrary).length });
+      res.json({ ok: true, count: Object.keys(finalData.library || {}).length });
     } catch (libErr: any) {
-      // ✅ FIX: Log real cause, then fall back to returning existing cloud data
-      //         instead of 500 — this keeps the client flow alive so it can still
-      //         restore the library from the GET call.
-      console.error(
-        "⚠️ Library save failed — real cause:",
-        libErr.cause?.message ?? libErr.cause ?? libErr.message,
-        "\nHint: FK violation means the `users` row doesn't exist. Fix RLS or run drizzle-kit push.",
-      );
-      try {
-        const fallback = await db.select().from(librarySync).where(eq(librarySync.userId, userId));
-        const fallbackData = (fallback[0]?.data ?? {}) as Record<string, any>;
-        // Return 200 so the client doesn't treat this as a hard failure
-        res.json({
-          ok: false,
-          count: Object.keys(fallbackData).length,
-          warning: "Could not save — returning existing cloud library.",
-        });
-      } catch {
-        res.status(500).json({ error: "Failed to save library to database" });
-      }
+      console.error("⚠️ Library save failed — real cause:", libErr.cause?.message ?? libErr.message);
+      res.json({ ok: false, count: 0, warning: "Could not save — database issue." });
     }
 
   } catch (err) {
     console.error("library sync POST failed:", err);
     res.status(500).json({ error: "Database error" });
   }
-});
-
-router.get("/status", (_req, res) => {
-  res.json({ dbConfigured: isDbConfigured() });
 });
 
 export default router;
