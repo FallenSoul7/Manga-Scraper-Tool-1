@@ -18,6 +18,7 @@ export interface Settings {
   dedupeChapters: boolean;
   showAltNames: boolean;
   scorePosition: GetMangaDetailsScore;
+  showNsfwBadge: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -26,6 +27,7 @@ const defaultSettings: Settings = {
   dedupeChapters: true,
   showAltNames: true,
   scorePosition: GetMangaDetailsScore.top,
+  showNsfwBadge: false,
 };
 
 export function useSettings() {

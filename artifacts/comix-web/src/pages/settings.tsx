@@ -260,6 +260,18 @@ export default function SettingsPage() {
           <Separator />
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
+              <Label htmlFor="show-nsfw-badge" className="text-base font-medium">Show 18+ Badge on Covers</Label>
+              <p className="text-sm text-muted-foreground">Display a red 18+ label on adult manga thumbnails.</p>
+            </div>
+            <Switch
+              id="show-nsfw-badge"
+              checked={settings.showNsfwBadge}
+              onCheckedChange={(checked) => updateSettings({ showNsfwBadge: checked })}
+            />
+          </div>
+          <Separator />
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
               <Label htmlFor="show-alt" className="text-base font-medium">Show Alternative Titles</Label>
               <p className="text-sm text-muted-foreground">Display Japanese/Korean names on manga details.</p>
             </div>
