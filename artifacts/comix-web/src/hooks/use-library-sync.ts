@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api-url";
-import { useStore, storeActions } from "@/lib/storage";
+import { useStore, storeActions, getStoreSnapshot } from "@/lib/storage";
 import { getAccessToken } from "@/lib/auth-cache";
 
 function authHeaders(): Record<string, string> {
@@ -18,10 +18,55 @@ export function useLibrarySync() {
   const [state, setState] = useState<SyncState>("idle");
   const [message, setMessage] = useState("");
   
-  // ✅ Prevent the app from uploading the exact second it opens
+  // Prevent the change-watcher from firing during startup sync
   const isFirstRender = useRef(true);
+  const startupSyncDone = useRef(false);
 
-  // Auto-Sync Background Watcher
+  // ── Startup sync ───────────────────────────────────────────────────────────
+  // On every app open (browser OR PWA), if the user is logged in:
+  //   1. Push local state to cloud (merge) so local-only new items go up
+  //   2. Pull the merged result back so cloud-only new items come down
+  // This keeps browser and PWA in sync automatically without user action.
+  useEffect(() => {
+    if (startupSyncDone.current) return;
+    startupSyncDone.current = true;
+
+    const token = getAccessToken();
+    if (!token) return; // Not logged in — nothing to do
+
+    const snap = getStoreSnapshot();
+
+    (async () => {
+      try {
+        // Step 1: push local → cloud (merge)
+        await fetch(apiUrl("/api/library/sync"), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({
+            library: snap.library,
+            categories: snap.categories,
+            installedSources: snap.installedSources,
+            strategy: "merge",
+          }),
+        });
+
+        // Step 2: pull merged cloud state back into local store
+        const res = await fetch(apiUrl("/api/library/sync"), {
+          credentials: "include",
+          headers: { ...authHeaders() },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.data) storeActions.restoreCloudSync(data.data);
+        }
+      } catch {
+        // Offline or network error — silently skip, local data is fine
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Change-watcher: push to cloud whenever local data changes ──────────────
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
