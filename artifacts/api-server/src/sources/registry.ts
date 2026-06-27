@@ -12,6 +12,7 @@ import { AsuraScansSource } from "./asurascans";
 import { WebtoonsSource } from "./webtoons";
 import { XkcdSource } from "./xkcd";
 import { HentaiYogaSource } from "./hentaiyoga";
+import { PandaChaikaSource } from "./pandachaika";
 import catalogJson from "./catalog.generated.json" with { type: "json" };
 
 interface CatalogExtension {
@@ -48,6 +49,7 @@ register(AsuraScansSource);
 register(WebtoonsSource);
 register(XkcdSource);
 register(HentaiYogaSource);
+register(PandaChaikaSource);
 
 // Madara-themed sources
 register(createMadaraSource({
