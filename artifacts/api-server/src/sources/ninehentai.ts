@@ -18,40 +18,49 @@ const http = makeHttp(BASE_URL, {
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 });
 
-// ────────── Cookie handling (unchanged) ──────────
+// ────────── Cookie handling ──────────
 interface CookieJar {
   cookieHeader: string;
   xsrfToken: string;
   expiresAt: number;
 }
 let cookieJar: CookieJar | null = null;
+// Mutex: if a cold-start fetch is already in flight, all callers await the
+// same promise instead of firing concurrent GET / requests that race.
+let cookiePromise: Promise<CookieJar> | null = null;
 
 async function ensureCookies(): Promise<CookieJar> {
   if (cookieJar && Date.now() < cookieJar.expiresAt) return cookieJar;
+  if (cookiePromise) return cookiePromise;
 
-  const res = await http.get("/", { responseType: "text" });
-  const setCookies: string[] = Array.isArray(res.headers["set-cookie"])
-    ? res.headers["set-cookie"]
-    : [];
+  cookiePromise = (async () => {
+    const res = await http.get("/", { responseType: "text" });
+    const setCookies: string[] = Array.isArray(res.headers["set-cookie"])
+      ? res.headers["set-cookie"]
+      : [];
 
-  const cookieMap: Record<string, string> = {};
-  for (const raw of setCookies) {
-    const part = raw.split(";")[0];
-    const eqIdx = part.indexOf("=");
-    if (eqIdx < 0) continue;
-    const name = part.slice(0, eqIdx).trim();
-    const value = part.slice(eqIdx + 1);
-    cookieMap[name] = value;
-  }
+    const cookieMap: Record<string, string> = {};
+    for (const raw of setCookies) {
+      const part = raw.split(";")[0];
+      const eqIdx = part.indexOf("=");
+      if (eqIdx < 0) continue;
+      const name = part.slice(0, eqIdx).trim();
+      const value = part.slice(eqIdx + 1);
+      cookieMap[name] = value;
+    }
 
-  const xsrfEncoded = cookieMap["XSRF-TOKEN"] || "";
-  const xsrfToken = decodeURIComponent(xsrfEncoded);
-  const cookieHeader = Object.entries(cookieMap)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("; ");
+    const xsrfEncoded = cookieMap["XSRF-TOKEN"] || "";
+    const xsrfToken = decodeURIComponent(xsrfEncoded);
+    const cookieHeader = Object.entries(cookieMap)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
 
-  cookieJar = { cookieHeader, xsrfToken, expiresAt: Date.now() + 55 * 60 * 1000 };
-  return cookieJar;
+    cookieJar = { cookieHeader, xsrfToken, expiresAt: Date.now() + 55 * 60 * 1000 };
+    cookiePromise = null;
+    return cookieJar;
+  })();
+
+  return cookiePromise;
 }
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
@@ -68,7 +77,9 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
     responseType: "json",
   });
   if (res.status >= 400) {
+    // Clear both jar and in-flight promise so the retry gets a fresh cookie.
     cookieJar = null;
+    cookiePromise = null;
     const jar2 = await ensureCookies();
     const res2 = await http.post<T>(path, body, {
       headers: {

@@ -138,23 +138,34 @@ export default function MangaDetail() {
   const sortAsc = id ? !!chapterSortAsc[id] : false;
 
   const librarySourceId = savedManga?.sourceId ?? null;
+  // The source we'll actually use for this manga — URL param wins, then saved sourceId.
+  // Computed early so it can be included in queryKeys (prevents cross-source cache hits).
+  const effectiveSourceForKey = sourceContext ?? librarySourceId;
+
   const needsSourceInit = !!(sourceContext || librarySourceId);
   const [sourceReady, setSourceReady] = useState(!needsSourceInit);
 
   useEffect(() => {
-    const effectiveSource = sourceContext ?? librarySourceId;
-    if (effectiveSource) { applyActiveSource(effectiveSource); setSourceReady(true); }
+    if (effectiveSourceForKey) { applyActiveSource(effectiveSourceForKey); setSourceReady(true); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceContext, librarySourceId]);
+  }, [effectiveSourceForKey]);
 
   const mangaParams = { poster: settings.posterQuality, alt: settings.showAltNames, score: settings.scorePosition };
   const chaptersParams = { dedupe: false };
 
+  // Include the source in the queryKey — without it TanStack Query can serve a cached
+  // result from a *different* extension, returning empty chapters for the wrong source.
   const { data: manga, isLoading: mangaLoading } = useGetMangaDetails(id || "", mangaParams, {
-    query: { enabled: !!id && sourceReady, queryKey: getGetMangaDetailsQueryKey(id || "", mangaParams) },
+    query: {
+      enabled: !!id && sourceReady,
+      queryKey: [...getGetMangaDetailsQueryKey(id || "", mangaParams), effectiveSourceForKey ?? ""],
+    },
   });
   const { data: chaptersResponse, isLoading: chaptersLoading, isError: chaptersError } = useGetChapters(id || "", chaptersParams, {
-    query: { enabled: !!id && sourceReady, queryKey: getGetChaptersQueryKey(id || "", chaptersParams) },
+    query: {
+      enabled: !!id && sourceReady,
+      queryKey: [...getGetChaptersQueryKey(id || "", chaptersParams), effectiveSourceForKey ?? ""],
+    },
   });
 
   const allChapters = chaptersResponse?.items || [];
