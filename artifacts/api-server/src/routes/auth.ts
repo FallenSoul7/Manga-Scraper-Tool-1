@@ -352,15 +352,44 @@ router.post("/login", async (req, res) => {
         res.status(500).json({ error: "Session creation failed" });
         return;
       }
-      // ✅ FIX: Return the Supabase access token so the frontend can use it for Bearer auth
       res.status(200).json({
         message: "Login successful!",
         user,
         accessToken: data.session?.access_token ?? "",
+        refreshToken: data.session?.refresh_token ?? "",
+        expiresAt: data.session?.expires_at ?? null,
       });
     });
   } catch (err: any) {
     console.error("Login Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/refresh", async (req, res) => {
+  const { refreshToken } = req.body as { refreshToken?: string };
+  if (!refreshToken) {
+    res.status(400).json({ error: "refreshToken is required" });
+    return;
+  }
+  const sb = getSupabaseAdmin();
+  if (!sb) {
+    res.status(500).json({ error: "Database not configured" });
+    return;
+  }
+  try {
+    const { data, error } = await sb.auth.refreshSession({ refresh_token: refreshToken });
+    if (error || !data.session) {
+      res.status(401).json({ error: error?.message ?? "Refresh failed" });
+      return;
+    }
+    res.json({
+      accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      expiresAt: data.session.expires_at ?? null,
+    });
+  } catch (err: any) {
+    console.error("Token refresh error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

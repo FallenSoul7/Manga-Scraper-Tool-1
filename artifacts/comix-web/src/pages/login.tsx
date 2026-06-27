@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useStore, storeActions } from "@/lib/storage";
-import { setCachedUser, setAccessToken } from "@/lib/auth-cache";
+import { setCachedUser, setAccessToken, setRefreshToken } from "@/lib/auth-cache";
 
 const API = "https://comihub-backend.onrender.com";
 
@@ -52,8 +52,9 @@ export default function LoginPage() {
       if (isLoginMode) {
         const accessToken: string = data.accessToken ?? "";
 
-        // Persist the token and user so future syncs always have auth
+        // Persist tokens and user so future syncs always have auth
         if (accessToken) setAccessToken(accessToken);
+        if (data.refreshToken) setRefreshToken(data.refreshToken);
         if (data.user) setCachedUser(data.user);
 
         if (accessToken) {
