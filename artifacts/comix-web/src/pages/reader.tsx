@@ -268,6 +268,9 @@ export default function Reader() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [readerSettings.direction]);
 
+  // Detect if a page URL is a video file (MP4 / WebM / OGG)
+  const isVideoUrl = (url: string) => /\.(mp4|webm|ogg)(\?|$)/i.test(url);
+
   if (pagesLoading) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white/50">
@@ -432,6 +435,36 @@ export default function Reader() {
           const loadStrategy: 'eager' | 'lazy' = isPaged
             ? (idx < 3 ? 'eager' : 'lazy')
             : (distToPage <= 5 ? 'eager' : 'lazy');
+
+          // ── Video page (MP4 / WebM) ─────────────────────────────────────────
+          if (isVideoUrl(page.url)) {
+            return (
+              <div
+                key={page.index}
+                id={`page-${idx}`}
+                className="reader-page relative flex-shrink-0 flex items-center justify-center bg-black w-full min-h-[100dvh]"
+                onClick={e => e.stopPropagation()}
+              >
+                <video
+                  src={page.url}
+                  controls
+                  controlsList="nodownload"
+                  playsInline
+                  autoPlay
+                  className="max-w-full max-h-[100dvh] w-full"
+                  style={{ outline: 'none' }}
+                  onPlay={() => setLoadedImgs(p => ({ ...p, [idx]: true }))}
+                  onCanPlay={() => setLoadedImgs(p => ({ ...p, [idx]: true }))}
+                />
+                {!isLoaded && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black text-white/40 pointer-events-none">
+                    <Loader2 className="h-10 w-10 animate-spin" />
+                    <p className="mt-3 text-sm">Loading video…</p>
+                  </div>
+                )}
+              </div>
+            );
+          }
 
           return (
             <div

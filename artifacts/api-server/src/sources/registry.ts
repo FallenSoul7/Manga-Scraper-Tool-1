@@ -10,7 +10,8 @@ import { NineHentaiSource } from "./ninehentai";
 import { ComickFanSource } from "./comickfan";
 import { AsuraScansSource } from "./asurascans";
 import { WebtoonsSource } from "./webtoons";
-import { XkcdSource } from "./xkcd";   // ← ADDED
+import { XkcdSource } from "./xkcd";
+import { HentaiYogaSource } from "./hentaiyoga";
 import catalogJson from "./catalog.generated.json" with { type: "json" };
 
 interface CatalogExtension {
@@ -45,7 +46,8 @@ register(NineHentaiSource);
 register(ComickFanSource);
 register(AsuraScansSource);
 register(WebtoonsSource);
-register(XkcdSource);   // ← ADDED
+register(XkcdSource);
+register(HentaiYogaSource);
 
 // Madara-themed sources
 register(createMadaraSource({

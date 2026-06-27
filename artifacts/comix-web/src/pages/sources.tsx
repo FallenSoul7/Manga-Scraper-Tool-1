@@ -235,6 +235,12 @@ export default function SourcesPage() {
                 Sources
               </TabsTrigger>
               <TabsTrigger
+                value="anime"
+                className="rounded-none h-12 px-5 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground bg-transparent shadow-none"
+              >
+                Anime
+              </TabsTrigger>
+              <TabsTrigger
                 value="extensions"
                 className="rounded-none h-12 px-5 text-sm font-medium data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground bg-transparent shadow-none flex items-center gap-1.5"
               >
@@ -250,6 +256,10 @@ export default function SourcesPage() {
 
           <TabsContent value="sources" className="mt-0 animate-in fade-in duration-300">
             <SourcesTab installed={installed} activeId={activeId} catalog={catalog ?? null} />
+          </TabsContent>
+
+          <TabsContent value="anime" className="mt-0 animate-in fade-in duration-300">
+            <AnimeTab installed={installed} activeId={activeId} catalog={catalog ?? null} />
           </TabsContent>
 
           <TabsContent value="extensions" className="mt-0 animate-in fade-in duration-300">
@@ -367,6 +377,128 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
           {rest.map(src => <SourceRow key={src.id} src={src} />)}
         </>
       )}
+    </div>
+  );
+}
+
+// ─── Anime tab ────────────────────────────────────────────────────────────────
+const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga"]);
+
+function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null }) {
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
+  const catalogIconMap = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const ext of catalog?.extensions ?? []) map[ext.id] = ext.iconUrl;
+    return map;
+  }, [catalog]);
+
+  const animeSources = useMemo(
+    () => installed
+      .filter(s => ANIME_SOURCE_IDS.has(s.id))
+      .map(s => ({ ...s, iconUrl: s.iconUrl ?? catalogIconMap[s.id] ?? null }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [installed, catalogIconMap],
+  );
+
+  function AnimeRow({ src }: { src: InstalledSource }) {
+    const isPinned = !!src.isPinned;
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => { storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}`); }}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}`); } }}
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/40 active:bg-muted/60 transition-colors"
+      >
+        <SourceAvatar src={src} size={44} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-sm text-foreground truncate">{src.name}</p>
+            {src.isNsfw && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-500 border border-red-500/25 shrink-0">18+</span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">Anime · Video</p>
+        </div>
+        <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+          <button
+            className={`h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors ${isPinned ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
+            title={isPinned ? "Unpin" : "Pin"}
+            onClick={() => storeActions.togglePinSource(src.id)}
+          >
+            <Pin className={`h-4 w-4 ${isPinned ? "fill-current" : ""}`} />
+          </button>
+          <button
+            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-destructive"
+            title="Remove"
+            onClick={() => { storeActions.uninstallSource(src.id); toast({ title: `Removed ${src.name}` }); }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Hardcoded discoverable anime extensions (always visible for install)
+  const ANIME_EXTENSIONS = [
+    { id: "video.hentaiyoga", name: "Hentai Yoga", lang: "en", isNsfw: true, description: "Hentai anime videos" },
+  ];
+
+  return (
+    <div>
+      {/* Installed anime sources */}
+      {animeSources.length > 0 && (
+        <>
+          <div className="px-4 pt-5 pb-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Installed</p>
+          </div>
+          {animeSources.map(src => <AnimeRow key={src.id} src={src} />)}
+        </>
+      )}
+
+      {/* Discoverable anime extensions */}
+      <div className="px-4 pt-5 pb-2">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Available Extensions</p>
+      </div>
+      {ANIME_EXTENSIONS.map(ext => {
+        const isInstalled = animeSources.some(s => s.id === ext.id);
+        return (
+          <div key={ext.id} className="flex items-center gap-3 px-4 py-3">
+            <SourceAvatar src={{ name: ext.name, iconUrl: null }} size={44} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="font-semibold text-sm text-foreground truncate">{ext.name}</p>
+                {ext.isNsfw && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-500 border border-red-500/25 shrink-0">18+</span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">{langLabel(ext.lang)} · Anime · Video</p>
+            </div>
+            <div className="shrink-0">
+              {isInstalled ? (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Installed
+                </span>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs px-3 gap-1.5"
+                  onClick={() => {
+                    storeActions.installSource({ id: ext.id, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: null, isPinned: false });
+                    toast({ title: `Installed ${ext.name}` });
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Install
+                </Button>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
