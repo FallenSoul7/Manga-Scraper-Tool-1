@@ -33,6 +33,7 @@ const LoginPage            = lazy(() => import("@/pages/login"));
 const ProfilePage          = lazy(() => import("@/pages/profile"));
 
 import { useActiveSourceId, applyActiveSource, registerQueryClient } from "@/lib/source";
+import { useLibrarySync } from "@/hooks/use-library-sync"; // ✅ Added the import
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -69,6 +70,8 @@ function ActiveSourceSync() {
 }
 
 function AppContent() {
+  useLibrarySync(); // ✅ Added the global sync hook here
+
   return (
     <div className="min-h-[100dvh] flex flex-col">
       <Switch>
