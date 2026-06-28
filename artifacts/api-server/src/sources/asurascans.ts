@@ -51,27 +51,54 @@ function mapStatus(s: string | undefined): string {
   return "Unknown";
 }
 
-// ── Pages helper — tries Astro props then img DOM ─────────────────────────
+// ── Pages helper — tries Astro island props, JSON scripts, then img DOM ──────
 function extractAstroPages(html: string): string[] {
-  // Astro embeds server-rendered props as JSON inside specific script elements.
-  // Pattern: <script type="application/json" ...>{"key":{"pages":[...]}}</script>
+  // 1) Primary: <astro-island props="HTML-encoded-JSON"> — Astro SSR serialisation format.
+  //    Values are wrapped as [type, value] pairs where [0, v] = literal, [1, v] = complex.
+  //    Pages array shape: pages → [1, [[0, {url:[0,"https://..."], ...}], ...]]
+  const islandMatch = html.match(/<astro-island[^>]+\sprops="([^"]{50,})"/);
+  if (islandMatch) {
+    try {
+      const decoded = islandMatch[1]
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, "&")
+        .replace(/&#039;/g, "'")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">");
+      const props = JSON.parse(decoded) as Record<string, unknown>;
+      const pagesData = props["pages"] as unknown[] | undefined;
+      if (Array.isArray(pagesData) && Array.isArray(pagesData[1])) {
+        const urls = (pagesData[1] as unknown[])
+          .map((entry) => {
+            const obj = (entry as unknown[])[1] as Record<string, unknown[]> | undefined;
+            const urlTuple = obj?.["url"] as unknown[] | undefined;
+            return urlTuple?.[1] as string | undefined;
+          })
+          .filter((u): u is string => typeof u === "string" && u.startsWith("http"));
+        if (urls.length > 0) return urls;
+      }
+    } catch { /* skip */ }
+  }
+
+  // 2) Fallback: <script type="application/json"> blobs
   const jsonScripts = Array.from(html.matchAll(/<script[^>]+type="application\/json"[^>]*>([\s\S]*?)<\/script>/g));
   for (const m of jsonScripts) {
     try {
-      const obj = JSON.parse(m[1]);
+      const obj = JSON.parse(m[1] as string);
       const pages: string[] =
-        obj?.pages?.pages ?? obj?.pages ?? obj?.data?.pages ?? [];
+        (obj as any)?.pages?.pages ?? (obj as any)?.pages ?? (obj as any)?.data?.pages ?? [];
       if (pages.length > 0) return pages;
     } catch { /* skip */ }
   }
-  // Also look for inline `const pages = [...]` or `"pages":[...]`
+
+  // 3) Fallback: inline `"pages":[...]`
   const inline = html.match(/"pages"\s*:\s*(\[[\s\S]{1,8000}?\])/);
   if (inline) {
     try {
-      const arr = JSON.parse(inline[1]);
-      const urls: string[] = arr.map((p: any) =>
-        typeof p === "string" ? p : (p.url ?? p.src ?? p.image ?? "")
-      ).filter(Boolean);
+      const arr = JSON.parse(inline[1] as string) as unknown[];
+      const urls: string[] = arr
+        .map((p) => (typeof p === "string" ? p : ((p as any).url ?? (p as any).src ?? (p as any).image ?? "")))
+        .filter(Boolean);
       if (urls.length > 0) return urls;
     } catch { /* skip */ }
   }
