@@ -64,6 +64,16 @@ function getSourceWebUrl(sourceId: string, mangaId: string): string | null {
   return null;
 }
 
+const LANG_NAMES: Record<string, string> = {
+  en: "English", ja: "Japanese", ko: "Korean", zh: "Chinese (Simplified)",
+  "zh-hk": "Chinese (Traditional)", fr: "French", es: "Spanish", es_la: "Spanish (Latin Am.)",
+  pt_br: "Portuguese (Brazil)", pt: "Portuguese", de: "German", it: "Italian",
+  ru: "Russian", ar: "Arabic", pl: "Polish", tr: "Turkish", id: "Indonesian",
+  vi: "Vietnamese", th: "Thai", uk: "Ukrainian", hu: "Hungarian", cs: "Czech",
+  ro: "Romanian", nl: "Dutch", sv: "Swedish", fi: "Finnish", ms: "Malay",
+  fa: "Persian", he: "Hebrew", mn: "Mongolian",
+};
+
 function StarRating({ value }: { value: string }) {
   const num = parseFloat(value);
   const out5 = num / 2;
@@ -121,6 +131,8 @@ export default function MangaDetail() {
     label: string;
   } | null>(null);
   const [scanlatorSheetOpen, setScanlatorSheetOpen] = useState(false);
+  const [langSheetOpen, setLangSheetOpen] = useState(false);
+  const [selectedLang, setSelectedLang] = useState<string | null>(null);
   const [chapterSelectionMode, setChapterSelectionMode] = useState(false);
   const [selectedChapterIds, setSelectedChapterIds] = useState<Set<number>>(new Set());
   const chapterSelectionModeRef = useRef(false);
@@ -191,9 +203,35 @@ export default function MangaDetail() {
     }
   }, [id, inLibrary, chaptersLoading, allChapters.length]);
 
+  const availableLanguages = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const ch of allChapters) {
+      const lang = (ch as any).lang as string | undefined;
+      if (lang) counts.set(lang, (counts.get(lang) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([code, count]) => ({ code, count, name: LANG_NAMES[code] ?? code.toUpperCase() }));
+  }, [allChapters]);
+
+  // Auto-pick a language when we first get chapters with lang data
+  const didAutoLang = useRef(false);
+  useEffect(() => {
+    if (didAutoLang.current || availableLanguages.length === 0) return;
+    didAutoLang.current = true;
+    const hasEn = availableLanguages.some(l => l.code === "en");
+    setSelectedLang(hasEn ? "en" : availableLanguages[0]!.code);
+  }, [availableLanguages]);
+
+  // Reset auto-pick when manga changes
+  useEffect(() => { didAutoLang.current = false; setSelectedLang(null); }, [id]);
+
   const scanlatorGroups = useMemo(() => {
     const map = new Map<string, { name: string; count: number; hasOfficial: boolean }>();
-    for (const ch of allChapters) {
+    const filtered = selectedLang
+      ? allChapters.filter((ch: any) => (ch.lang ?? null) === selectedLang)
+      : allChapters;
+    for (const ch of filtered) {
       const name = (ch.scanlator || "Unknown").trim() || "Unknown";
       const existing = map.get(name);
       if (existing) { existing.count += 1; if (ch.isOfficial) existing.hasOfficial = true; }
@@ -203,14 +241,16 @@ export default function MangaDetail() {
       if (a.hasOfficial !== b.hasOfficial) return a.hasOfficial ? -1 : 1;
       return b.count - a.count;
     });
-  }, [allChapters]);
+  }, [allChapters, selectedLang]);
 
   const visibleChapters = useMemo(() => {
-    let list: any[] = selectedScanlator
-      ? allChapters.filter((ch: any) => (ch.scanlator || "Unknown") === selectedScanlator)
-      : dedupeChapters(allChapters);
+    let list: any[] = allChapters;
+    if (selectedLang) list = list.filter((ch: any) => (ch.lang ?? null) === selectedLang);
+    list = selectedScanlator
+      ? list.filter((ch: any) => (ch.scanlator || "Unknown") === selectedScanlator)
+      : dedupeChapters(list);
     return [...list].sort((a, b) => sortAsc ? a.number - b.number : b.number - a.number);
-  }, [allChapters, selectedScanlator, sortAsc]);
+  }, [allChapters, selectedLang, selectedScanlator, sortAsc]);
 
   const firstChapter = useMemo(() => {
     if (visibleChapters.length === 0) return null;
@@ -582,16 +622,28 @@ export default function MangaDetail() {
               <span className="font-bold text-sm">
                 {chaptersLoading ? "…" : `${visibleChapters.length} Chapter${visibleChapters.length !== 1 ? "s" : ""}`}
               </span>
-              {scanlatorGroups.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => { setScanlatorSheetOpen(true); }}
-                  className="flex items-center gap-1 text-xs text-primary hover:underline mt-0.5"
-                >
-                  <Users className="h-3 w-3" />
-                  {scanlatorGroups.length} Scanlators
-                </button>
-              )}
+              <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                {availableLanguages.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setLangSheetOpen(true)}
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <Globe className="h-3 w-3" />
+                    {selectedLang ? (LANG_NAMES[selectedLang] ?? selectedLang.toUpperCase()) : "All languages"}
+                  </button>
+                )}
+                {scanlatorGroups.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setScanlatorSheetOpen(true)}
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <Users className="h-3 w-3" />
+                    {scanlatorGroups.length} Scanlators
+                  </button>
+                )}
+              </div>
             </div>
 
           <div className="flex items-center gap-0.5 shrink-0">
@@ -599,13 +651,41 @@ export default function MangaDetail() {
                 {sortAsc ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
               </Button>
 
-              {scanlatorGroups.length > 0 && (
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setScanlatorSheetOpen(true); }}>
+              {(scanlatorGroups.length > 0 || availableLanguages.length > 1) && (
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                  if (availableLanguages.length > 1) setLangSheetOpen(true);
+                  else setScanlatorSheetOpen(true);
+                }}>
                   <Filter className="h-4 w-4" />
                 </Button>
               )}
             </div>
           </div>
+
+          {/* Language picker sheet */}
+          <Sheet open={langSheetOpen} onOpenChange={setLangSheetOpen}>
+            <SheetContent side="bottom" className="max-h-[70dvh]">
+              <SheetHeader><SheetTitle>Language</SheetTitle></SheetHeader>
+              <p className="text-xs text-muted-foreground mt-1 mb-4">Chapters will be filtered to the selected language.</p>
+              <div className="space-y-1.5 overflow-y-auto max-h-[calc(70dvh-120px)] pr-1">
+                {availableLanguages.map(l => {
+                  const isActive = selectedLang === l.code;
+                  return (
+                    <button key={l.code} type="button"
+                      onClick={() => { setSelectedLang(l.code); setLangSheetOpen(false); }}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${isActive ? "bg-primary/10 border-primary/30" : "bg-card border-border hover:bg-muted"}`}
+                    >
+                      <div className="font-medium text-sm">{l.name}</div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{l.count}</span>
+                        {isActive && <Check className="h-4 w-4 text-primary" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </SheetContent>
+          </Sheet>
 
           {/* Scanlator picker sheet */}
           <Sheet open={scanlatorSheetOpen} onOpenChange={setScanlatorSheetOpen}>
@@ -664,7 +744,9 @@ export default function MangaDetail() {
             <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
           ) : chaptersError ? null : visibleChapters.length === 0 ? (
             <div className="text-center text-muted-foreground py-12 px-4">
-              No chapters available{selectedScanlator ? ` from ${selectedScanlator}` : ""}.
+              No chapters available
+              {selectedLang ? ` in ${LANG_NAMES[selectedLang] ?? selectedLang.toUpperCase()}` : ""}
+              {selectedScanlator ? ` from ${selectedScanlator}` : ""}.
             </div>
           ) : (
             <div className="divide-y divide-border/40 pb-8">

@@ -307,11 +307,8 @@ export const MangaDexSource: MangaSource = {
       return all;
     }
 
-    // Try English first; fall back to all languages if no English chapters
-    let all = await fetchFeed(["en"]);
-    if (all.length === 0) {
-      all = await fetchFeed();
-    }
+    // Fetch all languages so the frontend language selector can work
+    const all = await fetchFeed();
 
     return {
       items: all.map((c) => {
@@ -328,6 +325,7 @@ export const MangaDexSource: MangaSource = {
           title,
           scanlator,
           date: Math.floor(new Date(c.attributes.publishAt).getTime() / 1000),
+          lang: c.attributes.translatedLanguage || undefined,
         };
       }),
     };
