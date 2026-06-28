@@ -283,26 +283,35 @@ export const MangaDexSource: MangaSource = {
       };
       relationships: MdRel[];
     }
-    const all: MdChapter[] = [];
-    let offset = 0;
-    const limit = 100;
-    let total = 0;
-    do {
-      const res = await client.get<MdList<MdChapter>>(`/manga/${mangaId}/feed`, {
-        params: {
+
+    async function fetchFeed(langs?: string[]): Promise<MdChapter[]> {
+      const all: MdChapter[] = [];
+      let offset = 0;
+      const limit = 100;
+      let total = 0;
+      do {
+        const params: Record<string, unknown> = {
           limit,
           offset,
-          translatedLanguage: ["en"],
           order: { chapter: "desc", volume: "desc" },
           includes: ["scanlation_group"],
           contentRating: ["safe", "suggestive", "erotica", "pornographic"],
-        },
-      });
-      if (res.status >= 400) throw new Error(`MangaDex error ${res.status}`);
-      total = res.data.total;
-      all.push(...res.data.data);
-      offset += limit;
-    } while (offset < total && offset < 1000);
+        };
+        if (langs && langs.length > 0) params.translatedLanguage = langs;
+        const res = await client.get<MdList<MdChapter>>(`/manga/${mangaId}/feed`, { params });
+        if (res.status >= 400) throw new Error(`MangaDex error ${res.status}`);
+        total = res.data.total;
+        all.push(...res.data.data);
+        offset += limit;
+      } while (offset < total && offset < 1000);
+      return all;
+    }
+
+    // Try English first; fall back to all languages if no English chapters
+    let all = await fetchFeed(["en"]);
+    if (all.length === 0) {
+      all = await fetchFeed();
+    }
 
     return {
       items: all.map((c) => {

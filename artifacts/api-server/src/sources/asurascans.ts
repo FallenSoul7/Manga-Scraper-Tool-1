@@ -186,7 +186,8 @@ export const AsuraScansSource: MangaSource = {
 
     return {
       items: chapters.map(ch => ({
-        id:        `${pubSlug}|||${ch.number}`,
+        // Format: pubSlug|||chapterSlug  e.g. "nano-machine-fc4c7eba|||chapter-318"
+        id:        `${pubSlug}|||${ch.slug || String(ch.number)}`,
         number:    ch.number,
         title:     ch.title ? `Chapter ${ch.number}: ${ch.title}` : `Chapter ${ch.number}`,
         scanlator: "",
@@ -196,8 +197,12 @@ export const AsuraScansSource: MangaSource = {
   },
 
   async pages(chapterId: string): Promise<PageListResponse> {
-    const [pubSlug, chapNum] = chapterId.split("|||");
-    const chapterUrl = `/comics/${pubSlug}/chapter/${chapNum}`;
+    const [pubSlug, chapSlugOrNum] = chapterId.split("|||");
+    // Support old format (plain number like "318") and new format (slug like "chapter-318")
+    const chapPath = /^\d+(\.\d+)?$/.test(chapSlugOrNum)
+      ? `chapter/${chapSlugOrNum}`
+      : chapSlugOrNum;
+    const chapterUrl = `/comics/${pubSlug}/${chapPath}`;
 
     const res = await html.get(chapterUrl, {
       headers: { Referer: `${SITE}/comics/${pubSlug}` },

@@ -62,12 +62,17 @@ async function fetchPosts(params: Record<string, unknown>): Promise<WpPost[]> {
   return res.data;
 }
 
+function proxyUrl(url: string): string {
+  if (!url) return "";
+  return `/api/image-proxy?url=${encodeURIComponent(url)}&referer=${encodeURIComponent(BASE + "/")}`;
+}
+
 function toSummary(post: WpPost) {
   const imgs = extractImages(post.content.rendered);
   return {
     id: String(post.id),
     title: decodeHtml(post.title.rendered),
-    thumbnail: imgs[0] ?? "",
+    thumbnail: imgs[0] ? proxyUrl(imgs[0]) : "",
     type: "manga" as const,
     isNsfw: true,
   };
@@ -112,7 +117,7 @@ export const OnlyTheBestHentaiSource: MangaSource = {
       type: "manga",
       isNsfw: true,
       rating: 0,
-      thumbnail: imgs[0] ?? "",
+      thumbnail: imgs[0] ? proxyUrl(imgs[0]) : "",
       genres: ["Hentai"],
       score: "",
       scorePosition: opts.score,
@@ -144,7 +149,7 @@ export const OnlyTheBestHentaiSource: MangaSource = {
     const imgs = extractImages(res.data.content.rendered);
     return {
       chapterId,
-      pages: imgs.map((url, i) => ({ index: i, url })),
+      pages: imgs.map((url, i) => ({ index: i, url: proxyUrl(url) })),
     };
   },
 };
