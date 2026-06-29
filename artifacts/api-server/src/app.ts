@@ -6,8 +6,11 @@ import router from "./routes";
 import { buildSessionMiddleware } from "./routes/auth";
 import { logger } from "./lib/logger";
 import http from "http";
-import path from "path";  
-import axios from "axios"; // 🚀 Added Axios for processing proxy data chunks
+import path from "path";
+import * as fs from "fs";
+import * as nodePath from "path";
+import axios from "axios";
+import { getKoofrCover, CACHE_ROOT as KOOFR_CACHE_ROOT } from "./sources/koofr.js";
 
 const app: Express = express();
 
@@ -94,6 +97,34 @@ app.get("/api/image-proxy", async (req, res) => {
   } catch (error: any) {
     logger.error({ err: error.message, url: targetUrl }, "Image proxy routing failure");
     return res.status(500).send("Failed to retrieve proxy asset data.");
+  }
+});
+
+// ── Koofr: serve extracted image file from local cache ───────────────────────
+app.get("/api/koofr/file", (req, res) => {
+  const dir = req.query.dir as string;
+  const file = req.query.file as string;
+  if (!dir || !file) return res.status(400).json({ error: "dir and file required" });
+  // Sanitise: allow only md5 hex dir names and safe filenames
+  if (!/^[a-f0-9]{32}$/.test(dir)) return res.status(400).json({ error: "bad dir" });
+  const filePath = nodePath.join(KOOFR_CACHE_ROOT, dir, nodePath.basename(file));
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: "not found" });
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.sendFile(filePath);
+});
+
+// ── Koofr: cover image (lazy — extracts zip on first request) ────────────────
+app.get("/api/koofr/cover", async (req, res) => {
+  const id = req.query.id as string;
+  if (!id) return res.status(400).json({ error: "id required" });
+  try {
+    const coverPath = await getKoofrCover(id);
+    if (!coverPath) return res.status(404).json({ error: "no images in zip" });
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.sendFile(coverPath);
+  } catch (err: any) {
+    logger.error({ err: err.message }, "Koofr cover extraction failed");
+    res.status(502).json({ error: "failed to extract cover" });
   }
 });
 

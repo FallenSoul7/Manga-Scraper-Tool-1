@@ -3,6 +3,18 @@
   "count": 1352,
   "extensions": [
     {
+      "id": "local.koofr",
+      "slug": "koofr",
+      "name": "My Koofr Library",
+      "lang": "all",
+      "isNsfw": false,
+      "versionCode": 1,
+      "extClass": "KoofrSource",
+      "themePkg": null,
+      "baseUrl": "https://app.koofr.net",
+      "icon": null
+    },
+    {
       "id": "ko.toon11",
       "slug": "toon11",
       "name": "11toon",
