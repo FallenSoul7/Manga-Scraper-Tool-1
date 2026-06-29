@@ -33,7 +33,7 @@ async function ensureCookies(): Promise<CookieJar> {
   if (cookieJar && Date.now() < cookieJar.expiresAt) return cookieJar;
   if (cookiePromise) return cookiePromise;
 
-  cookiePromise = (async () => {
+  const p = (async () => {
     const res = await http.get("/", { responseType: "text" });
     const setCookies: string[] = Array.isArray(res.headers["set-cookie"])
       ? res.headers["set-cookie"]
@@ -56,11 +56,16 @@ async function ensureCookies(): Promise<CookieJar> {
       .join("; ");
 
     cookieJar = { cookieHeader, xsrfToken, expiresAt: Date.now() + 55 * 60 * 1000 };
-    cookiePromise = null;
     return cookieJar;
-  })();
+  })().finally(() => {
+    // Always clear the in-flight reference whether the fetch succeeded or
+    // threw, so future callers can start a fresh attempt instead of
+    // re-awaiting a permanently-rejected promise (lock-poisoning).
+    cookiePromise = null;
+  });
 
-  return cookiePromise;
+  cookiePromise = p;
+  return p;
 }
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
