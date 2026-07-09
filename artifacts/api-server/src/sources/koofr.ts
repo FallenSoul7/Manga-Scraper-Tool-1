@@ -1,16 +1,13 @@
 /**
  * Koofr personal library source.
  *
- * Structure expected in Koofr:
- *   /manga/
- *     Some Doujin Title.zip          ← single-chapter doujin
- *     Another Series Chapter 1.zip
- *     ...
+ * Supports two kinds of entries in /manga/:
+ *   - ZIP files  → pages extracted to local cache (browser can't read zips)
+ *   - Standalone images / GIFs / videos → streamed directly from Koofr, zero local storage
  *
- * Each zip is treated as one manga with one chapter.
- * Images are extracted atomically to /tmp/koofr-cache/<md5-of-filename>/
- * on first read. Partial/failed extractions are cleaned up so the next
- * request always retries cleanly.
+ * Cover strategy:
+ *   - ZIP  → extract first image only, abort the rest of the download
+ *   - Media file → proxy straight from Koofr's CDN
  */
 
 import axios from "axios";
@@ -33,117 +30,213 @@ import type {
   PageInfo,
 } from "./types.js";
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────────────
 
 function basicAuth(): string {
   const email = process.env.KOOFR_EMAIL;
-  const pass = process.env.KOOFR_APP_PASSWORD;
-  if (!email || !pass) {
-    throw new Error(
-      "KOOFR_EMAIL and KOOFR_APP_PASSWORD env vars are required but not set."
-    );
-  }
+  const pass  = process.env.KOOFR_APP_PASSWORD;
+  if (!email || !pass)
+    throw new Error("KOOFR_EMAIL and KOOFR_APP_PASSWORD env vars are required but not set.");
   return "Basic " + Buffer.from(`${email}:${pass}`).toString("base64");
 }
 
-// ── Koofr API helpers ─────────────────────────────────────────────────────────
+// ── Koofr API ─────────────────────────────────────────────────────────────────
 
 const KOOFR_API = "https://app.koofr.net/api/v2";
-const MANGA_ROOT = "/manga";
 
 interface KoofrFile {
   name: string;
   type: "dir" | "file";
   size?: number;
-  modified?: number; // ms epoch
+  modified?: number;
   contentType?: string;
 }
 
-async function listFiles(path: string): Promise<KoofrFile[]> {
+async function listDir(path: string): Promise<KoofrFile[]> {
   const res = await axios.get<{ files: KoofrFile[] }>(
     `${KOOFR_API}/mounts/primary/files/list`,
-    {
-      params: { path },
-      headers: { Authorization: basicAuth() },
-      timeout: 20_000,
-    }
+    { params: { path }, headers: { Authorization: basicAuth() }, timeout: 20_000 }
   );
   return res.data.files ?? [];
 }
 
-// ── Local cache helpers ───────────────────────────────────────────────────────
+interface KoofrEntry extends KoofrFile { koofrPath: string; }
+
+/**
+ * Lists ALL supported files across every top-level subfolder in the
+ * user's Koofr account root. Scans one level deep — no recursion.
+ */
+async function listAllFiles(): Promise<KoofrEntry[]> {
+  const root = await listDir("/");
+  const subdirs = root.filter(f => f.type === "dir");
+
+  const results = await Promise.allSettled(
+    subdirs.map(async (dir) => {
+      const files = await listDir(`/${dir.name}`);
+      return files
+        .filter(f => f.type === "file" && isSupported(f.name))
+        .map(f => ({ ...f, koofrPath: `/${dir.name}/${f.name}` }));
+    })
+  );
+
+  return results.flatMap((r, i) => {
+    if (r.status === "rejected") {
+      console.error(`[koofr] Failed to list /${subdirs[i]?.name}:`, r.reason);
+      return [];
+    }
+    return r.value;
+  });
+}
+
+/**
+ * The set of Koofr paths that are safe to proxy (populated from listAllFiles results).
+ * Validated at request time to prevent arbitrary file access through the proxy.
+ */
+const ALLOWED_MEDIA_EXTENSIONS = /\.(jpe?g|png|gif|webp|avif|mp4|webm|mov|mkv|avi)$/i;
+
+/** Returns true if the given koofrPath is safe to proxy: no traversal, supported extension, one path segment deep from root. */
+export function isProxySafe(koofrPath: string): boolean {
+  if (!koofrPath.startsWith("/")) return false;
+  if (koofrPath.includes("..")) return false;
+  // Must be exactly /folder/filename — no deeper nesting
+  const parts = koofrPath.split("/").filter(Boolean);
+  if (parts.length !== 2) return false;
+  // Must have a supported media extension
+  return ALLOWED_MEDIA_EXTENSIONS.test(parts[1]);
+}
+
+/** Streams a file directly from Koofr. */
+export async function koofrStream(koofrPath: string) {
+  const res = await axios.get(`${KOOFR_API}/mounts/primary/files/get`, {
+    params: { path: koofrPath },
+    headers: { Authorization: basicAuth() },
+    responseType: "stream",
+    timeout: 60_000,
+  });
+  return { stream: res.data as NodeJS.ReadableStream, contentType: res.headers["content-type"] as string | undefined };
+}
+
+/** Returns Koofr's own thumbnail for an image file (no local extraction). */
+export async function koofrThumbnail(koofrPath: string, size = "lg") {
+  const res = await axios.get(`${KOOFR_API}/mounts/primary/files/thumbnail`, {
+    params: { path: koofrPath, size },
+    headers: { Authorization: basicAuth() },
+    responseType: "stream",
+    timeout: 15_000,
+  });
+  return { stream: res.data as NodeJS.ReadableStream, contentType: res.headers["content-type"] as string | undefined };
+}
+
+// ── File-type helpers ─────────────────────────────────────────────────────────
+
+function isZip(name: string)   { return /\.zip$/i.test(name); }
+function isImage(name: string) { return /\.(jpe?g|png|gif|webp|avif)$/i.test(name); }
+function isVideo(name: string) { return /\.(mp4|webm|mov|mkv|avi)$/i.test(name); }
+function isMedia(name: string) { return isImage(name) || isVideo(name); }
+function isSupported(name: string) { return isZip(name) || isMedia(name); }
+
+// ── Local cache (ZIP extraction only) ────────────────────────────────────────
 
 export const CACHE_ROOT = "/tmp/koofr-cache";
-// Sentinel file written only after a successful complete extraction
 const DONE_SENTINEL = ".done";
 
-/** Stable, filesystem-safe directory name for a given zip filename */
 function cacheKey(filename: string): string {
   return crypto.createHash("md5").update(filename).digest("hex");
 }
 
-function isImage(name: string): boolean {
-  return /\.(jpe?g|png|gif|webp|avif)$/i.test(name);
+/**
+ * Streams a zip from Koofr and writes ONLY the first image to
+ * <cacheRoot>/<key>/.cover<ext>, then destroys the response stream.
+ * Returns the local path of the saved cover, or null if no image found.
+ */
+export async function extractCoverOnly(koofrPath: string, key: string): Promise<string | null> {
+  const dir = nodePath.join(CACHE_ROOT, key);
+
+  // Already cached?
+  if (fs.existsSync(dir)) {
+    const hit = fs.readdirSync(dir).find(f => f.startsWith(".cover."));
+    if (hit) return nodePath.join(dir, hit);
+  }
+
+  await fsp.mkdir(dir, { recursive: true });
+
+  const response = await axios.get(`${KOOFR_API}/mounts/primary/files/get`, {
+    params: { path: koofrPath },
+    headers: { Authorization: basicAuth() },
+    responseType: "stream",
+    timeout: 60_000,
+  });
+
+  return new Promise((resolve, reject) => {
+    let saved = false;
+    const responseStream = response.data as NodeJS.ReadableStream & { destroy?: () => void };
+
+    const parser = (responseStream as any).pipe(unzipper.Parse({ forceStream: true }));
+
+    parser.on("entry", (entry: unzipper.Entry) => {
+      if (saved) { entry.autodrain(); return; }
+      const base = nodePath.basename(entry.path);
+      if (entry.path.includes("__MACOSX") || !isImage(base)) { entry.autodrain(); return; }
+
+      saved = true;
+      const ext = nodePath.extname(base);
+      const coverPath = nodePath.join(dir, `.cover${ext}`);
+      const ws = fs.createWriteStream(coverPath);
+
+      entry.pipe(ws);
+      ws.on("finish", () => {
+        // Abort the rest of the download — we only needed the first image
+        if (typeof responseStream.destroy === "function") responseStream.destroy();
+        resolve(coverPath);
+      });
+      ws.on("error", reject);
+    });
+
+    parser.on("close", () => { if (!saved) resolve(null); });
+    parser.on("error", reject);
+  });
 }
 
 /**
- * Downloads the zip from Koofr and extracts all images atomically into
- * /tmp/koofr-cache/<key>/. Uses a temp directory + rename so callers
- * never see a partially-extracted set. If a previous extraction failed
- * (no .done sentinel), the stale directory is removed and retried.
- *
- * Returns sorted array of extracted image basenames.
+ * Extracts all images from a zip atomically into <cacheRoot>/<key>/.
+ * Returns sorted array of image basenames.
  */
 async function extractZip(koofrPath: string, key: string): Promise<string[]> {
   const finalDir = nodePath.join(CACHE_ROOT, key);
   const sentinel = nodePath.join(finalDir, DONE_SENTINEL);
 
-  // Happy path: already fully extracted
   if (fs.existsSync(sentinel)) {
     const files = (await fsp.readdir(finalDir))
       .filter(isImage)
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     if (files.length > 0) return files;
-    // Sentinel exists but no images — treat as corrupt, fall through to re-extract
     await fsp.rm(finalDir, { recursive: true, force: true });
   } else if (fs.existsSync(finalDir)) {
-    // Partial / failed previous attempt — clean up before retrying
     await fsp.rm(finalDir, { recursive: true, force: true });
   }
 
-  // Write to a temp directory first, then atomically rename on success
   const tmpDir = await fsp.mkdtemp(nodePath.join(os.tmpdir(), `koofr-${key}-`));
 
   try {
-    const response = await axios.get(
-      `${KOOFR_API}/mounts/primary/files/get`,
-      {
-        params: { path: koofrPath },
-        headers: { Authorization: basicAuth() },
-        responseType: "stream",
-        timeout: 120_000,
-      }
-    );
+    const response = await axios.get(`${KOOFR_API}/mounts/primary/files/get`, {
+      params: { path: koofrPath },
+      headers: { Authorization: basicAuth() },
+      responseType: "stream",
+      timeout: 120_000,
+    });
 
     const imageFiles: string[] = [];
     const writePromises: Promise<void>[] = [];
 
     await new Promise<void>((resolve, reject) => {
-      response.data
+      (response.data as any)
         .pipe(unzipper.Parse({ forceStream: true }))
         .on("entry", (entry: unzipper.Entry) => {
           const rawName = nodePath.basename(entry.path);
-          if (entry.path.includes("__MACOSX") || !isImage(rawName)) {
-            entry.autodrain();
-            return;
-          }
+          if (entry.path.includes("__MACOSX") || !isImage(rawName)) { entry.autodrain(); return; }
           const outPath = nodePath.join(tmpDir, rawName);
           const ws = fs.createWriteStream(outPath);
-          // Track each write stream to completion so we don't rename prematurely
-          const p = new Promise<void>((res2, rej2) => {
-            ws.on("finish", res2);
-            ws.on("error", rej2);
-          });
+          const p = new Promise<void>((res2, rej2) => { ws.on("finish", res2); ws.on("error", rej2); });
           entry.pipe(ws);
           writePromises.push(p);
           imageFiles.push(rawName);
@@ -152,71 +245,61 @@ async function extractZip(koofrPath: string, key: string): Promise<string[]> {
         .on("error", reject);
     });
 
-    // Wait for every file write to fully flush
     await Promise.all(writePromises);
-
-    // Write sentinel to mark extraction as complete
     await fsp.writeFile(nodePath.join(tmpDir, DONE_SENTINEL), "");
-
-    // Promote temp dir to final location atomically
     await fsp.mkdir(CACHE_ROOT, { recursive: true });
     await fsp.rename(tmpDir, finalDir);
 
-    return imageFiles.sort((a, b) =>
-      a.localeCompare(b, undefined, { numeric: true })
-    );
+    return imageFiles.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   } catch (err) {
-    // Clean up temp dir on any failure so the next request starts fresh
     await fsp.rm(tmpDir, { recursive: true, force: true });
     throw err;
   }
 }
 
-// ── ID encoding ───────────────────────────────────────────────────────────────
+// ── ID encoding — encode/decode the full Koofr path ──────────────────────────
 
-function encId(filename: string): string {
-  return Buffer.from(filename).toString("base64url");
+function encId(koofrPath: string): string { return Buffer.from(koofrPath).toString("base64url"); }
+function decId(id: string): string { return Buffer.from(id, "base64url").toString("utf-8"); }
+
+function fileTitle(koofrPath: string): string {
+  const base = nodePath.basename(koofrPath);
+  try { return decodeURIComponent(base).replace(/\.(zip|mp4|webm|mov|mkv|avi|jpe?g|png|gif|webp|avif)$/i, ""); }
+  catch { return base.replace(/\.[^.]+$/, ""); }
 }
 
-function decId(id: string): string {
-  return Buffer.from(id, "base64url").toString("utf-8");
+// ── URL builders ──────────────────────────────────────────────────────────────
+
+function coverUrl(koofrPath: string): string {
+  const name = nodePath.basename(koofrPath);
+  // ZIPs get a placeholder — downloading the whole zip just for a cover is way too slow
+  if (isZip(name)) return `/public/koofr-zip-cover.png`;
+  // Images, GIFs, videos: stream directly from Koofr (Koofr's thumbnail API returns 404)
+  return `/api/koofr/proxy?path=${encodeURIComponent(koofrPath)}`;
 }
 
-function zipTitle(filename: string): string {
-  try {
-    return decodeURIComponent(filename).replace(/\.zip$/i, "");
-  } catch {
-    return filename.replace(/\.zip$/i, "");
-  }
-}
-
-// ── Cover / file URLs ─────────────────────────────────────────────────────────
-
-function coverUrl(filename: string): string {
-  return `/api/koofr/cover?id=${encodeURIComponent(encId(filename))}`;
+function proxyUrl(koofrPath: string): string {
+  return `/api/koofr/proxy?path=${encodeURIComponent(koofrPath)}`;
 }
 
 // ── Paging helper ─────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 24;
 
-function buildList(files: KoofrFile[], page: number): MangaListResponse {
-  const zips = files.filter(
-    (f) => f.type === "file" && f.name.toLowerCase().endsWith(".zip")
-  );
+function buildList(entries: KoofrEntry[], page: number): MangaListResponse {
   const start = (page - 1) * PAGE_SIZE;
-  const slice = zips.slice(start, start + PAGE_SIZE);
-  const items: MangaSummary[] = slice.map((f) => ({
-    id: encId(f.name),
-    title: zipTitle(f.name),
-    thumbnail: coverUrl(f.name),
+  const slice = entries.slice(start, start + PAGE_SIZE);
+  const items: MangaSummary[] = slice.map(f => ({
+    id: encId(f.koofrPath),
+    title: fileTitle(f.koofrPath),
+    thumbnail: coverUrl(f.koofrPath),
     type: "Manga",
     isNsfw: false,
   }));
-  return { items, page, hasNextPage: start + PAGE_SIZE < zips.length };
+  return { items, page, hasNextPage: start + PAGE_SIZE < entries.length };
 }
 
-// ── Source implementation ─────────────────────────────────────────────────────
+// ── Source ────────────────────────────────────────────────────────────────────
 
 export const KoofrSource: MangaSource = {
   id: "local.koofr",
@@ -225,89 +308,70 @@ export const KoofrSource: MangaSource = {
   isNsfw: false,
 
   async popular(opts: ListOptions): Promise<MangaListResponse> {
-    const files = await listFiles(MANGA_ROOT);
-    return buildList(files, opts.page ?? 1);
+    return buildList(await listAllFiles(), opts.page ?? 1);
   },
 
   async latest(opts: ListOptions): Promise<MangaListResponse> {
-    const files = (await listFiles(MANGA_ROOT)).sort(
-      (a, b) => (b.modified ?? 0) - (a.modified ?? 0)
-    );
+    const files = (await listAllFiles()).sort((a, b) => (b.modified ?? 0) - (a.modified ?? 0));
     return buildList(files, opts.page ?? 1);
   },
 
   async search(query: string, opts: ListOptions): Promise<MangaListResponse> {
     const q = query.toLowerCase();
-    const files = (await listFiles(MANGA_ROOT)).filter((f) =>
-      zipTitle(f.name).toLowerCase().includes(q)
-    );
+    const files = (await listAllFiles()).filter(f => fileTitle(f.koofrPath).toLowerCase().includes(q));
     return buildList(files, opts.page ?? 1);
   },
 
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
-    const filename = decId(id);
+    const koofrPath = decId(id);
     return {
       id,
-      title: zipTitle(filename),
-      author: "",
-      artist: "",
-      synopsis: "",
-      altTitles: [],
-      status: "Unknown",
-      type: "Manga",
-      isNsfw: false,
-      rating: 0,
-      thumbnail: coverUrl(filename),
-      genres: [],
-      score: "",
-      scorePosition: "none",
+      title: fileTitle(koofrPath),
+      author: "", artist: "", synopsis: "", altTitles: [],
+      status: "Unknown", type: "Manga", isNsfw: false,
+      rating: 0, thumbnail: coverUrl(koofrPath),
+      genres: [], score: "", scorePosition: "none",
     };
   },
 
-  async chapters(
-    mangaId: string,
-    _dedupe: boolean
-  ): Promise<ChapterListResponse> {
-    const now = Math.floor(Date.now() / 1000);
-    const items: ChapterSummary[] = [
-      {
-        id: mangaId, // same id — pages() decodes it back to filename
+  async chapters(mangaId: string, _dedupe: boolean): Promise<ChapterListResponse> {
+    return {
+      items: [{
+        id: mangaId,
         number: 1,
         title: "Chapter 1",
         scanlator: "Koofr",
-        date: now,
-      },
-    ];
-    return { items };
+        date: Math.floor(Date.now() / 1000),
+      }],
+    };
   },
 
   async pages(chapterId: string): Promise<PageListResponse> {
-    const filename = decId(chapterId);
-    const key = cacheKey(filename);
-    const koofrPath = `${MANGA_ROOT}/${filename}`;
+    const koofrPath = decId(chapterId);
+    const name = nodePath.basename(koofrPath);
 
-    const imageFiles = await extractZip(koofrPath, key);
+    if (isZip(name)) {
+      // ZIP: must extract locally — browser cannot unzip
+      const key = cacheKey(koofrPath);
+      const imageFiles = await extractZip(koofrPath, key);
+      const pages: PageInfo[] = imageFiles.map((imgName, i) => ({
+        index: i,
+        url: `/api/koofr/file?dir=${key}&file=${encodeURIComponent(imgName)}`,
+      }));
+      return { chapterId, pages };
+    }
 
-    const pages: PageInfo[] = imageFiles.map((name, i) => ({
-      index: i,
-      url: `/api/koofr/file?dir=${key}&file=${encodeURIComponent(name)}`,
-    }));
-
-    return { chapterId, pages };
+    // Standalone image / gif / video — stream directly from Koofr, zero local storage
+    return {
+      chapterId,
+      pages: [{ index: 0, url: proxyUrl(koofrPath) }],
+    };
   },
 };
 
-// ── Exported helpers used by app.ts routes ────────────────────────────────────
+// ── Helpers exported for app.ts routes ───────────────────────────────────────
 
-/**
- * Returns the absolute path to the cover (first image) for a manga ID.
- * Triggers zip download + extraction on first call; subsequent calls are instant.
- */
-export async function getKoofrCover(encodedId: string): Promise<string | null> {
-  const filename = decId(encodedId);
-  const key = cacheKey(filename);
-  const koofrPath = `${MANGA_ROOT}/${filename}`;
-  const images = await extractZip(koofrPath, key);
-  if (images.length === 0) return null;
-  return nodePath.join(CACHE_ROOT, key, images[0]);
+/** @deprecated covers now use placeholder; kept so app.ts import compiles */
+export async function getKoofrCover(_encodedId: string): Promise<string | null> {
+  return null;
 }
