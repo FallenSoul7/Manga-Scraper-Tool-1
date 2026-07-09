@@ -142,6 +142,9 @@ const StoreStateSchema = z.object({
   // Real, tracked time spent on the reader page (in milliseconds). The reader
   // adds to this every few seconds while the page is visible.
   readingTimeMs: z.number().default(0),
+  // Per-source reading direction overrides. When a source has an entry here
+  // the reader uses it instead of the global reader.direction setting.
+  sourceReaderDirections: z.record(z.string(), ReaderDirectionSchema).default({}),
 });
 export type StoreState = z.infer<typeof StoreStateSchema>;
 
@@ -170,6 +173,7 @@ const DEFAULT_STATE: StoreState = {
   installedSources: { [DEFAULT_SOURCE.id]: DEFAULT_SOURCE },
   activeSourceId: DEFAULT_SOURCE.id,
   readingTimeMs: 0,
+  sourceReaderDirections: {},
 };
 
 // --- Store Implementation ---
@@ -612,6 +616,18 @@ export const storeActions = {
     saveState({
       ...memoryState,
       reader: { ...memoryState.reader, ...updates }
+    });
+  },
+
+  /** Save a reading-direction override for a specific source.
+   *  Only affects that source; other sources keep their global setting. */
+  setSourceReaderDirection(sourceId: string, direction: ReaderDirection) {
+    saveState({
+      ...memoryState,
+      sourceReaderDirections: {
+        ...(memoryState.sourceReaderDirections ?? {}),
+        [sourceId]: direction,
+      },
     });
   },
   

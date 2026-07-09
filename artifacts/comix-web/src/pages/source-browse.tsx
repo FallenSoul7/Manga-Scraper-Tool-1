@@ -817,9 +817,12 @@ function TagPicker({ tags, initialTagState, onApply, onClearAndClose }: TagPicke
 
   const grouped = useMemo(() => {
     const q = tagSearch.trim().toLowerCase();
+    // Normalize both sides: strip spaces/underscores so "rimjob" matches "rim_job" / "rim job"
+    const normalize = (s: string) => s.toLowerCase().replace(/[\s_]+/g, "");
+    const qNorm = normalize(q);
     const map = new Map<string, SourceTag[]>();
     for (const t of tags) {
-      if (q && !t.name.toLowerCase().includes(q)) continue;
+      if (q && !normalize(t.name).includes(qNorm) && !normalize(t.id).includes(qNorm)) continue;
       const key = t.group ?? "Tags";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);

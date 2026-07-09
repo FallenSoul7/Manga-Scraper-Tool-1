@@ -43,6 +43,13 @@ export default function Reader() {
   }, [sourceId]);
 
   const readerSettings = useStore(s => s.reader);
+  const sourceReaderDirections = useStore(s => s.sourceReaderDirections);
+  // Rule34 defaults to LTR (single-image posts look terrible in webtoon mode).
+  // The user can still change it from the reader settings panel — that change
+  // is stored per-source so it never bleeds into other sources.
+  const effectiveDirection = sourceId === 'en.rule34'
+    ? ((sourceReaderDirections ?? {})['en.rule34'] ?? 'ltr')
+    : readerSettings.direction;
   const progressMap = useStore(s => s.progress);
   const scanlatorPrefs = useStore(s => s.scanlatorPrefs);
   const progressKey = `${mangaId}:${chapterId}`;
@@ -132,10 +139,10 @@ export default function Reader() {
     if (!pagesData?.pages.length || didInitialScroll.current) return;
     const target = currentProgress?.lastPageRead;
     if (!target || target === 0) { didInitialScroll.current = true; return; }
-    if (readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl') {
+    if (effectiveDirection === 'ltr' || effectiveDirection === 'rtl') {
       if (containerRef.current) {
         containerRef.current.scrollTo({
-          left: (readerSettings.direction === 'ltr' ? target : -target) * containerRef.current.clientWidth,
+          left: (effectiveDirection === 'ltr' ? target : -target) * containerRef.current.clientWidth,
         });
       }
       didInitialScroll.current = true;
@@ -146,17 +153,17 @@ export default function Reader() {
       if (pageEl) pageEl.scrollIntoView({ behavior: 'auto', block: 'start' });
       didInitialScroll.current = true;
     });
-  }, [pagesData, currentProgress?.lastPageRead, readerSettings.direction]);
+  }, [pagesData, currentProgress?.lastPageRead, effectiveDirection]);
 
   useEffect(() => {
     const handleScroll = () => {
       if (!pagesData?.pages.length || !mangaId || !chaptersData || !mangaData) return;
       clearTimeout(scrollTimeout.current);
       scrollTimeout.current = setTimeout(() => {
-        const container = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical' ? window : containerRef.current;
+        const container = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical' ? window : containerRef.current;
         if (!container) return;
         let newPage = currentPage;
-        if (readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') {
+        if (effectiveDirection === 'webtoon' || effectiveDirection === 'vertical') {
           const scrollY = window.scrollY;
           const wh = window.innerHeight;
           const pageElements = Array.from(document.querySelectorAll('.reader-page'));
@@ -194,13 +201,13 @@ export default function Reader() {
         }
       }, 500);
     };
-    const container = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical' ? window : containerRef.current;
+    const container = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical' ? window : containerRef.current;
     if (container) container.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       if (container) container.removeEventListener('scroll', handleScroll);
       clearTimeout(scrollTimeout.current);
     };
-  }, [readerSettings.direction, pagesData, mangaId, chaptersData, mangaData, currentPage, currentProgress?.isRead]);
+  }, [effectiveDirection, pagesData, mangaId, chaptersData, mangaData, currentPage, currentProgress?.isRead]);
 
   const navChapters = useMemo<any[]>(() => {
     if (!chaptersData?.items) return [];
@@ -223,7 +230,7 @@ export default function Reader() {
   const nextChapter = chapterIndex > 0 ? navChapters[chapterIndex - 1] : null;
 
   useEffect(() => {
-    const isVertical = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
+    const isVertical = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical';
     if (!isVertical || !nextChapter || loadingNextChapter) return;
     if (appendedIdsRef.current.has(nextChapter.id)) return;
     const totalPages = pagesData?.pages.length ?? 0;
@@ -238,7 +245,7 @@ export default function Reader() {
       })
       .catch(() => { appendedIdsRef.current.delete(nc.id); })
       .finally(() => setLoadingNextChapter(false));
-  }, [currentPage, nextChapter, pagesData, loadingNextChapter, readerSettings.direction]);
+  }, [currentPage, nextChapter, pagesData, loadingNextChapter, effectiveDirection]);
 
   const navigateToChapter = (id: string) => {
     setLocation(`/reader/${id}?mangaId=${mangaId}${sourceId ? `&sourceId=${sourceId}` : ""}`);
@@ -251,14 +258,14 @@ export default function Reader() {
 
   const handleKeydown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') { goBack(); return; }
-    const isPaginated = readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl';
+    const isPaginated = effectiveDirection === 'ltr' || effectiveDirection === 'rtl';
     if (e.key === 'ArrowRight') {
       if (isPaginated && containerRef.current) {
-        containerRef.current.scrollBy({ left: readerSettings.direction === 'ltr' ? containerRef.current.clientWidth : -containerRef.current.clientWidth, behavior: 'smooth' });
+        containerRef.current.scrollBy({ left: effectiveDirection === 'ltr' ? containerRef.current.clientWidth : -containerRef.current.clientWidth, behavior: 'smooth' });
       }
     } else if (e.key === 'ArrowLeft') {
       if (isPaginated && containerRef.current) {
-        containerRef.current.scrollBy({ left: readerSettings.direction === 'ltr' ? -containerRef.current.clientWidth : containerRef.current.clientWidth, behavior: 'smooth' });
+        containerRef.current.scrollBy({ left: effectiveDirection === 'ltr' ? -containerRef.current.clientWidth : containerRef.current.clientWidth, behavior: 'smooth' });
       }
     }
   };
@@ -266,7 +273,7 @@ export default function Reader() {
   useEffect(() => {
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
-  }, [readerSettings.direction]);
+  }, [effectiveDirection]);
 
   // Detect if a page URL is a video file (MP4 / WebM / OGG)
   const isVideoUrl = (url: string) => /\.(mp4|webm|ogg)(\?|$)/i.test(url);
@@ -302,10 +309,10 @@ export default function Reader() {
   const handlePageClick = (e: React.MouseEvent) => {
     const x = e.clientX;
     const w = window.innerWidth;
-    if (readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl') {
-      const goNext = readerSettings.direction === 'ltr' ? x > w / 2 : x < w / 2;
+    if (effectiveDirection === 'ltr' || effectiveDirection === 'rtl') {
+      const goNext = effectiveDirection === 'ltr' ? x > w / 2 : x < w / 2;
       if (containerRef.current) {
-        containerRef.current.scrollBy({ left: goNext ? containerRef.current.clientWidth * (readerSettings.direction === 'rtl' ? -1 : 1) : -containerRef.current.clientWidth * (readerSettings.direction === 'rtl' ? -1 : 1), behavior: 'smooth' });
+        containerRef.current.scrollBy({ left: goNext ? containerRef.current.clientWidth * (effectiveDirection === 'rtl' ? -1 : 1) : -containerRef.current.clientWidth * (effectiveDirection === 'rtl' ? -1 : 1), behavior: 'smooth' });
       }
     } else {
       setShowControls(!showControls);
@@ -346,7 +353,16 @@ export default function Reader() {
                 <div className="py-6 space-y-6">
                   <div className="space-y-3">
                     <Label>Reading Direction</Label>
-                    <Select value={readerSettings.direction} onValueChange={(v: any) => storeActions.setReader({ direction: v })}>
+                    <Select
+                      value={effectiveDirection}
+                      onValueChange={(v: any) => {
+                        if (sourceId === 'en.rule34') {
+                          storeActions.setSourceReaderDirection('en.rule34', v);
+                        } else {
+                          storeActions.setReader({ direction: v });
+                        }
+                      }}
+                    >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="webtoon">Webtoon (Continuous)</SelectItem>
@@ -397,16 +413,16 @@ export default function Reader() {
       <div
         ref={containerRef}
         className={`w-full ${
-          readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl'
+          effectiveDirection === 'ltr' || effectiveDirection === 'rtl'
           ? 'h-[100dvh] flex overflow-x-auto snap-x snap-mandatory hide-scrollbar flex-row'
           : 'flex flex-col items-center max-w-3xl mx-auto'
-        } ${readerSettings.direction === 'rtl' ? 'flex-row-reverse' : ''}`}
+        } ${effectiveDirection === 'rtl' ? 'flex-row-reverse' : ''}`}
       >
         {pagesData.pages.map((page, idx) => {
-          const isVerticalLike = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
+          const isVerticalLike = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical';
           const isLoaded = !!loadedImgs[idx];
-          const isWebtoon = readerSettings.direction === 'webtoon';
-          const isPaged = readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl';
+          const isWebtoon = effectiveDirection === 'webtoon';
+          const isPaged = effectiveDirection === 'ltr' || effectiveDirection === 'rtl';
 
           // ── Windowed rendering for vertical/webtoon modes ──────────────
           // Only keep images in the DOM within ±12 pages of where the user is.
@@ -474,9 +490,9 @@ export default function Reader() {
                 isPaged
                 ? 'flex items-center justify-center bg-black w-[100vw] h-[100dvh] snap-center snap-always'
                 : isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full'
-              } ${readerSettings.direction === 'vertical' ? 'mb-8' : ''}`}
+              } ${effectiveDirection === 'vertical' ? 'mb-8' : ''}`}
             >
-              {readerSettings.direction === 'vertical' && (
+              {effectiveDirection === 'vertical' && (
                 <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
               )}
               {/* Webtoon / vertical: keep image in normal flow to avoid layout shift.
@@ -532,7 +548,7 @@ export default function Reader() {
         })}
 
         {/* Continuous reading: appended chapters */}
-        {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && appendedChapters.map((ch) => (
+        {(effectiveDirection === 'webtoon' || effectiveDirection === 'vertical') && appendedChapters.map((ch) => (
           <div key={ch.id} className="w-full">
             <div className="flex items-center gap-4 px-4 py-6 bg-black/80 border-y border-white/10">
               <div className="flex-1 h-px bg-white/20" />
@@ -543,7 +559,7 @@ export default function Reader() {
               <div className="flex-1 h-px bg-white/20" />
             </div>
             {ch.pages.map((page) => {
-              const isWebtoon = readerSettings.direction === 'webtoon';
+              const isWebtoon = effectiveDirection === 'webtoon';
               return (
                 <div
                   key={page.index}
@@ -552,7 +568,6 @@ export default function Reader() {
                   }`}
                 >
                   <img
-                    // ── ONE FIXED LINE ────────────────────────────────────
                     src={getProxiedImageUrl(page.url, sourceId ?? "")}
                     alt={`Ch${ch.number} Page ${page.index}`}
                     loading="lazy"
@@ -569,14 +584,14 @@ export default function Reader() {
           </div>
         ))}
 
-        {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && loadingNextChapter && (
+        {(effectiveDirection === 'webtoon' || effectiveDirection === 'vertical') && loadingNextChapter && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-white/50">
             <Loader2 className="h-8 w-8 animate-spin" />
             <span className="text-sm">Loading next chapter…</span>
           </div>
         )}
 
-        {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && !nextChapter && appendedChapters.length === 0 && (
+        {(effectiveDirection === 'webtoon' || effectiveDirection === 'vertical') && !nextChapter && appendedChapters.length === 0 && (
           <div className="py-16 flex flex-col items-center gap-4 text-white/40">
             <div className="text-sm">You've reached the end</div>
             <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); goBack(); }}>
