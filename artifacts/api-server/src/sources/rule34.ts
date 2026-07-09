@@ -38,10 +38,14 @@ const META_TAGS = new Set([
   "artist_request", "character_request", "series_request",
 ]);
 
-// ── Image proxy helper (same pattern as OnlyTheBestHentai) ────────────────────
-function proxyUrl(url: string): string {
-  if (!url) return "";
-  return `/api/image-proxy?url=${encodeURIComponent(url)}&referer=${encodeURIComponent(BASE_URL + "/")}`;
+// ── Raw URL passthrough ────────────────────────────────────────────────────────
+// The frontend's proxyImage() wraps raw URLs as /api/image?url=<raw>&source=en.rule34
+// The /api/image route then uses source.imageReferer (https://rule34.paheal.net/)
+// to set the correct referer when fetching from paheal's CDN.
+// Do NOT pre-proxy here — returning /api/image-proxy?... relative paths causes a
+// double-wrap that makes /api/image fail its URL validation with 400.
+function rawUrl(url: string): string {
+  return url ?? "";
 }
 
 // ── Video file detection ──────────────────────────────────────────────────────
@@ -87,7 +91,7 @@ function toSummary($: cheerio.CheerioAPI, el: cheerio.Element): MangaSummary {
   return {
     id,
     title:     pickTitle(rawTags, id),
-    thumbnail: proxyUrl(preview),
+    thumbnail: rawUrl(preview),
     type:      "Artwork",
     isNsfw:    true,
   };
@@ -286,7 +290,7 @@ export const Rule34Source: MangaSource = {
       type:          "Artwork",
       isNsfw:        true,
       rating:        0,
-      thumbnail:     proxyUrl(preview),
+      thumbnail:     rawUrl(preview),
       genres:        tagList.map(t => t.replace(/_/g, " ")),
       score:         score > 0 ? String(score) : "",
       scorePosition: score > 0 ? "bottom" : "none",
@@ -319,13 +323,13 @@ export const Rule34Source: MangaSource = {
 
     // For videos, fall back to the preview thumbnail (viewer is image-only)
     const isVid = isVideo(fileName, fileUrl);
-    const rawUrl = isVid ? previewUrl : (fileUrl || previewUrl);
+    const imageUrl = isVid ? previewUrl : (fileUrl || previewUrl);
 
-    if (!rawUrl) throw new Error(`[Rule34] No image URL for post ${chapterId}`);
+    if (!imageUrl) throw new Error(`[Rule34] No image URL for post ${chapterId}`);
 
     return {
       chapterId,
-      pages: [{ index: 0, url: proxyUrl(rawUrl) }],
+      pages: [{ index: 0, url: imageUrl }],
     };
   },
 };
