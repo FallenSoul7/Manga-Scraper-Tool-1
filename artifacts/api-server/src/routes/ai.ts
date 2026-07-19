@@ -19,15 +19,15 @@ function collectKeys(base: string): string[] {
 }
 
 const UNCENSORED_MODELS = [
-  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
-  "cognitivecomputations/dolphin3.0-mistral-24b:free",
-  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", // ✅ alive 32K ctx
+  "nousresearch/hermes-3-llama-3.1-405b:free",                    // ✅ alive 131K ctx
 ];
 
 function buildProviders() {
   const groqKeys = collectKeys("GROQ_API_KEY");
   const geminiKeys = collectKeys("GEMINI_API_KEY");
   const openrouterKeys = collectKeys("OPENROUTER_API_KEY");
+  const openaiKeys = collectKeys("OPENAI_API_KEY");
 
   type Provider = { name: string; url: string; key: string; model: string; isUncensored: boolean };
   const providers: Provider[] = [];
@@ -50,12 +50,22 @@ function buildProviders() {
       isUncensored: false,
     });
   }
+  // OpenAI — used for chat (gpt-4o-mini) AND image generation (dall-e-3) in generation route
+  for (let i = 0; i < openaiKeys.length; i++) {
+    providers.push({
+      name: i > 0 ? `OpenAI (key ${i + 1})` : "OpenAI",
+      url: "https://api.openai.com/v1/chat/completions",
+      key: openaiKeys[i],
+      model: "gpt-4o-mini",
+      isUncensored: false,
+    });
+  }
   for (let i = 0; i < openrouterKeys.length; i++) {
     providers.push({
       name: i > 0 ? `OpenRouter (key ${i + 1})` : "OpenRouter",
       url: "https://openrouter.ai/api/v1/chat/completions",
       key: openrouterKeys[i],
-      model: "openrouter/free",
+      model: "openrouter/auto",
       isUncensored: false,
     });
   }
