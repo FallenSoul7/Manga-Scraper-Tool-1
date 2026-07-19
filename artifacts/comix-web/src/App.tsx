@@ -31,6 +31,7 @@ const CachePage            = lazy(() => import("@/pages/cache"));
 const InstallPage          = lazy(() => import("@/pages/install"));
 const LoginPage            = lazy(() => import("@/pages/login"));
 const ProfilePage          = lazy(() => import("@/pages/profile"));
+const GenerationPage       = lazy(() => import("@/pages/generation"));
 
 import { useActiveSourceId, applyActiveSource, registerQueryClient } from "@/lib/source";
 import { useLibrarySync } from "@/hooks/use-library-sync";
@@ -158,6 +159,9 @@ function AppContent() {
               </Route>
               <Route path="/profile">
                 <Lazy><ProfilePage /></Lazy>
+              </Route>
+              <Route path="/generation">
+                <Lazy><GenerationPage /></Lazy>
               </Route>
               <Route component={NotFound} />
             </Switch>
