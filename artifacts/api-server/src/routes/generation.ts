@@ -5,43 +5,38 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
-const OPENAI_KEY = () => process.env.OPENAI_API_KEY ?? "";
-const GROQ_KEY = () => {
-  const k = process.env.GROQ_API_KEY ?? "";
-  return k;
-};
+const GEMINI_KEY = () => process.env.GEMINI_API_KEY ?? "";
+const GROQ_KEY = () => process.env.GROQ_API_KEY ?? "";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-async function callDalle(prompt: string): Promise<{ url: string; revised: string }> {
-  const key = OPENAI_KEY();
-  if (!key) throw new Error("OPENAI_API_KEY is not set on the server.");
+async function callGeminiImage(prompt: string): Promise<{ url: string; revised: string }> {
+  const key = GEMINI_KEY();
+  if (!key) throw new Error("GEMINI_API_KEY is not set on the server.");
 
-  const res = await fetch("https://api.openai.com/v1/images/generations", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "dall-e-3",
-      prompt,
-      n: 1,
-      size: "1024x1024",
-      quality: "standard",
-      response_format: "url",
-    }),
-  });
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${key}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instances: [{ prompt }],
+        parameters: { sampleCount: 1 },
+      }),
+    }
+  );
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(
-      `DALL-E error ${res.status}: ${JSON.stringify(err)}`
-    );
+    throw new Error(`Gemini Imagen error ${res.status}: ${JSON.stringify(err)}`);
   }
 
-  const data = (await res.json()) as { data: { url: string; revised_prompt: string }[] };
-  return { url: data.data[0].url, revised: data.data[0].revised_prompt ?? prompt };
+  const data = (await res.json()) as {
+    predictions: { bytesBase64Encoded: string; mimeType: string }[];
+  };
+  const pred = data.predictions[0];
+  const dataUrl = `data:${pred.mimeType};base64,${pred.bytesBase64Encoded}`;
+  return { url: dataUrl, revised: prompt };
 }
 
 async function callGroqJson<T>(systemPrompt: string, userPrompt: string): Promise<T> {
@@ -88,7 +83,7 @@ router.post("/draw", async (req: Request, res: Response) => {
     const styleTag = style ? `, ${style} style` : ", manga art style, highly detailed, professional illustration";
     const enhancedPrompt = `${prompt.trim()}${styleTag}`;
 
-    const { url, revised } = await callDalle(enhancedPrompt);
+    const { url, revised } = await callGeminiImage(enhancedPrompt);
     res.json({ imageUrl: url, revisedPrompt: revised, originalPrompt: prompt });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -129,8 +124,8 @@ Return valid JSON only.`,
       `Animation request: "${description.trim()}"`
     );
 
-    // Step 2: generate the image with DALL-E
-    const { url, revised } = await callDalle(meta.imagePrompt);
+    // Step 2: generate the image with Gemini Imagen
+    const { url, revised } = await callGeminiImage(meta.imagePrompt);
 
     res.json({
       imageUrl: url,

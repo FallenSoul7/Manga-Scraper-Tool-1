@@ -278,16 +278,15 @@ function DrawTab() {
       </div>
 
       {error && (
-        <div className="rounded-xl bg-destructive/10 border border-destructive/30 p-4 text-sm text-destructive">
-          {error.includes("OPENAI_API_KEY") ? (
-            <span>
-              <strong>OpenAI API key missing.</strong> Add{" "}
-              <code className="bg-destructive/20 px-1 rounded">OPENAI_API_KEY</code> to your
-              Render environment variables.
-            </span>
-          ) : (
-            error
-          )}
+        <div className={cn(
+          "rounded-xl p-4 text-sm",
+          error.includes("OPENAI_API_KEY")
+            ? "bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400"
+            : "bg-destructive/10 border border-destructive/30 text-destructive"
+        )}>
+          {error.includes("OPENAI_API_KEY")
+            ? "Image generation requires an OpenAI API key (DALL-E 3). This feature is not available without one."
+            : error}
         </div>
       )}
 
@@ -892,11 +891,27 @@ export default function GenerationPage() {
           </TabsList>
 
           <TabsContent value="draw">
-            <DrawTab />
+            <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+              <div className="rounded-full bg-primary/10 p-5">
+                <Wand2 className="h-8 w-8 text-primary" />
+              </div>
+              <h3 className="text-lg font-semibold">Coming Soon</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                AI art generation is on the way. Check back soon!
+              </p>
+            </div>
           </TabsContent>
 
           <TabsContent value="animate">
-            <LiveDrawTab />
+            <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+              <div className="rounded-full bg-primary/10 p-5">
+                <Video className="h-8 w-8 text-primary" />
+              </div>
+              <h3 className="text-lg font-semibold">Coming Soon</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                Live Draw animation is on the way. Check back soon!
+              </p>
+            </div>
           </TabsContent>
 
           <TabsContent value="knowledge">
