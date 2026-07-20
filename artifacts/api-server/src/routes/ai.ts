@@ -25,7 +25,7 @@ const UNCENSORED_MODELS = [
 
 function buildProviders() {
   const groqKeys = collectKeys("GROQ_API_KEY");
-  const geminiKeys = collectKeys("GEMINI_API_KEY");
+  const geminiKeys = [process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3].filter(Boolean) as string[];
   const openrouterKeys = collectKeys("OPENROUTER_API_KEY");
   type Provider = { name: string; url: string; key: string; model: string; isUncensored: boolean };
   const providers: Provider[] = [];
