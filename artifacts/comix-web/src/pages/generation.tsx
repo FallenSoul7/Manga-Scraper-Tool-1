@@ -891,11 +891,27 @@ export default function GenerationPage() {
           </TabsList>
 
           <TabsContent value="draw">
-            <DrawTab />
+            <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+              <div className="rounded-full bg-primary/10 p-5">
+                <Wand2 className="h-8 w-8 text-primary" />
+              </div>
+              <h3 className="text-lg font-semibold">Coming Soon</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                AI art generation is on the way. Check back soon!
+              </p>
+            </div>
           </TabsContent>
 
           <TabsContent value="animate">
-            <LiveDrawTab />
+            <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+              <div className="rounded-full bg-primary/10 p-5">
+                <Video className="h-8 w-8 text-primary" />
+              </div>
+              <h3 className="text-lg font-semibold">Coming Soon</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                Live Draw animation is on the way. Check back soon!
+              </p>
+            </div>
           </TabsContent>
 
           <TabsContent value="knowledge">
