@@ -27,8 +27,6 @@ function buildProviders() {
   const groqKeys = collectKeys("GROQ_API_KEY");
   const geminiKeys = collectKeys("GEMINI_API_KEY");
   const openrouterKeys = collectKeys("OPENROUTER_API_KEY");
-  const openaiKeys = collectKeys("OPENAI_API_KEY");
-
   type Provider = { name: string; url: string; key: string; model: string; isUncensored: boolean };
   const providers: Provider[] = [];
 
@@ -47,16 +45,6 @@ function buildProviders() {
       url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       key: geminiKeys[i],
       model: "gemini-2.5-flash",
-      isUncensored: false,
-    });
-  }
-  // OpenAI — used for chat (gpt-4o-mini) AND image generation (dall-e-3) in generation route
-  for (let i = 0; i < openaiKeys.length; i++) {
-    providers.push({
-      name: i > 0 ? `OpenAI (key ${i + 1})` : "OpenAI",
-      url: "https://api.openai.com/v1/chat/completions",
-      key: openaiKeys[i],
-      model: "gpt-4o-mini",
       isUncensored: false,
     });
   }
