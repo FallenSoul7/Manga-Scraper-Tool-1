@@ -5,7 +5,7 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
-const GEMINI_KEY = () => process.env.GEMINI_API_KEY ?? "";
+const GEMINI_KEY = () => process.env.GEMINI_IMAGE_KEY ?? "";
 const GROQ_KEY = () => process.env.GROQ_API_KEY ?? "";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
