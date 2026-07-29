@@ -160,10 +160,6 @@ export default function MangaDetail() {
   const selectedScanlator = id ? (scanlatorPrefs[id] ?? null) : null;
   const sortAsc = id ? !!chapterSortAsc[id] : false;
 
-  // Detect if this is a Koofr video entry so we can say "Watch" instead of "Read"
-  const effectiveSource = sourceContext ?? activeSourceId;
-  const isKoofrVideo = effectiveSource === 'local.koofr' && !!id && isKoofrVideoId(id);
-
   const librarySourceId = savedManga?.sourceId ?? null;
   // The source we'll actually use for this manga — URL param wins, then saved sourceId.
   // Computed early so it can be included in queryKeys (prevents cross-source cache hits).
@@ -385,6 +381,8 @@ export default function MangaDetail() {
   const altTitles = manga?.altTitles || [];
   const effectiveSource = sourceContext ?? activeSourceId;
   const sourceName = effectiveSource ? formatSourceId(effectiveSource) : null;
+  // Detect Koofr video entries so we can show "Watch" instead of "Read"
+  const isKoofrVideo = effectiveSource === 'local.koofr' && !!id && isKoofrVideoId(id);
 
   if (showLoading) {
     return <div className="flex justify-center py-32"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
