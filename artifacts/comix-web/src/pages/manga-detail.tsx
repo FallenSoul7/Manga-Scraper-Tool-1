@@ -26,6 +26,17 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 
+/** Decode a Koofr base64url manga ID back to its file path and check if it's a video. */
+function isKoofrVideoId(mangaId: string): boolean {
+  try {
+    const b64 = mangaId.replace(/-/g, '+').replace(/_/g, '/');
+    const path = atob(b64);
+    return /\.(mp4|webm|mov|mkv|avi)$/i.test(path);
+  } catch {
+    return false;
+  }
+}
+
 function dedupeChapters(items: any[]): any[] {
   const map = new Map<number, any>();
   const score = (ch: any) => {
@@ -148,6 +159,10 @@ export default function MangaDetail() {
   const savedManga = id ? library[id] : null;
   const selectedScanlator = id ? (scanlatorPrefs[id] ?? null) : null;
   const sortAsc = id ? !!chapterSortAsc[id] : false;
+
+  // Detect if this is a Koofr video entry so we can say "Watch" instead of "Read"
+  const effectiveSource = sourceContext ?? activeSourceId;
+  const isKoofrVideo = effectiveSource === 'local.koofr' && !!id && isKoofrVideoId(id);
 
   const librarySourceId = savedManga?.sourceId ?? null;
   // The source we'll actually use for this manga — URL param wins, then saved sourceId.
@@ -595,8 +610,8 @@ export default function MangaDetail() {
               className="w-full h-12 text-base font-semibold rounded-xl"
               onClick={() => setLocation(`/reader/${latestProgress.chapterId}?mangaId=${manga.id}${(sourceContext ?? activeSourceId) ? `&sourceId=${sourceContext ?? activeSourceId}` : ""}`)}
             >
-              <BookOpen className="mr-2 h-5 w-5" />
-              Continue reading · Ch. {latestProgress.chapterNumber}
+              {isKoofrVideo ? <Play className="mr-2 h-5 w-5" /> : <BookOpen className="mr-2 h-5 w-5" />}
+              {isKoofrVideo ? 'Continue watching' : `Continue reading · Ch. ${latestProgress.chapterNumber}`}
             </Button>
           ) : firstChapter ? (
             <Button
@@ -604,7 +619,7 @@ export default function MangaDetail() {
               onClick={() => setLocation(`/reader/${firstChapter.id}?mangaId=${manga.id}${(sourceContext ?? activeSourceId) ? `&sourceId=${sourceContext ?? activeSourceId}` : ""}`)}
             >
               <Play className="mr-2 h-5 w-5" />
-              Start reading
+              {isKoofrVideo ? 'Watch' : 'Start reading'}
             </Button>
           ) : (
             <Button className="w-full h-12 text-base font-semibold rounded-xl" disabled>

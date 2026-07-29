@@ -275,8 +275,8 @@ export default function Reader() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [effectiveDirection]);
 
-  // Detect if a page URL is a video file (MP4 / WebM / OGG)
-  const isVideoUrl = (url: string) => /\.(mp4|webm|ogg)(\?|$)/i.test(url);
+  // Detect if a page URL is a video file
+  const isVideoUrl = (url: string) => /\.(mp4|webm|ogg|mov|mkv|avi)(\?|$)/i.test(url);
 
   if (pagesLoading) {
     return (

@@ -134,11 +134,31 @@ app.get("/api/koofr/proxy", async (req, res) => {
   // Only allow /folder/filename paths with supported media extensions — blocks traversal and private files
   if (!isProxySafe(koofrPath)) return res.status(403).json({ error: "forbidden" });
   try {
-    const { stream, contentType } = await koofrStream(koofrPath);
+    const rangeHeader = req.headers["range"];
+    const extraHeaders: Record<string, string> = {};
+    if (rangeHeader) extraHeaders["Range"] = rangeHeader;
+
+    const koofrAuth = `Basic ${Buffer.from(`${process.env.KOOFR_EMAIL}:${process.env.KOOFR_APP_PASSWORD}`).toString("base64")}`;
+    const upstream = await axios.get(`https://app.koofr.net/api/v2/mounts/primary/files/get`, {
+      params: { path: koofrPath },
+      headers: {
+        Authorization: koofrAuth,
+        ...extraHeaders,
+      },
+      responseType: "stream",
+      timeout: 120_000,
+      validateStatus: () => true,
+    });
+
+    res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Cache-Control", "public, max-age=3600");
-    if (contentType) res.setHeader("Content-Type", contentType);
-    (stream as any).pipe(res);
-    (stream as any).on("error", () => { if (!res.headersSent) res.status(502).end(); });
+    if (upstream.headers["content-type"]) res.setHeader("Content-Type", upstream.headers["content-type"] as string);
+    if (upstream.headers["content-length"]) res.setHeader("Content-Length", upstream.headers["content-length"] as string);
+    if (upstream.headers["content-range"]) res.setHeader("Content-Range", upstream.headers["content-range"] as string);
+
+    res.status(upstream.status);
+    (upstream.data as NodeJS.ReadableStream).pipe(res);
+    (upstream.data as NodeJS.ReadableStream).on("error", () => { if (!res.headersSent) res.status(502).end(); });
   } catch (err: any) {
     logger.error({ err: err.message, path: koofrPath }, "Koofr proxy failed");
     if (!res.headersSent) res.status(502).json({ error: "failed to stream file" });
