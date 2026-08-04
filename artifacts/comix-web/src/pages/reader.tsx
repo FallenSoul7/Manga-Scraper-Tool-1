@@ -12,6 +12,7 @@ import { proxyImage } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
 // ── Keep this import ─────────────────────────────────────────────────────
 import { getProxiedImageUrl } from "@/lib/vpn";
+import VideoPlayer from "@/pages/video-player";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
@@ -276,8 +277,11 @@ export default function Reader() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [effectiveDirection]);
 
-  // Detect if a page URL is a video file
-  const isVideoUrl = (url: string) => /\.(mp4|webm|ogg|mov|mkv|avi)(\?|$)/i.test(url);
+  // Detect if a page URL is a video file.
+  // Matches /api/koofr/proxy?path=...video.mp4 as well as plain .mp4 URLs.
+  const isVideoUrl = (url: string) =>
+    /\.(mp4|webm|ogg|mov|mkv|avi)(\?|$|&)/i.test(url) ||
+    /\.(mp4|webm|mov|mkv|avi)$/i.test(decodeURIComponent(url));
 
   if (pagesLoading) {
     return (
@@ -300,6 +304,26 @@ export default function Reader() {
           Go Back
         </Button>
       </div>
+    );
+  }
+
+  // ── Video content → render dedicated cinematic player ─────────────────────
+  // When ALL pages are video URLs (Koofr video files), bypass the manga strip
+  // entirely and show the full-screen TV-style video player.
+  if (pagesData.pages.length > 0 && pagesData.pages.every(p => isVideoUrl(p.url))) {
+    const videoUrl = pagesData.pages[0].url;
+    const mangaTitle = mangaData?.title ?? "Video";
+    const chObj = chaptersData?.items.find(c => String(c.id) === chapterId);
+    const chapterTitle = chObj
+      ? `Ch. ${chObj.number}${chObj.title ? ` — ${chObj.title}` : ""}`
+      : undefined;
+    return (
+      <VideoPlayer
+        url={videoUrl}
+        title={mangaTitle}
+        subtitle={chapterTitle}
+        onBack={goBack}
+      />
     );
   }
 
