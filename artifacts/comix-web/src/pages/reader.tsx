@@ -9,6 +9,7 @@ import {
   setExtraHeader,
 } from "@workspace/api-client-react";
 import { proxyImage } from "@/lib/utils";
+import { apiUrl } from "@/lib/api-url";
 // ── Keep this import ─────────────────────────────────────────────────────
 import { getProxiedImageUrl } from "@/lib/vpn";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu } from "lucide-react";
@@ -462,7 +463,7 @@ export default function Reader() {
                 onClick={e => e.stopPropagation()}
               >
                 <video
-                  src={page.url}
+                  src={apiUrl(page.url)}
                   controls
                   controlsList="nodownload"
                   playsInline

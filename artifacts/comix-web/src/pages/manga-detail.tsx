@@ -20,7 +20,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { format } from "date-fns";
 import { useStore, storeActions, type PendingChapter } from "@/lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { queueActions } from "@/lib/download-queue";
+import { queueActions, useDownloadQueue } from "@/lib/download-queue";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -73,6 +73,69 @@ function getSourceWebUrl(sourceId: string, mangaId: string): string | null {
   if (sourceId.includes("mangafreak"))   return `https://mangafreak.net/manga/${id}`;
   if (sourceId.includes("danbooru"))     return `https://danbooru.donmai.us/posts/${mangaId}`;
   return null;
+}
+
+/** Circular SVG progress ring for chapter download button */
+function DownloadProgressRing({ progress, size = 32 }: { progress: number; size?: number }) {
+  const r = (size - 4) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (progress / 100) * circ;
+  return (
+    <svg width={size} height={size} className="rotate-[-90deg]">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth={2} opacity={0.2} />
+      <circle
+        cx={size / 2} cy={size / 2} r={r} fill="none"
+        stroke="currentColor" strokeWidth={2}
+        strokeDasharray={circ} strokeDashoffset={offset}
+        strokeLinecap="round"
+        className="transition-[stroke-dashoffset] duration-300"
+      />
+    </svg>
+  );
+}
+
+/** Chapter download button — shows ring when queued/downloading, checkmark when done */
+function ChapterDownloadButton({ chapterId, onClick }: { chapterId: number | string; onClick: (e: React.MouseEvent) => void }) {
+  const item = useDownloadQueue(s => s.items.find(i => String(i.chapterId) === String(chapterId)));
+  const status = item?.status;
+  const progress = item?.progress ?? 0;
+
+  if (status === 'done') {
+    return (
+      <button
+        type="button"
+        className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-green-500"
+        title="Downloaded"
+        onClick={e => e.stopPropagation()}
+      >
+        <Check className="h-4 w-4" />
+      </button>
+    );
+  }
+
+  if (status === 'downloading' || status === 'queued') {
+    return (
+      <button
+        type="button"
+        className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-primary"
+        title={`${Math.round(progress)}%`}
+        onClick={e => e.stopPropagation()}
+      >
+        <DownloadProgressRing progress={progress} size={28} />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-white/30 hover:text-white/80 transition-colors"
+      onClick={onClick}
+      title="Download chapter"
+    >
+      <ArrowDownToLine className="h-4 w-4" />
+    </button>
+  );
 }
 
 const LANG_NAMES: Record<string, string> = {
@@ -829,9 +892,8 @@ export default function MangaDetail() {
                     </div>
 
                     {!chapterSelectionMode ? (
-                      <button
-                        type="button"
-                        className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-white/30 hover:text-white/80 transition-colors"
+                      <ChapterDownloadButton
+                        chapterId={chapter.id}
                         onClick={e => {
                           e.stopPropagation();
                           setDownloadTarget({
@@ -843,10 +905,7 @@ export default function MangaDetail() {
                             label: `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}`,
                           });
                         }}
-                        title="Download chapter"
-                      >
-                        <ArrowDownToLine className="h-4 w-4" />
-                      </button>
+                      />
                     ) : (
                       <button
                         type="button"
