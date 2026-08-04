@@ -36,6 +36,7 @@ async function buildAll() {
       "express-session",
       "connect-pg-simple",
       "unzipper",
+      "archiver",
       "@supabase/supabase-js",
       "sharp",
       "better-sqlite3",

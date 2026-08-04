@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
+    "@types/archiver": "^8.0.0",
     "@types/pg": "^8.20.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
+    "archiver": "^8.0.0",
     "axios": "^1.18.0",
     "cheerio": "^1.2.0",
     "connect-pg-simple": "^10.0.0",
