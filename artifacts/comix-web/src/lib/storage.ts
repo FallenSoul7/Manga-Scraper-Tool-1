@@ -244,6 +244,14 @@ function loadState(): StoreState {
       if (!validated.data.installedSources[validated.data.activeSourceId]) {
         validated.data.activeSourceId = DEFAULT_SOURCE.id;
       }
+      // Migration: rename "My Koofr Library" → "K-Cafe" and ensure it is not pinned
+      if (validated.data.installedSources["local.koofr"]) {
+        validated.data.installedSources["local.koofr"] = {
+          ...validated.data.installedSources["local.koofr"],
+          name: "K-Cafe",
+          isPinned: false,
+        };
+      }
       return validated.data;
     }
 

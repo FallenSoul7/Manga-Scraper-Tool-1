@@ -305,7 +305,7 @@ function buildList(entries: KoofrEntry[], page: number): MangaListResponse {
 
 export const KoofrSource: MangaSource = {
   id: "local.koofr",
-  name: "My Koofr Library",
+  name: "K-Cafe",
   lang: "all",
   isNsfw: false,
 
