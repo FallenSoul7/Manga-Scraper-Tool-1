@@ -1,6 +1,6 @@
 /**
  * Cinematic video player for Koofr video files.
- * Completely separate from the manga reader — designed for mobile TV-style viewing.
+ * All interactive controls live inside one overlay div — no z-index fights.
  */
 import { useEffect, useRef, useState, useCallback } from "react";
 import { ChevronLeft, Play, Pause, Maximize, Minimize, Volume2, VolumeX, RotateCcw } from "lucide-react";
@@ -13,177 +13,173 @@ interface VideoPlayerProps {
   onBack: () => void;
 }
 
-function formatTime(seconds: number): string {
-  if (!isFinite(seconds) || isNaN(seconds)) return "0:00";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${m}:${String(s).padStart(2, "0")}`;
+function formatTime(s: number): string {
+  if (!isFinite(s) || isNaN(s) || s < 0) return "0:00";
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
 export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const hideTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const videoRef  = useRef<HTMLVideoElement>(null);
+  const wrapRef   = useRef<HTMLDivElement>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  const [playing, setPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [buffered, setBuffered] = useState(0);
-  const [muted, setMuted] = useState(false);
-  const [showControls, setShowControls] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [seeking, setSeeking] = useState(false);
+  const [playing,      setPlaying]      = useState(false);
+  const [currentTime,  setCurrentTime]  = useState(0);
+  const [duration,     setDuration]     = useState(0);
+  const [buffered,     setBuffered]     = useState(0);
+  const [muted,        setMuted]        = useState(false);
+  const [visible,      setVisible]      = useState(true);   // controls visible
+  const [loading,      setLoading]      = useState(true);
+  const [hasError,     setHasError]     = useState(false);
+  const [fullscreen,   setFullscreen]   = useState(false);
+  const [seeking,      setSeeking]      = useState(false);
 
-  // Auto-hide controls after 3s when playing
-  const scheduleHide = useCallback(() => {
-    clearTimeout(hideTimeout.current);
-    if (playing && !seeking) {
-      hideTimeout.current = setTimeout(() => setShowControls(false), 3000);
+  // ── auto-hide controls ───────────────────────────────────────────────
+  const playingRef = useRef(playing);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
+
+  const resetHideTimer = useCallback(() => {
+    clearTimeout(hideTimer.current);
+    setVisible(true);
+    hideTimer.current = setTimeout(() => {
+      if (playingRef.current) setVisible(false);
+    }, 3500);
+  }, []);
+
+  useEffect(() => () => clearTimeout(hideTimer.current), []);
+
+  // show controls when paused
+  useEffect(() => {
+    if (!playing) {
+      clearTimeout(hideTimer.current);
+      setVisible(true);
+    } else {
+      resetHideTimer();
     }
-  }, [playing, seeking]);
+  }, [playing, resetHideTimer]);
 
-  const showControlsNow = useCallback(() => {
-    setShowControls(true);
-    scheduleHide();
-  }, [scheduleHide]);
-
+  // ── fullscreen listener ──────────────────────────────────────────────
   useEffect(() => {
-    scheduleHide();
-    return () => clearTimeout(hideTimeout.current);
-  }, [scheduleHide]);
-
-  // Fullscreen change listener
-  useEffect(() => {
-    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    const onChange = () => setFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === " " || e.key === "k") { e.preventDefault(); togglePlay(); showControlsNow(); }
-      if (e.key === "ArrowLeft") { seekBy(-10); showControlsNow(); }
-      if (e.key === "ArrowRight") { seekBy(10); showControlsNow(); }
-      if (e.key === "m") { toggleMute(); showControlsNow(); }
-      if (e.key === "f") { toggleFullscreen(); }
-      if (e.key === "Escape" && !document.fullscreenElement) onBack();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [playing]);
-
-  const togglePlay = () => {
+  // ── helpers ──────────────────────────────────────────────────────────
+  function togglePlay() {
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) v.play().catch(() => {});
-    else v.pause();
-  };
+    else          v.pause();
+  }
 
-  const seekBy = (delta: number) => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + delta));
-  };
-
-  const toggleMute = () => {
+  function toggleMute() {
     const v = videoRef.current;
     if (!v) return;
     v.muted = !v.muted;
     setMuted(v.muted);
-  };
+  }
 
-  const toggleFullscreen = async () => {
-    if (!containerRef.current) return;
+  function seekTo(t: number) {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = Math.max(0, Math.min(v.duration || 0, t));
+    setCurrentTime(v.currentTime);
+  }
+
+  async function toggleFullscreen() {
+    if (!wrapRef.current) return;
     if (!document.fullscreenElement) {
-      await containerRef.current.requestFullscreen().catch(() => {});
+      await wrapRef.current.requestFullscreen().catch(() => {});
     } else {
       await document.exitFullscreen().catch(() => {});
     }
-  };
+  }
 
-  const handleSeekInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = videoRef.current;
-    if (!v) return;
-    const t = parseFloat(e.target.value);
-    v.currentTime = t;
-    setCurrentTime(t);
-  };
+  // ── keyboard ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === " " || e.key === "k") { e.preventDefault(); togglePlay(); resetHideTimer(); }
+      else if (e.key === "ArrowLeft")  { seekTo((videoRef.current?.currentTime ?? 0) - 10); resetHideTimer(); }
+      else if (e.key === "ArrowRight") { seekTo((videoRef.current?.currentTime ?? 0) + 10); resetHideTimer(); }
+      else if (e.key === "m") toggleMute();
+      else if (e.key === "f") toggleFullscreen();
+      else if (e.key === "Escape" && !document.fullscreenElement) onBack();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Double-tap to seek ±10s
-  const lastTap = useRef<{ x: number; time: number } | null>(null);
-  const handleTap = (e: React.MouseEvent) => {
-    const now = Date.now();
-    const x = e.clientX;
-    const w = window.innerWidth;
-    if (lastTap.current && now - lastTap.current.time < 300 && Math.abs(x - lastTap.current.x) < 80) {
-      // Double tap
-      const side = x < w / 2 ? -10 : 10;
-      seekBy(side);
-      lastTap.current = null;
-      return;
-    }
-    lastTap.current = { x, time: now };
-    showControlsNow();
-  };
+  // ── derived ──────────────────────────────────────────────────────────
+  const progress   = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const bufferPct  = duration > 0 ? (buffered   / duration) * 100 : 0;
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const bufferPct = duration > 0 ? (buffered / duration) * 100 : 0;
-
+  // ── render ───────────────────────────────────────────────────────────
   return (
     <div
-      ref={containerRef}
-      className="fixed inset-0 z-50 bg-black flex flex-col select-none"
-      style={{ touchAction: "none" }}
+      ref={wrapRef}
+      className="fixed inset-0 z-50 bg-black select-none overflow-hidden"
     >
-      {/* ── Video element ─────────────────────────────────────────────── */}
+      {/* ── 1. VIDEO ──────────────────────────────────────────────────── */}
       <video
         ref={videoRef}
         src={apiUrl(url)}
         className="absolute inset-0 w-full h-full object-contain"
         playsInline
-        onClick={handleTap as any}
-        onPlay={() => { setPlaying(true); setLoading(false); scheduleHide(); }}
-        onPause={() => { setPlaying(false); clearTimeout(hideTimeout.current); setShowControls(true); }}
-        onTimeUpdate={() => {
+        // Don't put onClick here — click layer below handles taps
+        onPlay={()        => { setPlaying(true);  setLoading(false); }}
+        onPause={()       => { setPlaying(false); }}
+        onWaiting={()     => setLoading(true)}
+        onCanPlay={()     => setLoading(false)}
+        onPlaying={()     => setLoading(false)}
+        onDurationChange={() => { if (videoRef.current) setDuration(videoRef.current.duration); }}
+        onTimeUpdate={()  => {
           const v = videoRef.current;
           if (!v || seeking) return;
           setCurrentTime(v.currentTime);
           if (v.buffered.length > 0) setBuffered(v.buffered.end(v.buffered.length - 1));
         }}
-        onDurationChange={() => { if (videoRef.current) setDuration(videoRef.current.duration); }}
-        onWaiting={() => setLoading(true)}
-        onCanPlay={() => setLoading(false)}
-        onError={() => { setError(true); setLoading(false); }}
-        onEnded={() => { setPlaying(false); setShowControls(true); }}
+        onEnded={()  => { setPlaying(false); }}
+        onError={()  => { setHasError(true); setLoading(false); }}
         muted={muted}
       />
 
-      {/* ── Loading / buffering spinner ────────────────────────────────── */}
-      {loading && !error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-          <div className="relative">
-            <div className="h-14 w-14 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-          </div>
-          <p className="mt-4 text-white/70 text-sm font-medium px-6 text-center line-clamp-1">{title}</p>
+      {/* ── 2. CLICK LAYER (tap to toggle controls) ───────────────────── */}
+      {/* Only active when controls are hidden so buttons still work */}
+      {!visible && (
+        <div
+          className="absolute inset-0 z-10 cursor-pointer"
+          onClick={resetHideTimer}
+        />
+      )}
+
+      {/* ── 3. LOADING SPINNER ────────────────────────────────────────── */}
+      {loading && !hasError && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
+          <div className="h-12 w-12 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+          {title && (
+            <p className="mt-4 text-white/60 text-sm px-8 text-center line-clamp-2">{title}</p>
+          )}
         </div>
       )}
 
-      {/* ── Error state ───────────────────────────────────────────────── */}
-      {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-10">
-          <div className="text-4xl">⚠️</div>
+      {/* ── 4. ERROR STATE ─────────────────────────────────────────────── */}
+      {hasError && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <span className="text-4xl">⚠️</span>
           <p className="text-white/80 font-semibold">Couldn't load video</p>
+          <p className="text-white/40 text-xs">{title}</p>
           <button
-            className="mt-2 flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/15 text-white text-sm font-medium hover:bg-white/25 transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/15 text-white text-sm font-medium hover:bg-white/25 transition-colors"
             onClick={() => {
-              setError(false);
-              setLoading(true);
-              if (videoRef.current) { videoRef.current.load(); videoRef.current.play().catch(() => {}); }
+              setHasError(false); setLoading(true);
+              const v = videoRef.current;
+              if (v) { v.load(); v.play().catch(() => {}); }
             }}
           >
             <RotateCcw className="h-4 w-4" /> Retry
@@ -194,106 +190,96 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
         </div>
       )}
 
-      {/* ── Big center play/pause button (shown when paused or controls visible) ── */}
-      {!loading && !error && showControls && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-          <button
-            className="h-18 w-18 pointer-events-auto flex items-center justify-center rounded-full bg-black/40 backdrop-blur-sm border border-white/20 transition-transform active:scale-90"
-            style={{ width: 72, height: 72 }}
-            onClick={(e) => { e.stopPropagation(); togglePlay(); showControlsNow(); }}
-          >
-            {playing
-              ? <Pause className="h-7 w-7 text-white fill-white" />
-              : <Play  className="h-7 w-7 text-white fill-white ml-1" />
-            }
-          </button>
-        </div>
-      )}
-
-      {/* ── Double-tap seek indicators ─────────────────────────────────── */}
-      {/* handled via tap logic above; visual feedback can be added later */}
-
-      {/* ── Controls overlay ──────────────────────────────────────────── */}
+      {/* ── 5. CONTROLS OVERLAY ───────────────────────────────────────── */}
+      {/* ALL interactive elements live here — no z-index conflict */}
       <div
-        className={`absolute inset-0 flex flex-col justify-between z-30 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-        onClick={(e) => { e.stopPropagation(); showControlsNow(); }}
+        className={`absolute inset-0 z-30 flex flex-col justify-between transition-opacity duration-300 ${
+          visible ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
       >
-        {/* Top gradient + title bar */}
-        <div className="bg-gradient-to-b from-black/80 via-black/40 to-transparent pt-safe-top">
-          <div className="flex items-center gap-3 px-3 py-3 sm:px-5 sm:py-4 h-16">
+        {/* Top bar */}
+        <div className="flex-shrink-0 bg-gradient-to-b from-black/80 via-black/30 to-transparent">
+          <div className="flex items-center gap-3 px-3 h-16 sm:px-5">
             <button
-              className="shrink-0 h-10 w-10 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-sm border border-white/15 hover:bg-black/60 transition-colors active:scale-90"
-              onClick={(e) => { e.stopPropagation(); onBack(); }}
+              className="shrink-0 h-10 w-10 flex items-center justify-center rounded-full bg-black/50 backdrop-blur border border-white/15 text-white hover:bg-black/70 active:scale-90 transition-all"
+              onClick={onBack}
             >
-              <ChevronLeft className="h-5 w-5 text-white" />
+              <ChevronLeft className="h-5 w-5" />
             </button>
             <div className="flex-1 min-w-0">
-              <div className="text-white font-semibold text-sm sm:text-base leading-tight truncate">{title}</div>
+              <div className="text-white font-semibold text-sm leading-tight truncate">{title}</div>
               {subtitle && <div className="text-white/55 text-xs leading-tight truncate mt-0.5">{subtitle}</div>}
             </div>
             <button
-              className="shrink-0 h-10 w-10 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-sm border border-white/15 hover:bg-black/60 transition-colors"
-              onClick={(e) => { e.stopPropagation(); toggleMute(); showControlsNow(); }}
+              className="shrink-0 h-10 w-10 flex items-center justify-center rounded-full bg-black/50 backdrop-blur border border-white/15 text-white hover:bg-black/70 active:scale-90 transition-all"
+              onClick={toggleMute}
             >
-              {muted ? <VolumeX className="h-4 w-4 text-white" /> : <Volume2 className="h-4 w-4 text-white" />}
+              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             </button>
           </div>
         </div>
 
-        {/* Spacer — tap area in the middle */}
-        <div className="flex-1" />
+        {/* Center: play/pause — tapping here also resets the hide timer */}
+        <div className="flex-1 flex items-center justify-center" onClick={resetHideTimer}>
+          <button
+            className="h-[72px] w-[72px] flex items-center justify-center rounded-full bg-black/50 backdrop-blur border border-white/20 text-white hover:bg-black/70 active:scale-90 transition-all"
+            onClick={(e) => { e.stopPropagation(); togglePlay(); resetHideTimer(); }}
+          >
+            {playing
+              ? <Pause className="h-7 w-7 fill-white" />
+              : <Play  className="h-7 w-7 fill-white ml-1" />
+            }
+          </button>
+        </div>
 
-        {/* Bottom gradient + seek bar + time + fullscreen */}
-        <div className="bg-gradient-to-t from-black/90 via-black/50 to-transparent pb-safe-bottom">
-          <div className="px-4 pb-4 pt-6 sm:px-6 sm:pb-5 space-y-2">
+        {/* Bottom bar */}
+        <div className="flex-shrink-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent">
+          <div className="px-4 pb-5 pt-6 sm:px-6 space-y-2">
+
             {/* Seek bar */}
-            <div className="relative h-5 flex items-center group">
-              {/* Buffer track */}
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-white/20 w-full" />
+            <div className="relative h-6 flex items-center">
+              {/* Track background */}
+              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-white/20" />
+              {/* Buffer */}
               <div
-                className="absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-white/35"
+                className="absolute top-1/2 -translate-y-1/2 h-1 rounded-full bg-white/35 left-0"
                 style={{ width: `${bufferPct}%` }}
               />
-              {/* Progress track */}
+              {/* Progress */}
               <div
-                className="absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-white pointer-events-none"
+                className="absolute top-1/2 -translate-y-1/2 h-1 rounded-full bg-white left-0 pointer-events-none"
                 style={{ width: `${progress}%` }}
               />
+              {/* Invisible range input on top */}
               <input
                 type="range"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 min={0}
-                max={duration || 0}
-                step={0.5}
+                max={duration > 0 ? duration : 100}
+                step={0.25}
                 value={currentTime}
-                onMouseDown={() => setSeeking(true)}
-                onTouchStart={() => setSeeking(true)}
-                onMouseUp={() => { setSeeking(false); scheduleHide(); }}
-                onTouchEnd={() => { setSeeking(false); scheduleHide(); }}
-                onChange={handleSeekInput}
-                className="absolute inset-0 w-full opacity-0 cursor-pointer"
-                style={{ height: "100%" }}
+                onPointerDown={() => setSeeking(true)}
+                onPointerUp={() => { setSeeking(false); resetHideTimer(); }}
+                onChange={(e) => seekTo(parseFloat(e.target.value))}
                 onClick={(e) => e.stopPropagation()}
               />
               {/* Thumb */}
               <div
-                className="absolute top-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full bg-white shadow-md pointer-events-none transition-transform group-hover:scale-125"
+                className="absolute top-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full bg-white shadow-md pointer-events-none"
                 style={{ left: `calc(${progress}% - 7px)` }}
               />
             </div>
 
-            {/* Time + fullscreen row */}
+            {/* Time + fullscreen */}
             <div className="flex items-center justify-between">
-              <span className="text-white/80 text-xs font-medium tabular-nums">
+              <span className="text-white/70 text-xs font-medium tabular-nums">
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>
               <button
-                className="h-9 w-9 flex items-center justify-center rounded-full bg-black/30 hover:bg-black/50 transition-colors active:scale-90"
-                onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
+                className="h-9 w-9 flex items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 active:scale-90 transition-all"
+                onClick={toggleFullscreen}
               >
-                {isFullscreen
-                  ? <Minimize className="h-4 w-4 text-white" />
-                  : <Maximize className="h-4 w-4 text-white" />
-                }
+                {fullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
               </button>
             </div>
           </div>
