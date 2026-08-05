@@ -1,4 +1,4 @@
-import { useRoute, Link, useSearch, useLocation } from "wouter";
+import { useRoute, useSearch, useLocation } from "wouter";
 import {
   useGetChapterPages,
   useGetChapters,
@@ -16,6 +16,7 @@ import VideoPlayer from "@/pages/video-player";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
+import { offlineDb } from "@/lib/offline-db";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -29,7 +30,23 @@ export default function Reader() {
   const searchString = useSearch();
   const mangaId = new URLSearchParams(searchString).get("mangaId");
   const sourceIdFromUrl = new URLSearchParams(searchString).get("sourceId");
+  const isOfflineMode = new URLSearchParams(searchString).get("offline") === "1";
   const [, setLocation] = useLocation();
+
+  // Offline mode: load pages from IndexedDB instead of the API
+  const [offlinePages, setOfflinePages] = useState<{ index: number; url: string }[] | null>(null);
+  const [offlineLoading, setOfflineLoading] = useState(isOfflineMode);
+  useEffect(() => {
+    if (!isOfflineMode || !chapterId) return;
+    setOfflineLoading(true);
+    offlineDb.get(String(chapterId)).then(chapter => {
+      if (chapter?.pageUrls?.length) {
+        setOfflinePages(chapter.pageUrls.map((url, i) => ({ index: i, url })));
+      }
+      setOfflineLoading(false);
+    }).catch(() => setOfflineLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapterId]);
 
   // Fallback: if sourceId isn't in the URL (e.g. opened from history before
   // the fix), grab it from the library entry for this manga.
@@ -75,10 +92,16 @@ export default function Reader() {
 
   const { data: pagesData, isLoading: pagesLoading } = useGetChapterPages(chapterId, {
     query: {
-      enabled: !!chapterId && chapterId !== "0",
+      // Skip API when reading an offline chapter — pages come from IndexedDB
+      enabled: !isOfflineMode && !!chapterId && chapterId !== "0",
       queryKey: getGetChapterPagesQueryKey(chapterId),
     },
   });
+
+  // Unified pages array: offline IndexedDB data OR live API data
+  const effectivePages: { index: number; url: string }[] =
+    (isOfflineMode && offlinePages) ? offlinePages : (pagesData?.pages ?? []);
+  const effectiveLoading = isOfflineMode ? offlineLoading : pagesLoading;
 
   const chapterFetchParams = { dedupe: false };
   const { data: chaptersData } = useGetChapters(mangaId || "", chapterFetchParams, {
@@ -138,7 +161,7 @@ export default function Reader() {
 
   const didInitialScroll = useRef(false);
   useEffect(() => {
-    if (!pagesData?.pages.length || didInitialScroll.current) return;
+    if (!effectivePages.length || didInitialScroll.current) return;
     const target = currentProgress?.lastPageRead;
     if (!target || target === 0) { didInitialScroll.current = true; return; }
     if (effectiveDirection === 'ltr' || effectiveDirection === 'rtl') {
@@ -159,7 +182,7 @@ export default function Reader() {
 
   useEffect(() => {
     const handleScroll = () => {
-      if (!pagesData?.pages.length || !mangaId || !chaptersData || !mangaData) return;
+      if (!effectivePages.length || !mangaId || !chaptersData || !mangaData) return;
       clearTimeout(scrollTimeout.current);
       scrollTimeout.current = setTimeout(() => {
         const container = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical' ? window : containerRef.current;
@@ -176,16 +199,16 @@ export default function Reader() {
           const docHeight = document.documentElement.scrollHeight;
           if (scrollY + wh >= docHeight * 0.9) {
             const ch = chaptersData.items.find(c => String(c.id) === chapterId);
-            if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, pagesData.pages.length);
+            if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, effectivePages.length);
           }
         } else {
           if (containerRef.current) {
             const scrollX = Math.abs(containerRef.current.scrollLeft);
             const cw = containerRef.current.clientWidth;
             newPage = Math.round(scrollX / cw);
-            if (newPage >= pagesData.pages.length - 1) {
+            if (newPage >= effectivePages.length - 1) {
               const ch = chaptersData.items.find(c => String(c.id) === chapterId);
-              if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, pagesData.pages.length);
+              if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, effectivePages.length);
             }
           }
         }
@@ -196,7 +219,7 @@ export default function Reader() {
             storeActions.recordProgress({
               mangaId, chapterId: ch.id, chapterNumber: ch.number,
               chapterTitle: ch.title, mangaTitle: mangaData.title,
-              mangaThumbnail: mangaData.thumbnail, totalPages: pagesData.pages.length,
+              mangaThumbnail: mangaData.thumbnail, totalPages: effectivePages.length,
               lastPageRead: newPage, isRead: false,
             });
           }
@@ -235,7 +258,7 @@ export default function Reader() {
     const isVertical = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical';
     if (!isVertical || !nextChapter || loadingNextChapter) return;
     if (appendedIdsRef.current.has(nextChapter.id)) return;
-    const totalPages = pagesData?.pages.length ?? 0;
+    const totalPages = effectivePages.length;
     if (totalPages === 0 || currentPage < totalPages - 3) return;
     const nc = nextChapter;
     appendedIdsRef.current.add(nc.id);
@@ -283,7 +306,7 @@ export default function Reader() {
     /\.(mp4|webm|ogg|mov|mkv|avi)(\?|$|&)/i.test(url) ||
     /\.(mp4|webm|mov|mkv|avi)$/i.test(decodeURIComponent(url));
 
-  if (pagesLoading) {
+  if (effectiveLoading) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white/50">
         <Loader2 className="h-8 w-8 animate-spin mb-4" />
@@ -292,7 +315,7 @@ export default function Reader() {
     );
   }
 
-  if (!pagesData || pagesData.pages.length === 0) {
+  if (effectivePages.length === 0) {
     return (
       <div className="min-h-screen bg-[#1a1a1a] flex flex-col items-center justify-center gap-4 px-6 text-center">
         <div className="text-4xl">📭</div>
@@ -310,8 +333,8 @@ export default function Reader() {
   // ── Video content → render dedicated cinematic player ─────────────────────
   // When ALL pages are video URLs (Koofr video files), bypass the manga strip
   // entirely and show the full-screen TV-style video player.
-  if (pagesData.pages.length > 0 && pagesData.pages.every(p => isVideoUrl(p.url))) {
-    const videoUrl = pagesData.pages[0].url;
+  if (effectivePages.length > 0 && effectivePages.every(p => isVideoUrl(p.url))) {
+    const videoUrl = effectivePages[0].url;
     const mangaTitle = mangaData?.title ?? "Video";
     const chObj = chaptersData?.items.find(c => String(c.id) === chapterId);
     const chapterTitle = chObj
@@ -443,7 +466,7 @@ export default function Reader() {
           : 'flex flex-col items-center max-w-3xl mx-auto'
         } ${effectiveDirection === 'rtl' ? 'flex-row-reverse' : ''}`}
       >
-        {pagesData.pages.map((page, idx) => {
+        {effectivePages.map((page, idx) => {
           const isVerticalLike = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical';
           const isLoaded = !!loadedImgs[idx];
           const isWebtoon = effectiveDirection === 'webtoon';
@@ -540,7 +563,7 @@ export default function Reader() {
                   {!isLoaded && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center min-h-[40vw] bg-black text-white/40 pointer-events-none">
                       <Loader2 className="h-10 w-10 animate-spin" />
-                      <div className="mt-3 text-xs tabular-nums">{idx + 1} / {pagesData.pages.length}</div>
+                      <div className="mt-3 text-xs tabular-nums">{idx + 1} / {effectivePages.length}</div>
                     </div>
                   )}
                 </div>
@@ -549,7 +572,7 @@ export default function Reader() {
                   {!isLoaded && (
                     <div className="flex flex-col items-center justify-center min-h-[40vw] w-full bg-black text-white/40 pointer-events-none">
                       <Loader2 className="h-10 w-10 animate-spin" />
-                      <div className="mt-3 text-xs tabular-nums">{idx + 1} / {pagesData.pages.length}</div>
+                      <div className="mt-3 text-xs tabular-nums">{idx + 1} / {effectivePages.length}</div>
                     </div>
                   )}
                   <img
@@ -628,7 +651,7 @@ export default function Reader() {
 
       {readerSettings.showPageNumber && showControls && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 backdrop-blur text-white text-xs font-medium z-40 pointer-events-none animate-in fade-in duration-200">
-          {currentPage + 1} / {pagesData.pages.length}
+          {currentPage + 1} / {effectivePages.length}
         </div>
       )}
     </div>

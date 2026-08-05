@@ -64,6 +64,19 @@ Object.defineProperty(getSnapshot(), 'paused', {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Route a raw CDN image URL through the backend image proxy so that
+ * hotlink-protection headers (Referer, etc.) are set server-side.
+ * URLs that are already local API paths are left as-is.
+ */
+function buildProxiedUrl(rawUrl: string, sourceId: string): string {
+  if (!rawUrl) return rawUrl;
+  if (rawUrl.startsWith('/api/') || rawUrl.startsWith('/public/')) {
+    return apiUrl(rawUrl);
+  }
+  return apiUrl(`/api/image?url=${encodeURIComponent(rawUrl)}&source=${encodeURIComponent(sourceId)}`);
+}
+
 function getItem(id: string): QueueItem | undefined {
   return state.items.find(i => i.id === id);
 }
@@ -134,14 +147,21 @@ async function runDownload(id: string): Promise<void> {
       );
     } catch { /* caches unavailable (dev/HTTP) — continue */ }
 
-    // ── Step 2: fetch & cache each page image ───────────────────────────────
+    // ── Step 2: fetch & cache each page image via proxy ─────────────────────
+    // Using the backend image proxy for every image ensures hotlink-protection
+    // headers (Referer etc.) are set correctly — direct CDN fetches get 403.
     const CHUNK = 3;
     let downloaded = getItem(id)?.pagesDownloaded ?? 0;
     let totalBytes = 0;
 
     const imageCache = await caches.open('comihub-offline-v1').catch(() => null);
+    const sid = item.sourceId ?? '';
 
-    for (let i = downloaded; i < pageUrls.length && !handle.cancelled; i += CHUNK) {
+    // Build proxied URLs once — these become the stable cache keys AND the
+    // URLs stored in IndexedDB so the reader can hit the cache offline.
+    const proxiedUrls = pageUrls.map(u => buildProxiedUrl(u, sid));
+
+    for (let i = downloaded; i < proxiedUrls.length && !handle.cancelled; i += CHUNK) {
       // Respect per-item pause
       while (getItem(id)?.status === 'paused' && !handle.cancelled) {
         await sleep(400);
@@ -154,26 +174,27 @@ async function runDownload(id: string): Promise<void> {
       }
       if (handle.cancelled) break;
 
-      const chunk = pageUrls.slice(i, Math.min(i + CHUNK, pageUrls.length));
+      const chunk = proxiedUrls.slice(i, Math.min(i + CHUNK, proxiedUrls.length));
 
-      await Promise.all(chunk.map(async url => {
+      await Promise.all(chunk.map(async proxiedUrl => {
         if (handle.cancelled) return;
-        const fullUrl = url.startsWith('http') ? url : apiUrl(url);
         try {
-          const res = await fetch(fullUrl);
+          const res = await fetch(proxiedUrl);
           if (res.ok && imageCache) {
-            const clone = res.clone();
-            await imageCache.put(fullUrl, clone);
             const buf = await res.arrayBuffer();
             totalBytes += buf.byteLength;
+            await imageCache.put(
+              proxiedUrl,
+              new Response(buf, { headers: { 'Content-Type': res.headers.get('Content-Type') || 'image/jpeg', 'sw-cached-at': Date.now().toString() } }),
+            );
           }
-        } catch { /* skip failed images */ }
+        } catch { /* skip failed images — progress continues */ }
       }));
 
-      downloaded = Math.min(i + CHUNK, pageUrls.length);
+      downloaded = Math.min(i + CHUNK, proxiedUrls.length);
       mutateItem(id, {
         pagesDownloaded: downloaded,
-        progress: Math.round((downloaded / pageUrls.length) * 100),
+        progress: Math.round((downloaded / proxiedUrls.length) * 100),
       });
     }
 
@@ -181,8 +202,9 @@ async function runDownload(id: string): Promise<void> {
 
     // ── Step 3: persist metadata to IndexedDB ───────────────────────────────
     const finalItem = getItem(id);
-    if (finalItem && downloaded >= pageUrls.length) {
-      const resolvedUrls = pageUrls.map(u => u.startsWith('http') ? u : apiUrl(u));
+    if (finalItem && downloaded >= proxiedUrls.length) {
+      // Store proxied URLs — reader will request these exact keys, hitting the cache offline
+      const resolvedUrls = proxiedUrls;
       await offlineDb.save({
         chapterId:      String(finalItem.chapterId),
         mangaId:        finalItem.mangaId,
