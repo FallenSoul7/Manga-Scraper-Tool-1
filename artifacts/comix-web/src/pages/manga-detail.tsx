@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import { useStore, storeActions, type PendingChapter } from "@/lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queueActions, useDownloadQueue } from "@/lib/download-queue";
+import { saveChapterToFile } from "@/lib/save-to-file";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -204,6 +205,8 @@ export default function MangaDetail() {
     sourceId?: string;
     label: string;
   } | null>(null);
+  const [exportingToFile, setExportingToFile] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
   const [scanlatorSheetOpen, setScanlatorSheetOpen] = useState(false);
   const [langSheetOpen, setLangSheetOpen] = useState(false);
   const [selectedLang, setSelectedLang] = useState<string | null>(null);
@@ -974,10 +977,15 @@ export default function MangaDetail() {
       )}
 
       {downloadTarget && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setDownloadTarget(null)}>
-          <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-background px-5 pt-4 pb-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => { if (!exportingToFile) setDownloadTarget(null); }}
+        >
+          <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-background px-5 pt-4 pb-6 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted" />
-            <div className="flex items-start gap-3">
+
+            {/* Manga info */}
+            <div className="flex items-start gap-3 mb-5">
               <img
                 src={proxyImage(downloadTarget.thumbnail, downloadTarget.sourceId)}
                 alt={downloadTarget.mangaTitle}
@@ -988,10 +996,13 @@ export default function MangaDetail() {
                 <div className="text-sm text-muted-foreground truncate">{downloadTarget.label}</div>
               </div>
             </div>
-            <div className="mt-5 flex gap-2">
-              <Button variant="secondary" className="flex-1" onClick={() => setDownloadTarget(null)}>Cancel</Button>
-              <Button
-                className="flex-1"
+
+            {/* Two download options */}
+            <div className="space-y-2.5">
+              {/* Save to App */}
+              <button
+                type="button"
+                disabled={exportingToFile}
                 onClick={() => {
                   queueActions.enqueueMany(
                     downloadTarget.chapters.map(ch => ({
@@ -1005,12 +1016,80 @@ export default function MangaDetail() {
                     }))
                   );
                   setDownloadTarget(null);
-                  setLocation("/downloads");
                 }}
+                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border border-border/60 bg-card hover:bg-muted/50 active:scale-[0.98] transition-all text-left disabled:opacity-40"
               >
-                <ArrowDownToLine className="h-4 w-4 mr-2" /> Download
-              </Button>
+                <div className="h-9 w-9 rounded-xl bg-primary/12 flex items-center justify-center shrink-0">
+                  <ArrowDownToLine className="h-4.5 w-4.5 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">Save to App</div>
+                  <div className="text-xs text-muted-foreground">Read offline — stored in this web app</div>
+                </div>
+              </button>
+
+              {/* Export to Files */}
+              <button
+                type="button"
+                disabled={exportingToFile}
+                onClick={async () => {
+                  if (!downloadTarget.sourceId) return;
+                  setExportingToFile(true);
+                  setExportProgress(0);
+                  try {
+                    for (const ch of downloadTarget.chapters) {
+                      await saveChapterToFile({
+                        chapterId: ch.id,
+                        sourceId: downloadTarget.sourceId,
+                        mangaTitle: downloadTarget.mangaTitle,
+                        chapterLabel: `Chapter ${ch.number}${ch.title ? ` - ${ch.title}` : ''}`,
+                        onProgress: pct => setExportProgress(pct),
+                      });
+                    }
+                  } catch {
+                    /* ignore — browser will show download error */
+                  } finally {
+                    setExportingToFile(false);
+                    setExportProgress(0);
+                    setDownloadTarget(null);
+                  }
+                }}
+                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border border-border/60 bg-card hover:bg-muted/50 active:scale-[0.98] transition-all text-left disabled:opacity-40"
+              >
+                <div className="h-9 w-9 rounded-xl bg-primary/12 flex items-center justify-center shrink-0">
+                  {exportingToFile
+                    ? <Loader2 className="h-4.5 w-4.5 text-primary animate-spin" />
+                    : <ArrowDown className="h-4.5 w-4.5 text-primary" />
+                  }
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold">Export to Files</div>
+                  <div className="text-xs text-muted-foreground">
+                    {exportingToFile
+                      ? `Packing ZIP… ${exportProgress}%`
+                      : 'Download ZIP to device Files app'}
+                  </div>
+                  {exportingToFile && (
+                    <div className="mt-1.5 h-1 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-300"
+                        style={{ width: `${exportProgress}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </button>
             </div>
+
+            {/* Cancel */}
+            <button
+              type="button"
+              disabled={exportingToFile}
+              onClick={() => setDownloadTarget(null)}
+              className="w-full mt-3 h-10 rounded-2xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
