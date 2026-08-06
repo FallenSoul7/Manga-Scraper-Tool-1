@@ -28,11 +28,6 @@ export default defineConfig({
         ]
       : []),
   ],
-  // In dev, force VITE_API_URL to empty so /api and /public icon requests
-  // go through the local Vite proxy instead of the deployed render.com backend.
-  define: process.env.NODE_ENV !== "production"
-    ? { "import.meta.env.VITE_API_URL": JSON.stringify("") }
-    : {},
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
@@ -55,10 +50,6 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
-      },
-      "/public": {
         target: "http://localhost:8080",
         changeOrigin: true,
       },

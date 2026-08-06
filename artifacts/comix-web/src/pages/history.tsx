@@ -19,11 +19,11 @@ function getGroup(ts: number): DateGroup {
 }
 
 function isVideoItem(item: ChapterProgress) {
-  // Videos typically have very few "pages" (1 or 0) and their IDs / titles suggest video content
+  // Only detect as video when the title explicitly signals it —
+  // never use page count, since single-page manga chapters are common.
   return (
-    item.totalPages <= 1 ||
-    /\b(ep|episode|season|s\d+e\d+|video|stream|watch)\b/i.test(item.chapterTitle ?? "") ||
-    /\b(ep|episode|season|s\d+e\d+)\b/i.test(item.mangaTitle ?? "")
+    /\b(episode|season|s\d+e\d+|video|stream|watch)\b/i.test(item.chapterTitle ?? "") ||
+    /\b(episode|season|s\d+e\d+)\b/i.test(item.mangaTitle ?? "")
   );
 }
 
