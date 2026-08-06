@@ -1,0 +1,96 @@
+Dont use hisotry back that ruind it just make it so if the mahwa is open in a extention it take you to that id that soecific search fo that mahwa if its search and if it in homepage liek popular and latets it take you there at exact place like you clcik on managa 13 row down when you leave it your at 13 row at that exact manag place same with search and after that yiu clcik the arrow to leave extention it take you to source page and in catagory area you clcik mahwa you vlcik arrow to leave it take you to that exact catagory out of many if they are there and that exact row
+2 hours ago
+Implementing proper navigation
+Got it — no history.back(). Let me read the library page to understand the navigation pattern before making the fix.
+Now I have the full picture. The fix needs to:
+
+Library → manga: pass ?from=library&cat=<catId> in the link, restore scroll on return
+Source-browse → manga: back to /sources/${sourceId} (already works with sessionStorage scroll restore)
+No history.back() anywhere
+Now let me read the current back button in manga-detail and find where sourceContext is declared, while simultaneously making the library changes:
+I have everything I need. Now making all changes in parallel:
+Now replace both back button callsites and update the library in parallel:
+Now update library.tsx to save scroll position and pass from=library context on manga links:
+Now add ?from=library&cat= to the manga hrefs in library.tsx and verify the useRef is imported in source-browse:
+Let me build to verify everything compiles correctly, then restart the workflows.
+Build is clean — those sourcemap messages are pre-existing warnings, not errors. Let me restart the workflows and run the code review in parallel.
+The code review caught a real issue: catFromUrl fires on direct deep-links too, not just back-navigation. Fix: have goBack() stamp &from=library on the return URL, gate scroll restore on that explicit marker, strip it after restoring, and properly cancel restore timers on unmount.
+Now update library.tsx to gate on from=library (not just catFromUrl), strip the param after restoring, and cancel timers on unmount:
+Both workflows are running. Let me verify the final build is clean:
+Both workflows are healthy. The DB ECONNRESET in the API server is pre-existing — it's trying to reach your Supabase instance from Replit's environment, which isn't reachable here; the deployed app on Render connects fine.
+
+Here's a summary of every fix that landed:
+
+Bug #4 — Global search broken on Vercel+Render split deploy
+sources.tsx: The search fetch was using a relative /api/search?... URL, which on Vercel (frontend) hits the frontend host instead of your Render backend. Prefixed it with API_ORIGIN (your VITE_API_URL).
+
+Bug #7 — Back button always goes to Sources instead of where you came from
+Three-part fix:
+
+library.tsx: Manga card links now include ?from=library&cat=<categoryId> so the destination knows who sent you.
+manga-detail.tsx: The back button (goBack()) reads from + cat from the URL — if from=library it returns to /?cat=<id>&from=library, otherwise to /sources/<sourceId> (extension) or /sources (fallback). No history.back().
+library.tsx: On mount, detects the from=library marker (stamped by goBack()), restores scroll position from sessionStorage, then strips ?from=library from the URL so sharing/refreshing isn't affected. Timers are properly cancelled on unmount.
+Bug #8 — Infinite scroll never triggers on search/tag pages
+source-browse.tsx: The IntersectionObserver was set up with deps = []. On first render, loading=true so the sentinel div wasn't in the DOM yet — the observer was created on nothing and never fired. Changed the dep to [hasItems] so the observer is (re)created the moment items actually appear.
+
+Bug #9 — Scroll position lost after visiting a manga from search
+source-browse.tsx: The useEffect that clears filter items (setFilterItems([])) was running on every first mount, wiping snapshot-restored items before they could render. Added a filterClearFirstMount ref that skips the first-mount execution.
+
+Bug #10 & #11 — Reader loads all webtoon pages at once / layout shift
+reader.tsx: In webtoon mode, pages were opacity-0 absolute while loading, then jumped into normal flow on load (causing scroll jitter). Fixed by keeping the image in normal flow at all times and overlaying the loader as absolute instead — no swap, no jump. Also changed loading strategy: pages within ±5 of current use eager, all others use lazy, cutting simultaneous fetches dramatically.
+Nice now we have an another problem so when i do Is login in in the web add a new catagory add a mahwa to that catagory then click add to hoke screen the pwa and then the hoke screen i open the app login in i do see the catagory the nee one but the mahwa inisde that catgory seem to be not there and i sted is in default catagory
+2 hours ago
+Syncing browser and PWA data
+This is a sync issue — the manga's categoryIds isn't surviving the round-trip from browser to backend to PWA. Let me read the storage and sync code to find the root cause.
+Found it. The root cause is a race condition in the merge logic.
+
+addedAt is set once when manga is first added and never changes. The backend merge uses addedAt >= addedAt — when the "add to library" push (with categoryIds: ['default']) and the "move to Favorites" push (with categoryIds: ['favorites']) are both in-flight, whichever arrives at the server last wins, because both have the same addedAt. The first push containing categoryIds: ['default'] can overwrite the second push's correct category assignment if network order reverses.
+
+The fix: add a mutable updatedAt field to SavedManga, stamp it on every mutation that changes the entry, and use it in the backend merge comparison.
+Continuing — stamp updatedAt on every mutation and fix the backend merge comparison, all in parallel:
+Both workflows are healthy. Here's exactly what was wrong and what was fixed:
+
+The bug — a race condition in cloud sync
+
+When you move a manga to a new category, the app fires two background pushes to the cloud in quick succession:
+
+First push: manga with categoryIds: ['default'] (fired when the manga was first added to the library)
+Second push: manga with categoryIds: ['your-new-category'] (fired when you moved it)
+Both pushes have the same addedAt timestamp (set once at the moment you first saved it). The cloud merge logic was incoming.addedAt >= stored.addedAt — equal timestamps meant whichever network request arrived last won. If the first push happened to land after the second one (a very normal occurrence on a slow connection), it would silently overwrite the correct category assignment back to ['default']. By the time the PWA synced, it was pulling the already-corrupted cloud state.
+
+The fix — three changes
+
+storage.ts — Added an optional updatedAt field to SavedManga. Every mutation that changes a library entry now stamps updatedAt: Date.now():
+
+addToLibrary — stamps on first save
+setMangaCategories — stamps when you move manga between categories
+batchPatchLibrary — stamps when bulk re-categorizing from library selection
+library.ts (backend) — Changed the merge comparison from addedAt >= addedAt to max(addedAt, updatedAt) >= max(addedAt, updatedAt). Now the push that carries the category change (which has a higher updatedAt) always beats an older push of the same entry, regardless of network arrival order.
+
+The updatedAt field is optional and backward-compatible — existing library entries without it fall back to addedAt, so nothing breaks for data already in the cloud.
+Another problem to fix is in pwa when you login in and now ut dose have the manga in thir catagiry but when yiu clcik and try to read in pwa it say not abalibe it seem in pwa you cant read the manga that are in catgiry i think this is the case for web too and this is hapening becuse when login in the manga in catagory are just emoty shell this must hapoend with web too i am not sure fix it throughly
+2 hours ago
+Fetching missing source IDs
+Let me read the key section of manga-detail to find the exact effectiveSource computation and the "not available" error state, while checking how applyActiveSource works.
+Lwt me help you understand bbter so the mahwa i have add then i leave then i lgin in again the mahwa in acatgory wi cho i added beofre now if i try to read them it say choater not avalibe but you can find that mahwa in the extention and read it it work
+2 hours ago
+Syncing library after logout
+Now I understand the real issue clearly: the manga details load fine (title/cover cached), but chapters come back empty because when opened from the library, the X-Source header isn't always set to the right source by the time chapters are fetched. Let me trace the exact timing bug.
+Let me read the API client to understand how the X-Source header flows, and also check the source-browse manga link URL to trace the full ID lifecycle:
+I think i found the real probelm let le help so as you know each extention has different struckture code even different code lnaguge right so if manga from ninehentia is added to ctagiry then you log out then login in again it show this error if intry to read from the mahwa that is in catgaory it showed the error of use a jaava script to open this script type error and what i did after i go to ninehentia and see if it did load since that mahwa was from ninehtnia ninehtnia did laod akd so the choater of mahw ainside it then i go back to that mahw ain ctagory after gojngto ninehtnia the mahwa in catagory seem to load and it did load then
+2 hours ago
+Identifying missing header
+Now I understand the exact problem. The backend NineHentai scraper fails with a JS-challenge error on cold start — the backend scraper needs a "warm-up" request (which the extension page provides via its popular/latest fetch). The other part of the problem: the queryKey has no source ID, so TanStack Query can cache results from the wrong source and never invalidate correctly. Let me look at the scraper and understand both issues:
+Let me read the NineHentai scraper and source-browse simultaneously to understand the full picture:
+Now I have the complete picture. There are two separate bugs causing this:
+
+Bug 1 (backend — NineHentai race condition): When manga-detail fires both GET /api/manga/:id and GET /api/manga/:id/chapters simultaneously on cold start, both hit ensureCookies() at the same time — resulting in two concurrent GET requests to 9hentai.so/. The site can reject or challenge concurrent cold-start requests, leaving one request with no valid XSRF token.
+
+When you visit the extension first, ensureCookies() already ran (popular/latest), the cookie jar is cached, and both detail+chapters requests skip the GET entirely.
+
+Bug 2 (frontend — queryKey missing source): The queryKey for manga details/chapters has no source ID, so TanStack Query can serve a cached result from a previous fetch under a different source, silently serving wrong/empty data.
+
+Both fixes together:
+Let me check the API server logs and read manga-detail in parallel:
+Now I'll apply both fixes together. The backend fix (ninehentai mutex) is already done. Now fix the apiPost retry to also clear cookiePromise, and fix the frontend queryKey to include the source:
+You've reached your daily free quota limit. It will reset at 12:00 AM UTC.

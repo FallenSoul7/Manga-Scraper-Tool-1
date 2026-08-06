@@ -2,11 +2,16 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import { 
   ArrowLeft, Send, Paperclip, Sparkles, X, Loader2, 
-  ShieldCheck, ShieldX, Trash2, Cpu, Brain, Zap, Layers 
+  ShieldCheck, ShieldX, Trash2, Cpu, Brain, Zap, Layers
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -52,8 +57,13 @@ interface GroqToolCall {
   function: { name: string; arguments: string };
 }
 
+// ── Define the result type for executeTool ──────────────────────────────
+type ExecResult = {
+  result: string;
+  permissionRequest?: PermissionRequest;
+};
 
-// ── Secure AI call — routes through the backend so API keys stay server-side ─
+// ── Secure AI call ──────────────────────────────────────────────────────────
 
 async function callAIWithWaterfall(
   msgs: GroqMsg[],
@@ -87,12 +97,25 @@ function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(`${API_BASE}${path}`, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
-// ── Tool execution ─────────────────────────────────────────────────────────
+// ── Helper: format items with thumbnails ──────────────────────────────────
+
+function formatItems(items: any[], sourceId?: string): string {
+  return items.slice(0, 15).map((m: any) => {
+    const title = m.title || "Untitled";
+    const thumb = m.thumbnail || m.imageUrl || m.coverUrl || "/placeholder.png";
+    const type = m.type ? ` [${m.type}]` : "";
+    const src = m.source ? ` (${m.source})` : "";
+    return thumb ? `![${title}](${thumb}) **${title}**${type}${src}` : `• **${title}**${type}${src}`;
+  }).join("\n");
+}
+
+// ── Tool execution (local switch) ─────────────────────────────────────────
+
 async function executeTool(name: string, args: Record<string, any>): Promise<ExecResult> {
   const state = getStoreSnapshot();
 
-  if (name === "list_sources") {
-    try {
+  try {
+    if (name === "list_sources") {
       const res = await apiFetch("/api/sources/catalog");
       if (!res.ok) return { result: "Failed to load sources." };
       const data = await res.json() as any;
@@ -100,96 +123,84 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       if (!supported.length) return { result: "No supported sources found." };
       const list = supported.map((e: any) => `• ${e.name} (ID: ${e.id}, lang: ${e.lang}${e.isNsfw ? ", 18+" : ""})`).join("\n");
       return { result: `Available sources (${supported.length}):\n${list}` };
-    } catch {
-      return { result: "Could not fetch sources." };
     }
-  }
 
-  if (name === "browse_popular") {
-    const { sourceId, page = 1 } = args;
-    try {
+    if (name === "browse_popular") {
+      const { sourceId, page = 1 } = args;
       const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/popular?page=${page}`);
       if (!res.ok) return { result: `Could not browse ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
       if (!items.length) return { result: "No results found." };
-      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
-      return { result: `Popular in ${sourceId}:\n${list}` };
-    } catch {
-      return { result: `Could not browse ${sourceId}.` };
+      const formatted = formatItems(items);
+      return { result: `Popular in ${sourceId}:\n${formatted}` };
     }
-  }
 
-  if (name === "browse_latest") {
-    const { sourceId, page = 1 } = args;
-    try {
+    if (name === "browse_latest") {
+      const { sourceId, page = 1 } = args;
       const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/latest?page=${page}`);
       if (!res.ok) return { result: `Could not browse latest from ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
       if (!items.length) return { result: "No results found." };
-      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
-      return { result: `Latest in ${sourceId}:\n${list}` };
-    } catch {
-      return { result: `Could not browse latest from ${sourceId}.` };
+      const formatted = formatItems(items);
+      return { result: `Latest in ${sourceId}:\n${formatted}` };
     }
-  }
 
-  if (name === "search_manga") {
-    const { sourceId, query, page = 1 } = args;
-    try {
+    if (name === "search_manga") {
+      const { sourceId, query, page = 1 } = args;
       const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/search?q=${encodeURIComponent(query)}&page=${page}`);
       if (!res.ok) return { result: `Search failed in ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
       if (!items.length) return { result: `No results for "${query}" in ${sourceId}.` };
-      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
-      return { result: `Search results for "${query}" in ${sourceId}:\n${list}` };
-    } catch {
-      return { result: `Could not search ${sourceId}.` };
+      const formatted = formatItems(items);
+      return { result: `Search results for "${query}" in ${sourceId}:\n${formatted}` };
     }
-  }
 
-  if (name === "global_search") {
-    const { query } = args;
-    try {
+    if (name === "global_search") {
+      const { query } = args;
       const res = await apiFetch(`/api/sources/search/global?q=${encodeURIComponent(query)}`);
       if (!res.ok) return { result: `Global search failed for "${query}".` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
       if (!items.length) return { result: `No results found for "${query}" across all sources.` };
-      const list = items.slice(0, 15).map((m: any) =>
-        `• ${m.title}${m.type ? ` [${m.type}]` : ""}${m.source ? ` (${m.source})` : ""}`
-      ).join("\n");
-      return { result: `Global search results for "${query}":\n${list}` };
-    } catch {
-      return { result: `Global search failed for "${query}".` };
+      const formatted = formatItems(items);
+      return { result: `Global search results for "${query}":\n${formatted}` };
     }
-  }
 
-  if (name === "browse_by_tag") {
-    const { sourceId, tag, page = 1 } = args;
-    try {
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tag/${encodeURIComponent(tag)}?page=${page}`);
-      if (!res.ok) return { result: `Could not browse tag "${tag}" in ${sourceId}.` };
+    if (name === "browse_by_tag") {
+      const { sourceId, tagIds, tag, page = 1 } = args;
+      let tagParam = tagIds ? (Array.isArray(tagIds) ? tagIds.join(',') : tagIds) : tag;
+      if (!tagParam) return { result: "No tag provided." };
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tag/${encodeURIComponent(tagParam)}?page=${page}`);
+      if (!res.ok) return { result: `Could not browse tag "${tagParam}" in ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
-      if (!items.length) return { result: `No results for tag "${tag}" in ${sourceId}.` };
-      const list = items.slice(0, 12).map((m: any) => `• ${m.title}${m.type ? ` [${m.type}]` : ""}`).join("\n");
-      return { result: `Results for tag "${tag}" in ${sourceId}:\n${list}` };
-    } catch {
-      return { result: `Could not browse tag "${tag}" in ${sourceId}.` };
+      if (!items.length) return { result: `No results for tag "${tagParam}" in ${sourceId}.` };
+      const formatted = formatItems(items);
+      return { result: `Results for tag "${tagParam}" in ${sourceId}:\n${formatted}` };
     }
-  }
 
-  if (name === "get_manga_details") {
-    const { sourceId, mangaId } = args;
-    try {
+    if (name === "get_source_tags") {
+      const { sourceId } = args;
+      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tags`);
+      if (!res.ok) return { result: `Could not fetch tags for ${sourceId}.` };
+      const tags = await res.json() as any[];
+      if (!tags.length) return { result: `No tags found for ${sourceId}.` };
+      const list = tags.map((t: any) => `• ${t.name} (ID: ${t.id})${t.count ? ` – ${t.count} titles` : ''}`).join('\n');
+      return { result: `Tags for ${sourceId}:\n${list}` };
+    }
+
+    if (name === "get_manga_details") {
+      const { sourceId, mangaId } = args;
       const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/manga/${encodeURIComponent(mangaId)}`);
       if (!res.ok) return { result: `Could not fetch details for manga ${mangaId}.` };
       const m = await res.json() as any;
       const genres = m.genres?.join(", ") ?? "N/A";
+      const thumb = m.thumbnail || m.imageUrl || m.coverUrl || "";
       const detail = [
+        thumb ? `![${m.title}](${thumb})` : "",
         `**${m.title}**`,
         m.description ? `${m.description.slice(0, 300)}${m.description.length > 300 ? "…" : ""}` : "",
         `Author: ${m.author ?? "Unknown"}`,
@@ -198,14 +209,10 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
         m.chapterCount != null ? `Chapters: ${m.chapterCount}` : "",
       ].filter(Boolean).join("\n");
       return { result: detail };
-    } catch {
-      return { result: `Could not fetch details for manga ${mangaId}.` };
     }
-  }
 
-  if (name === "get_chapters") {
-    const { sourceId, mangaId } = args;
-    try {
+    if (name === "get_chapters") {
+      const { sourceId, mangaId } = args;
       const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/manga/${encodeURIComponent(mangaId)}/chapters`);
       if (!res.ok) return { result: `Could not fetch chapters for manga ${mangaId}.` };
       const data = await res.json() as any;
@@ -216,36 +223,32 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       ).join("\n");
       const extra = chapters.length > 10 ? `\n…and ${chapters.length - 10} more chapters.` : "";
       return { result: `Chapters (${chapters.length} total):\n${preview}${extra}` };
-    } catch {
-      return { result: `Could not fetch chapters for manga ${mangaId}.` };
     }
-  }
 
-  if (name === "list_categories") {
-    const cats = state.categories.sort((a, b) => a.order - b.order);
-    const lib = state.library;
-    const lines = cats.map(c => {
-      const count = Object.values(lib).filter(m => m.categoryIds.includes(c.id)).length;
-      return `• ${c.name} (ID: ${c.id}, ${count} manga)`;
-    });
-    return { result: `User categories:\n${lines.join("\n")}` };
-  }
+    if (name === "list_categories") {
+      const cats = state.categories.sort((a, b) => a.order - b.order);
+      const lib = state.library;
+      const lines = cats.map(c => {
+        const count = Object.values(lib).filter(m => m.categoryIds.includes(c.id)).length;
+        return `• ${c.name} (ID: ${c.id}, ${count} manga)`;
+      });
+      return { result: `User categories:\n${lines.join("\n")}` };
+    }
 
-  if (name === "list_library") {
-    const { categoryId } = args;
-    const lib = Object.values(state.library);
-    const filtered = categoryId ? lib.filter(m => m.categoryIds.includes(categoryId)) : lib;
-    if (!filtered.length) return { result: "Library is empty (or no manga in that category)." };
-    const lines = filtered.slice(0, 30).map(m =>
-      `• ${m.title} (ID: ${m.id}${m.categoryIds.length ? `, cats: ${m.categoryIds.join(",")}` : ""})`
-    );
-    const extra = filtered.length > 30 ? `\n…and ${filtered.length - 30} more.` : "";
-    return { result: `Library (${filtered.length} manga):\n${lines.join("\n")}${extra}` };
-  }
+    if (name === "list_library") {
+      const { categoryId } = args;
+      const lib = Object.values(state.library);
+      const filtered = categoryId ? lib.filter(m => m.categoryIds.includes(categoryId)) : lib;
+      if (!filtered.length) return { result: "Library is empty (or no manga in that category)." };
+      const lines = filtered.slice(0, 30).map(m =>
+        `• ${m.title} (ID: ${m.id}${m.categoryIds.length ? `, cats: ${m.categoryIds.join(",")}` : ""})`
+      );
+      const extra = filtered.length > 30 ? `\n…and ${filtered.length - 30} more.` : "";
+      return { result: `Library (${filtered.length} manga):\n${lines.join("\n")}${extra}` };
+    }
 
-  if (name === "add_to_library") {
-    const { sourceId, mangaId, categoryId } = args;
-    try {
+    if (name === "add_to_library") {
+      const { sourceId, mangaId, categoryId } = args;
       const res = await apiFetch("/api/library/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -254,52 +257,92 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
       if (!res.ok) return { result: `Failed to add manga to library.` };
       const data = await res.json() as any;
       return { result: `Added "${data.title ?? mangaId}" to library${categoryId ? ` in category ${categoryId}` : ""}.` };
-    } catch {
-      return { result: `Could not add manga to library.` };
     }
-  }
 
-  if (name === "create_category") {
-    const { name: catName } = args;
-    if (!catName?.trim()) return { result: "Category name cannot be empty." };
-    const existing = state.categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
-    if (existing) return { result: `Category "${catName}" already exists (ID: ${existing.id}).` };
-    const cat = storeActions.addCategory(catName.trim());
-    return { result: `Created category "${cat.name}" (ID: ${cat.id}).` };
-  }
+    if (name === "create_category") {
+      const { name: catName } = args;
+      if (!catName?.trim()) return { result: "Category name cannot be empty." };
+      const existing = state.categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+      if (existing) return { result: `Category "${catName}" already exists (ID: ${existing.id}).` };
+      const cat = storeActions.addCategory(catName.trim());
+      return { result: `Created category "${cat.name}" (ID: ${cat.id}).` };
+    }
 
-  if (name === "delete_category") {
-    const { categoryId, categoryName } = args;
-    if (categoryId === "default") return { result: "Cannot delete the Default category." };
-    const cat = state.categories.find(c => c.id === categoryId);
-    if (!cat) return { result: `Category "${categoryName}" not found.` };
-    const count = Object.values(state.library).filter(m => m.categoryIds.includes(categoryId)).length;
-    const desc = `Delete category **"${cat.name}"**${count > 0 ? ` — ${count} manga will be moved to Default` : " (empty category)"}.`;
-    return {
-      result: `PERMISSION_REQUIRED to delete "${cat.name}". Waiting for user confirmation.`,
-      permissionRequest: {
-        description: desc,
-        execute: () => {
-          storeActions.removeCategory(categoryId);
-          return `Deleted category "${cat.name}".${count > 0 ? ` ${count} manga moved to Default.` : ""}`;
+    if (name === "delete_category") {
+      const { categoryId, categoryName } = args;
+      if (categoryId === "default") return { result: "Cannot delete the Default category." };
+      const cat = state.categories.find(c => c.id === categoryId);
+      if (!cat) return { result: `Category "${categoryName}" not found.` };
+      const count = Object.values(state.library).filter(m => m.categoryIds.includes(categoryId)).length;
+      const desc = `Delete category **"${cat.name}"**${count > 0 ? ` — ${count} manga will be moved to Default` : " (empty category)"}.`;
+      return {
+        result: `PERMISSION_REQUIRED to delete "${cat.name}". Waiting for user confirmation.`,
+        permissionRequest: {
+          description: desc,
+          execute: () => {
+            storeActions.removeCategory(categoryId);
+            return `Deleted category "${cat.name}".${count > 0 ? ` ${count} manga moved to Default.` : ""}`;
+          },
         },
-      },
-    };
-  }
+      };
+    }
 
-  if (name === "move_manga_category") {
-    const { mangaId, targetCategoryId } = args;
-    const manga = state.library[mangaId];
-    if (!manga) return { result: `Manga ID "${mangaId}" not found in library.` };
-    const cat = state.categories.find(c => c.id === targetCategoryId);
-    if (!cat) return { result: `Category ID "${targetCategoryId}" not found.` };
-    storeActions.setMangaCategories(mangaId, [targetCategoryId]);
-    return { result: `Moved "${manga.title}" to category "${cat.name}".` };
-  }
+    if (name === "move_manga_category") {
+      const { mangaId, targetCategoryId } = args;
+      const manga = state.library[mangaId];
+      if (!manga) return { result: `Manga ID "${mangaId}" not found in library.` };
+      const cat = state.categories.find(c => c.id === targetCategoryId);
+      if (!cat) return { result: `Category ID "${targetCategoryId}" not found.` };
+      storeActions.setMangaCategories(mangaId, [targetCategoryId]);
+      return { result: `Moved "${manga.title}" to category "${cat.name}".` };
+    }
 
-  return { result: `Unknown tool: ${name}` };
+    // ─── NEW SKILLS ────────────────────────────────────────────────────────────
+
+    if (name === "web_search") {
+      const { query } = args;
+      const res = await apiFetch(`/api/search/web?q=${encodeURIComponent(query)}`);
+      if (!res.ok) return { result: `Web search failed.` };
+      const data = await res.json() as any;
+      const results = data.results || [];
+      if (!results.length) return { result: `No web results for "${query}".` };
+      const list = results.slice(0, 5).map((r: any) =>
+        `• ${r.title}\n  ${r.snippet}\n  ${r.url}`
+      ).join('\n\n');
+      return { result: `Web results for "${query}":\n${list}` };
+    }
+
+    if (name === "manga_unified_search") {
+      const { query, source = 'all' } = args;
+      const res = await apiFetch(`/api/search/manga-unified?q=${encodeURIComponent(query)}&source=${encodeURIComponent(source)}`);
+      if (!res.ok) return { result: `Unified search failed.` };
+      const data = await res.json() as any;
+      const items = data.items || [];
+      if (!items.length) return { result: `No results found for "${query}".` };
+      const list = items.slice(0, 10).map((m: any) =>
+        `• **${m.title}** (${m.source})${m.genres ? ` – ${m.genres.join(', ')}` : ''}`
+      ).join('\n');
+      return { result: `Unified search results for "${query}":\n${list}` };
+    }
+
+    if (name === "ai_source_search") {
+      const { sourceId, query, page = 1 } = args;
+      const res = await apiFetch(`/api/ai/sources/${encodeURIComponent(sourceId)}/search?q=${encodeURIComponent(query)}&page=${page}`);
+      if (!res.ok) return { result: `AI search failed in ${sourceId}.` };
+      const data = await res.json() as any;
+      const items = data.items ?? data.results ?? [];
+      if (!items.length) return { result: `No results for "${query}" in ${sourceId} (AI-only).` };
+      const list = items.slice(0, 12).map((m: any) =>
+        `• ${m.title}${m.type ? ` [${m.type}]` : ''}${m.coverUrl ? ` (${m.coverUrl})` : ''}`
+      ).join('\n');
+      return { result: `AI-only search results for "${query}" in ${sourceId}:\n${list}` };
+    }
+
+    return { result: `Unknown tool: ${name}` };
+  } catch (error: any) {
+    return { result: `❌ Load failed: ${error.message || "Unknown error"}` };
+  }
 }
-
 
 // ── Welcome message ────────────────────────────────────────────────────────
 
@@ -332,6 +375,7 @@ export default function ComiAIPage() {
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   
   // Model Select State
   const [modelMode, setModelMode] = useState<string>("auto");
@@ -360,7 +404,7 @@ export default function ComiAIPage() {
   const addMsg = useCallback((content: string, extra: Partial<Message> = {}) => {
     const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const msg: Message = { id, role: "assistant", content, timestamp: new Date(), ...extra };
-    setMessages(prev => [...prev, msg].slice(-20));
+    setMessages(prev => [...prev, msg].slice(-50));
     return id;
   }, []);
 
@@ -420,7 +464,7 @@ export default function ComiAIPage() {
               timestamp: new Date(),
               permissionRequest,
             };
-            setMessages(prev => [...prev, permMsg].slice(-20));
+            setMessages(prev => [...prev, permMsg].slice(-50));
             return;
           }
 
@@ -470,7 +514,7 @@ export default function ComiAIPage() {
       file: file ? { name: file.name, size: file.size } : undefined,
       timestamp: new Date(),
     };
-    setMessages(prev => [...prev, userMsg].slice(-20));
+    setMessages(prev => [...prev, userMsg].slice(-50));
 
     try {
       const isOrganize = file && /\b(sort|organise|organize|categoris|categoriz|group|arrang)\b/i.test(userContent);
@@ -514,7 +558,7 @@ export default function ComiAIPage() {
         if (id && prev.find(m => m.id === id)) {
           return prev.map(m => m.id === id ? { ...m, content } : m);
         }
-        return [...prev, { id: msgId, role: "assistant" as const, content, timestamp: new Date() }].slice(-20);
+        return [...prev, { id: msgId, role: "assistant" as const, content, timestamp: new Date() }].slice(-50);
       });
       return msgId;
     };
@@ -588,12 +632,33 @@ export default function ComiAIPage() {
 
   // ── Render helpers ───────────────────────────────────────────────────────
 
-  const renderContent = (text: string) =>
-    text.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
-      part.startsWith("**") && part.endsWith("**")
-        ? <strong key={i}>{part.slice(2, -2)}</strong>
-        : <span key={i}>{part}</span>
-    );
+  const renderContent = (text: string) => {
+    const parts = text.split(/(!\[[^\]]*\]\([^)]*\))/g);
+    return parts.map((part, index) => {
+      const imgMatch = part.match(/!\[([^\]]*)\]\(([^)]*)\)/);
+      if (imgMatch) {
+        const alt = imgMatch[1];
+        const url = imgMatch[2];
+        return (
+          <span key={index} className="inline-block">
+            <img
+              src={url}
+              alt={alt}
+              className="max-w-[150px] max-h-[200px] w-auto h-auto rounded-md cursor-pointer hover:opacity-80 transition-opacity border border-border mt-1 mb-1"
+              onClick={() => setZoomedImage(url)}
+              loading="lazy"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
+          </span>
+        );
+      }
+      return part.split(/(\*\*[^*]+\*\*)/).map((sub, subIndex) =>
+        sub.startsWith("**") && sub.endsWith("**")
+          ? <strong key={`${index}-${subIndex}`}>{sub.slice(2, -2)}</strong>
+          : <span key={`${index}-${subIndex}`}>{sub}</span>
+      );
+    });
+  };
 
   const getModelBadgeDetails = () => {
     switch (modelMode) {
@@ -606,7 +671,7 @@ export default function ComiAIPage() {
   };
 
   return (
-    <main className="container mx-auto px-4 py-6 max-w-3xl h-[100dvh] flex flex-col">
+    <main className="container mx-auto px-4 py-6 max-w-3xl h-[100dvh] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4 shrink-0">
         <Link href="/system" className="text-muted-foreground hover:text-primary transition-colors">
@@ -620,7 +685,7 @@ export default function ComiAIPage() {
             <div>
               <h1 className="font-serif font-bold text-lg leading-none">Comi AI</h1>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Search · Recommend · Library Grid ({messages.length}/20)
+                Search · Recommend · Library Grid ({messages.length}/50)
               </p>
             </div>
           </div>
@@ -639,12 +704,12 @@ export default function ComiAIPage() {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 rounded-2xl border border-border bg-card/50 p-4 mb-3">
-        <div className="flex flex-col gap-4 pb-2">
+      <ScrollArea className="flex-1 rounded-2xl border border-border bg-card/50 p-4 mb-3 overflow-y-auto touch-pan-y">
+        <div className="flex flex-col gap-4 pb-2 max-w-full break-words">
           {messages.map(msg => (
             <div key={msg.id} className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}>
               <div className={cn(
-                "max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
+                "max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words",
                 msg.role === "user"
                   ? "bg-primary text-primary-foreground rounded-br-sm"
                   : "bg-muted text-foreground border border-border rounded-bl-sm"
@@ -734,10 +799,8 @@ export default function ComiAIPage() {
         </div>
       )}
 
-      {/* Input controls with Integrated Box Engine Selector */}
+      {/* Input controls */}
       <div className="flex gap-2 items-end shrink-0">
-        
-        {/* Soft-Edged Model Selection Box Engine */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -755,7 +818,6 @@ export default function ComiAIPage() {
               Select AI Engine Strategy
             </div>
             <DropdownMenuSeparator />
-            
             <DropdownMenuItem 
               onClick={() => setModelMode("auto")}
               className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "auto" && "bg-primary/10 font-bold text-primary")}
@@ -763,7 +825,6 @@ export default function ComiAIPage() {
               <Sparkles className="h-3.5 w-3.5 text-green-400" />
               <span>✨ All Auto</span>
             </DropdownMenuItem>
-
             <DropdownMenuItem 
               onClick={() => setModelMode("gemini")}
               className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "gemini" && "bg-primary/10 font-bold text-primary")}
@@ -771,7 +832,6 @@ export default function ComiAIPage() {
               <Brain className="h-3.5 w-3.5 text-blue-400" />
               <span>♊ Gemini</span>
             </DropdownMenuItem>
-
             <DropdownMenuItem 
               onClick={() => setModelMode("groq")}
               className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "groq" && "bg-primary/10 font-bold text-primary")}
@@ -779,7 +839,6 @@ export default function ComiAIPage() {
               <Zap className="h-3.5 w-3.5 text-orange-400" />
               <span>⚡ Groq</span>
             </DropdownMenuItem>
-
             <DropdownMenuItem 
               onClick={() => setModelMode("openrouter")}
               className={cn("rounded-lg text-xs gap-2 cursor-pointer", modelMode === "openrouter" && "bg-primary/10 font-bold text-primary")}
@@ -787,9 +846,7 @@ export default function ComiAIPage() {
               <Layers className="h-3.5 w-3.5 text-purple-400" />
               <span>🌐 OpenRouter</span>
             </DropdownMenuItem>
-
             <DropdownMenuSeparator />
-            
             <DropdownMenuItem 
               onClick={() => setModelMode("uncensored")}
               className={cn("rounded-lg text-xs gap-2 font-medium text-red-400 focus:text-red-500 cursor-pointer", modelMode === "uncensored" && "bg-red-500/10 font-bold")}
@@ -843,6 +900,26 @@ export default function ComiAIPage() {
           {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
       </div>
+
+      {/* Zoom Modal */}
+      <Dialog open={!!zoomedImage} onOpenChange={() => setZoomedImage(null)}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh] p-0 bg-transparent border-none shadow-none">
+          <div className="relative flex items-center justify-center w-full h-full">
+            <img
+              src={zoomedImage || ""}
+              alt="Zoomed manga cover"
+              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setZoomedImage(null)}
+              className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

@@ -89,7 +89,38 @@ export default function LibraryPage() {
     [categories],
   );
 
-  const catFromUrl = new URLSearchParams(searchString).get("cat");
+  const catFromUrl  = new URLSearchParams(searchString).get("cat");
+  const fromParam   = new URLSearchParams(searchString).get("from");
+
+  // ── Scroll save / restore ────────────────────────────────────────────────────
+  const SCROLL_KEY = "library-scroll";
+  // Continuously save position so it survives navigating into a manga.
+  useEffect(() => {
+    const onScroll = () => sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  // Restore only when goBack() in manga-detail explicitly stamps ?from=library
+  // on the return URL — this avoids triggering on direct deep-links like /?cat=x.
+  // Timers are tracked so they are cancelled if the component unmounts first.
+  const scrollRestoredRef = useRef(false);
+  useEffect(() => {
+    if (scrollRestoredRef.current || fromParam !== "library") return;
+    const saved = parseFloat(sessionStorage.getItem(SCROLL_KEY) || "0") || 0;
+    // Strip the from=library marker from the URL so refresh / sharing isn't affected.
+    const cleanUrl = catFromUrl ? `/?cat=${catFromUrl}` : "/";
+    setLocation(cleanUrl, { replace: true });
+    if (saved <= 0) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const attempt = (n: number) => {
+      window.scrollTo({ top: saved, behavior: "instant" });
+      if (n < 3) timers.push(setTimeout(() => attempt(n + 1), 150));
+      else scrollRestoredRef.current = true;
+    };
+    timers.push(setTimeout(() => attempt(0), 100));
+    return () => timers.forEach(clearTimeout);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [activeTab, setActiveTabState] = useState<string>(() => {
     if (catFromUrl && (sortedCategories.find(c => c.id === catFromUrl) || catFromUrl === FALLBACK_TAB)) {
       return catFromUrl;
@@ -329,7 +360,7 @@ export default function LibraryPage() {
               <MangaCard
                 manga={manga as any}
                 sourceId={(manga as any).sourceId}
-                href={`/manga/${manga.id}`}
+                href={`/manga/${manga.id}?from=library&cat=${activeTab}`}
                 isSelecting={selectionMode}
                 isSelected={selectedIds.has(manga.id)}
                 showSourceBadge

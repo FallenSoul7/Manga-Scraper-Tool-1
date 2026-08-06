@@ -79,6 +79,8 @@ export interface ChapterSummary {
   date: number;
   votes?: number;
   isOfficial?: boolean;
+  /** BCP-47 language code (e.g. "en", "fr", "ja-ro"). Only set by multi-language sources. */
+  lang?: string;
 }
 
 export interface ChapterListResponse {

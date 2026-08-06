@@ -2,12 +2,16 @@ import { Router } from "express";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
+
 import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase";
+import { getDb } from "../db";
+import { users } from "../schema";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
 const SESSION_SECRET = process.env["SESSION_SECRET"] ?? "comihub-dev-secret-change-in-prod";
-const SESSION_MAX_AGE = 90 * 24 * 3600 * 1000; // 90 days
+const SESSION_MAX_AGE = 90 * 24 * 3600 * 1000;
 
 function getFrontendURL() {
   return (process.env["FRONTEND_URL"] ?? "").replace(/\/+$/, "");
@@ -23,7 +27,6 @@ function isConfigured() {
   return !!(clientID && clientSecret);
 }
 
-// ── User type ─────────────────────────────────────────────────────────────────
 export interface GoogleUser {
   id: string;
   displayName: string;
@@ -32,52 +35,45 @@ export interface GoogleUser {
   photo: string;
 }
 
-// ── Supabase user helpers ─────────────────────────────────────────────────────
-
 async function upsertUser(user: GoogleUser): Promise<GoogleUser> {
-  const sb = getSupabaseAdmin();
-  if (!sb) return user;
-
-  const { data: existing } = await sb
-    .from("comihub_users")
-    .select("id, username")
-    .eq("email", user.email)
-    .maybeSingle();
-
-  const username = (existing as any)?.username ?? user.displayName;
-
-  const { error } = await sb.from("comihub_users").upsert(
-    {
+  try {
+    const db = getDb();
+    const username = user.username || user.displayName || user.email.split("@")[0];
+    await db.insert(users).values({
       id: user.id,
-      display_name: user.displayName,
-      username,
       email: user.email,
-      photo: user.photo,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "id" },
-  );
-  if (error) console.error("Supabase upsert error:", error.message);
-  return { ...user, username };
+      username: username,
+    }).onConflictDoUpdate({
+      target: users.id,
+      set: {
+        email: user.email,
+        username: username,
+      },
+    });
+    return { ...user, username };
+  } catch (error: any) {
+    console.error("Drizzle upsert error:", error.message);
+    return user;
+  }
 }
 
 async function loadUserById(id: string): Promise<GoogleUser | null> {
-  const sb = getSupabaseAdmin();
-  if (!sb) return null;
-  const { data, error } = await sb
-    .from("comihub_users")
-    .select("id, display_name, username, email, photo")
-    .eq("id", id)
-    .single();
-  if (error || !data) return null;
-  const row = data as Record<string, string>;
-  return {
-    id: row["id"],
-    displayName: row["display_name"],
-    username: row["username"] ?? row["display_name"],
-    email: row["email"],
-    photo: row["photo"] ?? "",
-  };
+  try {
+    const db = getDb();
+    const rows = await db.select().from(users).where(eq(users.id, id));
+    if (!rows || rows.length === 0) return null;
+    const row = rows[0];
+    return {
+      id: row.id,
+      displayName: row.username || "Reader",
+      username: row.username || "Reader",
+      email: row.email,
+      photo: "",
+    };
+  } catch (error) {
+    console.error("Drizzle load user error:", error);
+    return null;
+  }
 }
 
 const memUsers = new Map<string, GoogleUser>();
@@ -95,20 +91,13 @@ async function loadUser(id: string): Promise<GoogleUser | null> {
   return fromDb;
 }
 
-// ── Supabase-backed persistent session store ──────────────────────────────────
-// Keeps sessions alive across Render server restarts so users stay logged in.
-// Falls back to the default MemoryStore when Supabase is not configured.
-
 class SupabaseSessionStore extends session.Store {
   private tableReady = false;
 
-  // Create the sessions table if it doesn't exist yet.
   private async ensureTable() {
     if (this.tableReady) return;
     const sb = getSupabaseAdmin();
     if (!sb) return;
-    // Use Supabase REST API to create table via a raw SQL RPC.
-    // If the table already exists this is a no-op.
     await sb.rpc("exec_sql", {
       sql: `
         CREATE TABLE IF NOT EXISTS comihub_sessions (
@@ -121,8 +110,6 @@ class SupabaseSessionStore extends session.Store {
       `,
     }).then(({ error }) => {
       if (error) {
-        // RPC might not exist — fall back to a direct upsert attempt.
-        // The table may already exist; if not, errors will show on first use.
         if (!error.message?.includes("already exists")) {
           console.warn("Sessions table setup warning:", error.message);
         }
@@ -130,13 +117,12 @@ class SupabaseSessionStore extends session.Store {
         this.tableReady = true;
       }
     }).catch(() => {});
-    this.tableReady = true; // don't retry even if it failed
+    this.tableReady = true;
   }
 
   get(sid: string, callback: (err: any, session?: session.SessionData | null) => void) {
     const sb = getSupabaseAdmin();
     if (!sb) return callback(null, null);
-
     this.ensureTable().then(async () => {
       try {
         const { data, error } = await sb
@@ -144,15 +130,11 @@ class SupabaseSessionStore extends session.Store {
           .select("data, expires_at")
           .eq("sid", sid)
           .maybeSingle();
-
         if (error || !data) return callback(null, null);
-
         if (new Date((data as any).expires_at) < new Date()) {
-          // Expired — clean up and return nothing
           await sb.from("comihub_sessions").delete().eq("sid", sid).then(() => {});
           return callback(null, null);
         }
-
         callback(null, JSON.parse((data as any).data));
       } catch (err) {
         callback(err);
@@ -163,11 +145,9 @@ class SupabaseSessionStore extends session.Store {
   set(sid: string, sessionData: session.SessionData, callback?: (err?: any) => void) {
     const sb = getSupabaseAdmin();
     if (!sb) return callback?.();
-
     const expiresAt = (sessionData.cookie?.expires instanceof Date)
       ? sessionData.cookie.expires
       : new Date(Date.now() + SESSION_MAX_AGE);
-
     this.ensureTable().then(async () => {
       try {
         await sb.from("comihub_sessions").upsert(
@@ -184,7 +164,6 @@ class SupabaseSessionStore extends session.Store {
   destroy(sid: string, callback?: (err?: any) => void) {
     const sb = getSupabaseAdmin();
     if (!sb) return callback?.();
-
     getSupabaseAdmin()!
       .from("comihub_sessions")
       .delete()
@@ -196,11 +175,9 @@ class SupabaseSessionStore extends session.Store {
   touch(sid: string, sessionData: session.SessionData, callback?: (err?: any) => void) {
     const sb = getSupabaseAdmin();
     if (!sb) return callback?.();
-
     const expiresAt = (sessionData.cookie?.expires instanceof Date)
       ? sessionData.cookie.expires
       : new Date(Date.now() + SESSION_MAX_AGE);
-
     sb.from("comihub_sessions")
       .update({ expires_at: expiresAt.toISOString() })
       .eq("sid", sid)
@@ -209,12 +186,10 @@ class SupabaseSessionStore extends session.Store {
   }
 }
 
-// ── Session middleware ─────────────────────────────────────────────────────────
-// Use Supabase-backed store when configured; memory store in dev without Supabase.
 const sessionStore = isSupabaseConfigured() ? new SupabaseSessionStore() : undefined;
 
-router.use(
-  session({
+export function buildSessionMiddleware() {
+  return session({
     store: sessionStore,
     secret: SESSION_SECRET,
     resave: false,
@@ -225,23 +200,20 @@ router.use(
       sameSite: process.env["NODE_ENV"] === "production" ? "none" : "lax",
       maxAge: SESSION_MAX_AGE,
     },
-  }),
-);
+  });
+}
 
-// ── Passport ──────────────────────────────────────────────────────────────────
 let strategyRegistered = false;
 function ensureStrategy() {
   if (strategyRegistered) return;
   const { clientID, clientSecret } = getGoogleCreds();
   if (!clientID || !clientSecret) return;
-
   const callbackURL =
     process.env["NODE_ENV"] === "production"
-      ? `${process.env["API_BASE_URL"] ?? ""}/api/auth/google/callback`
+      ? `${(process.env["API_BASE_URL"] ?? "").replace(/\/+$/, "")}/api/auth/google/callback`
       : process.env["REPLIT_DEV_DOMAIN"]
         ? `https://${process.env["REPLIT_DEV_DOMAIN"]}/api/auth/google/callback`
         : "http://localhost:8080/api/auth/google/callback";
-
   passport.use(
     new GoogleStrategy({ clientID, clientSecret, callbackURL }, async (_at, _rt, profile, done) => {
       const raw: GoogleUser = {
@@ -268,11 +240,6 @@ passport.deserializeUser(async (id: string, done) => {
   }
 });
 
-router.use(passport.initialize());
-router.use(passport.session());
-
-// ── Routes ────────────────────────────────────────────────────────────────────
-
 router.get("/status", (_req, res) => {
   res.json({ googleConfigured: isConfigured(), dbConfigured: isSupabaseConfigured() });
 });
@@ -297,30 +264,134 @@ router.put("/profile", async (req, res) => {
   }
   const trimmed = username.trim().slice(0, 32);
   const currentUser = req.user as GoogleUser;
-
-  const sb = getSupabaseAdmin();
-  if (sb) {
-    const { error } = await sb
-      .from("comihub_users")
-      .update({ username: trimmed, updated_at: new Date().toISOString() })
-      .eq("id", currentUser.id);
-    if (error) {
-      res.status(500).json({ error: "Failed to update username" });
-      return;
-    }
+  try {
+    const db = getDb();
+    await db.update(users)
+      .set({ username: trimmed })
+      .where(eq(users.id, currentUser.id));
+    const updated: GoogleUser = { ...currentUser, username: trimmed };
+    memUsers.set(updated.id, updated);
+    (req.user as any).username = trimmed;
+    res.json({ ok: true, user: updated });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update username" });
   }
-
-  const updated: GoogleUser = { ...currentUser, username: trimmed };
-  memUsers.set(updated.id, updated);
-  (req.user as any).username = trimmed;
-
-  res.json({ ok: true, user: updated });
 });
 
 router.post("/logout", (req, res) => {
   const id = (req.user as GoogleUser | undefined)?.id;
   if (id) memUsers.delete(id);
   req.logout(() => res.json({ ok: true }));
+});
+
+router.post("/register", async (req, res) => {
+  const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  const username = typeof req.body.username === "string" ? req.body.username.trim() : "";
+  const password = typeof req.body.password === "string" ? req.body.password : "";
+
+  console.log("--- REGISTRATION ATTEMPT ---");
+  console.log("Email:", `"${email}"`, `(Length: ${email.length})`);
+  console.log("Username:", `"${username}"`, `(Length: ${username.length})`);
+  console.log("Password:", `"${password}"`, `(Length: ${password.length})`);
+  console.log("----------------------------");
+
+  const sb = getSupabaseAdmin();
+  if (!sb) {
+    res.status(500).json({ error: "Database not configured" });
+    return;
+  }
+  if (!email || !email.includes("@")) {
+    res.status(400).json({ error: "Please provide a valid email address." });
+    return;
+  }
+  try {
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password,
+      options: { data: { username: username } },
+    });
+    if (error) {
+      console.log("❌ SUPABASE REJECTED:", error.message);
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    console.log("✅ SUPABASE ACCEPTED!");
+    res.status(200).json({
+      message: "Check your email to verify your account!",
+      user: data.user,
+    });
+  } catch (err: any) {
+    console.error("Register Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  const sb = getSupabaseAdmin();
+  if (!sb) {
+    res.status(500).json({ error: "Database not configured" });
+    return;
+  }
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    const rawUser: GoogleUser = {
+      id: data.user.id,
+      displayName: data.user.user_metadata?.username || email.split("@")[0],
+      username: data.user.user_metadata?.username || email.split("@")[0],
+      email: email,
+      photo: "",
+    };
+    const user = await saveUser(rawUser);
+    req.login(user, (err) => {
+      if (err) {
+        res.status(500).json({ error: "Session creation failed" });
+        return;
+      }
+      res.status(200).json({
+        message: "Login successful!",
+        user,
+        accessToken: data.session?.access_token ?? "",
+        refreshToken: data.session?.refresh_token ?? "",
+        expiresAt: data.session?.expires_at ?? null,
+      });
+    });
+  } catch (err: any) {
+    console.error("Login Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/refresh", async (req, res) => {
+  const { refreshToken } = req.body as { refreshToken?: string };
+  if (!refreshToken) {
+    res.status(400).json({ error: "refreshToken is required" });
+    return;
+  }
+  const sb = getSupabaseAdmin();
+  if (!sb) {
+    res.status(500).json({ error: "Database not configured" });
+    return;
+  }
+  try {
+    const { data, error } = await sb.auth.refreshSession({ refresh_token: refreshToken });
+    if (error || !data.session) {
+      res.status(401).json({ error: error?.message ?? "Refresh failed" });
+      return;
+    }
+    res.json({
+      accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      expiresAt: data.session.expires_at ?? null,
+    });
+  } catch (err: any) {
+    console.error("Token refresh error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 router.get("/google", (req, res, next) => {
@@ -332,30 +403,10 @@ router.get("/google", (req, res, next) => {
   passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
 });
 
-// Serve an HTML relay page after OAuth so the user always sees a helpful page
-// even if FRONTEND_URL is wrong or the redirect would produce a Vercel 404.
-// The page auto-redirects to the app and shows a manual "Return to App" button
-// as a fallback — critical for iOS PWA where the OAuth opens in Safari.
 function authRelayPage(status: "success" | "error", frontendURL: string): string {
-  const dest = frontendURL
-    ? `${frontendURL}/?auth=${status}`
-    : null;
-
-  const redirectScript = dest
-    ? `<script>window.location.replace(${JSON.stringify(dest)});</script>`
-    : `<script>
-        // No FRONTEND_URL configured — try to go back or close
-        if (window.history.length > 1) {
-          window.history.back();
-        }
-      </script>`;
-
-  const buttonHTML = dest
-    ? `<a href="${dest}" style="display:inline-block;margin-top:24px;padding:14px 28px;background:#7c3aed;color:#fff;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px;">
-         Return to ComiHub
-       </a>`
-    : `<p style="color:#888;margin-top:16px;">Please close this tab and return to the app.</p>`;
-
+  const dest = frontendURL ? `${frontendURL}/?auth=${status}` : null;
+  const redirectScript = dest ? `<script>window.location.replace(${JSON.stringify(dest)});</script>` : `<script>if(window.history.length>1){window.history.back();}</script>`;
+  const buttonHTML = dest ? `<a href="${dest}" style="display:inline-block;margin-top:24px;padding:14px 28px;background:#7c3aed;color:#fff;border-radius:12px;text-decoration:none;font-weight:700;font-size:16px;">Return to ComiHub</a>` : `<p style="color:#888;margin-top:16px;">Please close this tab and return to the app.</p>`;
   const isError = status === "error";
   return `<!DOCTYPE html>
 <html lang="en">
@@ -365,8 +416,7 @@ function authRelayPage(status: "success" | "error", frontendURL: string): string
   <title>${isError ? "Sign In Failed" : "Signed In"} — ComiHub</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{min-height:100dvh;display:flex;align-items:center;justify-content:center;
-         background:#121212;color:#f5f5f5;font-family:system-ui,sans-serif;padding:24px;text-align:center}
+    body{min-height:100dvh;display:flex;align-items:center;justify-content:center;background:#121212;color:#f5f5f5;font-family:system-ui,sans-serif;padding:24px;text-align:center}
     .card{background:#1e1e1e;border:1px solid #333;border-radius:20px;padding:40px 32px;max-width:380px;width:100%}
     .icon{font-size:48px;margin-bottom:16px}
     h1{font-size:22px;font-weight:700;margin-bottom:8px}
@@ -387,15 +437,11 @@ function authRelayPage(status: "success" | "error", frontendURL: string): string
 
 router.get("/google/callback", (req, res, next) => {
   const frontendURL = getFrontendURL();
-  passport.authenticate("google", {
-    failureMessage: true,
-  })(req, res, (err: any) => {
+  passport.authenticate("google", { failureMessage: true })(req, res, (err: any) => {
     if (err || !req.user) {
       res.status(200).send(authRelayPage("error", frontendURL));
       return;
     }
-    // Use relay page instead of bare redirect — safe even if FRONTEND_URL is wrong.
-    // The relay page auto-redirects and also shows a Return to App button for iOS PWA.
     res.status(200).send(authRelayPage("success", frontendURL));
   });
 });

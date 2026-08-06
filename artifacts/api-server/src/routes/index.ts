@@ -6,6 +6,8 @@ import imageRouter from "./image";
 import mangaRouter from "./manga";
 import authRouter from "./auth";
 import libraryRouter from "./library";
+import pandachaikaPageRouter from "./pandachaika-page";
+import generationRouter from "./generation";
 
 const router: IRouter = Router();
 
@@ -15,6 +17,8 @@ router.use("/sources", sourcesRouter);
 router.use("/image", imageRouter);
 router.use("/auth", authRouter);
 router.use("/library", libraryRouter);
+router.use("/pandachaika-page", pandachaikaPageRouter);
+router.use("/generation", generationRouter);
 router.use(mangaRouter);
 
 export default router;

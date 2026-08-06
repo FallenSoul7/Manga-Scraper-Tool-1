@@ -1,4 +1,3 @@
-import * as cheerio from "cheerio";
 import type {
   MangaSource, ListOptions, MangaListResponse, MangaDetail,
   DetailOptions, ChapterListResponse, PageListResponse, MangaSummary, SourceTag,
@@ -8,8 +7,7 @@ import { makeHttp } from "./scraper-utils";
 const API  = "https://api.asurascans.com/api";
 const SITE = "https://asurascans.com";
 
-const api  = makeHttp(API,  { Accept: "application/json", Origin: SITE, Referer: `${SITE}/` });
-const html = makeHttp(SITE, { Referer: `${SITE}/` });
+const api = makeHttp(API, { Accept: "application/json", Origin: SITE, Referer: `${SITE}/` });
 
 const PER = 20;
 
@@ -28,10 +26,6 @@ interface AsChapter {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function publicSlugFrom(publicUrl: string | undefined, fallback: string): string {
-  if (!publicUrl) return fallback;
-  return publicUrl.split("/").filter(Boolean).pop() ?? fallback;
-}
 function toItem(s: AsSeries): MangaSummary {
   const typeRaw = (s.type ?? "").toLowerCase();
   return {
@@ -49,33 +43,6 @@ function mapStatus(s: string | undefined): string {
   if (l.includes("hiatus"))    return "Hiatus";
   if (l.includes("dropped"))   return "Dropped";
   return "Unknown";
-}
-
-// ── Pages helper — tries Astro props then img DOM ─────────────────────────
-function extractAstroPages(html: string): string[] {
-  // Astro embeds server-rendered props as JSON inside specific script elements.
-  // Pattern: <script type="application/json" ...>{"key":{"pages":[...]}}</script>
-  const jsonScripts = Array.from(html.matchAll(/<script[^>]+type="application\/json"[^>]*>([\s\S]*?)<\/script>/g));
-  for (const m of jsonScripts) {
-    try {
-      const obj = JSON.parse(m[1]);
-      const pages: string[] =
-        obj?.pages?.pages ?? obj?.pages ?? obj?.data?.pages ?? [];
-      if (pages.length > 0) return pages;
-    } catch { /* skip */ }
-  }
-  // Also look for inline `const pages = [...]` or `"pages":[...]`
-  const inline = html.match(/"pages"\s*:\s*(\[[\s\S]{1,8000}?\])/);
-  if (inline) {
-    try {
-      const arr = JSON.parse(inline[1]);
-      const urls: string[] = arr.map((p: any) =>
-        typeof p === "string" ? p : (p.url ?? p.src ?? p.image ?? "")
-      ).filter(Boolean);
-      if (urls.length > 0) return urls;
-    } catch { /* skip */ }
-  }
-  return [];
 }
 
 let cachedTags: SourceTag[] | null = null;
@@ -147,11 +114,6 @@ export const AsuraScansSource: MangaSource = {
   },
 
   async chapters(slug: string, _dedupe: boolean): Promise<ChapterListResponse> {
-    // Get the public URL slug (randomised) for building chapter page URLs
-    const detailRes = await api.get<any>(`/series/${slug}`);
-    const s: AsSeries = detailRes.data?.data?.series ?? detailRes.data?.series ?? detailRes.data;
-    const pubSlug = publicSlugFrom(s.public_url, slug);
-
     const chapRes = await api.get<{ data: AsChapter[] }>(`/series/${slug}/chapters`, {
       params: { page: 1, perPage: 9999 },
     });
@@ -159,7 +121,8 @@ export const AsuraScansSource: MangaSource = {
 
     return {
       items: chapters.map(ch => ({
-        id:        `${pubSlug}|||${ch.number}`,
+        // Format: seriesSlug|||chapterSlug  e.g. "nano-machine|||chapter-318"
+        id:        `${slug}|||${ch.slug || String(ch.number)}`,
         number:    ch.number,
         title:     ch.title ? `Chapter ${ch.number}: ${ch.title}` : `Chapter ${ch.number}`,
         scanlator: "",
@@ -169,47 +132,32 @@ export const AsuraScansSource: MangaSource = {
   },
 
   async pages(chapterId: string): Promise<PageListResponse> {
-    const [pubSlug, chapNum] = chapterId.split("|||");
-    const chapterUrl = `/comics/${pubSlug}/chapter/${chapNum}`;
+    const parts = chapterId.split("|||");
+    const seriesSlug = parts[0]!;
+    const chapSlug   = parts[1]!;
 
-    const res = await html.get(chapterUrl, {
-      headers: { Referer: `${SITE}/comics/${pubSlug}` },
-    });
-    const pageHtml = res.data as string;
-
-    // 1) Try Astro embedded JSON props
-    const fromAstro = extractAstroPages(pageHtml);
-    if (fromAstro.length > 0) {
-      return {
-        chapterId,
-        pages: fromAstro.map((url, i) => ({
-          index: i,
-          url: `/api/image-proxy?url=${encodeURIComponent(url)}&referer=${encodeURIComponent(SITE + "/")}`,
-        })),
+    interface AsPageInfo { url: string; width?: number; height?: number }
+    interface AsChapterRes {
+      data: {
+        access_gate?: string;
+        chapter: { pages: AsPageInfo[] };
       };
     }
 
-    // 2) Parse DOM for img tags in the reader
-    const $ = cheerio.load(pageHtml);
-    const urls: string[] = [];
-    $("img[src], img[data-src], img[data-lazy]").each((_i, el) => {
-      const src = $(el).attr("src") ?? $(el).attr("data-src") ?? $(el).attr("data-lazy") ?? "";
-      if (!src || !src.startsWith("http")) return;
-      if (src.includes("logo") || src.includes("avatar") || src.includes("cover") || src.includes("banner")) return;
-      if (!urls.includes(src)) urls.push(src);
-    });
+    const res = await api.get<AsChapterRes>(`/series/${seriesSlug}/chapters/${chapSlug}`);
+    const pages = res.data?.data?.chapter?.pages ?? [];
 
-    if (urls.length > 0) {
-      return {
-        chapterId,
-        pages: urls.map((url, i) => ({
-          index: i,
-          url: `/api/image-proxy?url=${encodeURIComponent(url)}&referer=${encodeURIComponent(SITE + "/")}`,
-        })),
-      };
+    if (pages.length === 0) {
+      throw new Error(`AsuraScans: no pages returned for ${seriesSlug}/${chapSlug}. The chapter may be locked or unavailable.`);
     }
 
-    throw new Error(`AsuraScans: no pages found for ${chapterUrl}. The chapter may require a premium subscription.`);
+    return {
+      chapterId,
+      pages: pages.map((p, i) => ({
+        index: i,
+        url: `/api/image-proxy?url=${encodeURIComponent(p.url)}&referer=${encodeURIComponent(SITE + "/")}`,
+      })),
+    };
   },
 
   async tags(): Promise<SourceTag[]> {

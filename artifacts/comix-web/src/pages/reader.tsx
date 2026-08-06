@@ -1,4 +1,4 @@
-import { useRoute, Link, useSearch, useLocation } from "wouter";
+import { useRoute, useSearch, useLocation } from "wouter";
 import {
   useGetChapterPages,
   useGetChapters,
@@ -9,11 +9,14 @@ import {
   setExtraHeader,
 } from "@workspace/api-client-react";
 import { proxyImage } from "@/lib/utils";
+import { apiUrl } from "@/lib/api-url";
 // ── Keep this import ─────────────────────────────────────────────────────
 import { getProxiedImageUrl } from "@/lib/vpn";
+import VideoPlayer from "@/pages/video-player";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
+import { offlineDb } from "@/lib/offline-db";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -27,7 +30,23 @@ export default function Reader() {
   const searchString = useSearch();
   const mangaId = new URLSearchParams(searchString).get("mangaId");
   const sourceIdFromUrl = new URLSearchParams(searchString).get("sourceId");
+  const isOfflineMode = new URLSearchParams(searchString).get("offline") === "1";
   const [, setLocation] = useLocation();
+
+  // Offline mode: load pages from IndexedDB instead of the API
+  const [offlinePages, setOfflinePages] = useState<{ index: number; url: string }[] | null>(null);
+  const [offlineLoading, setOfflineLoading] = useState(isOfflineMode);
+  useEffect(() => {
+    if (!isOfflineMode || !chapterId) return;
+    setOfflineLoading(true);
+    offlineDb.get(String(chapterId)).then(chapter => {
+      if (chapter?.pageUrls?.length) {
+        setOfflinePages(chapter.pageUrls.map((url, i) => ({ index: i, url })));
+      }
+      setOfflineLoading(false);
+    }).catch(() => setOfflineLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapterId]);
 
   // Fallback: if sourceId isn't in the URL (e.g. opened from history before
   // the fix), grab it from the library entry for this manga.
@@ -43,6 +62,13 @@ export default function Reader() {
   }, [sourceId]);
 
   const readerSettings = useStore(s => s.reader);
+  const sourceReaderDirections = useStore(s => s.sourceReaderDirections);
+  // Rule34 defaults to LTR (single-image posts look terrible in webtoon mode).
+  // The user can still change it from the reader settings panel — that change
+  // is stored per-source so it never bleeds into other sources.
+  const effectiveDirection = sourceId === 'en.rule34'
+    ? ((sourceReaderDirections ?? {})['en.rule34'] ?? 'ltr')
+    : readerSettings.direction;
   const progressMap = useStore(s => s.progress);
   const scanlatorPrefs = useStore(s => s.scanlatorPrefs);
   const progressKey = `${mangaId}:${chapterId}`;
@@ -66,10 +92,16 @@ export default function Reader() {
 
   const { data: pagesData, isLoading: pagesLoading } = useGetChapterPages(chapterId, {
     query: {
-      enabled: !!chapterId && chapterId !== "0",
+      // Skip API when reading an offline chapter — pages come from IndexedDB
+      enabled: !isOfflineMode && !!chapterId && chapterId !== "0",
       queryKey: getGetChapterPagesQueryKey(chapterId),
     },
   });
+
+  // Unified pages array: offline IndexedDB data OR live API data
+  const effectivePages: { index: number; url: string }[] =
+    (isOfflineMode && offlinePages) ? offlinePages : (pagesData?.pages ?? []);
+  const effectiveLoading = isOfflineMode ? offlineLoading : pagesLoading;
 
   const chapterFetchParams = { dedupe: false };
   const { data: chaptersData } = useGetChapters(mangaId || "", chapterFetchParams, {
@@ -129,13 +161,13 @@ export default function Reader() {
 
   const didInitialScroll = useRef(false);
   useEffect(() => {
-    if (!pagesData?.pages.length || didInitialScroll.current) return;
+    if (!effectivePages.length || didInitialScroll.current) return;
     const target = currentProgress?.lastPageRead;
     if (!target || target === 0) { didInitialScroll.current = true; return; }
-    if (readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl') {
+    if (effectiveDirection === 'ltr' || effectiveDirection === 'rtl') {
       if (containerRef.current) {
         containerRef.current.scrollTo({
-          left: (readerSettings.direction === 'ltr' ? target : -target) * containerRef.current.clientWidth,
+          left: (effectiveDirection === 'ltr' ? target : -target) * containerRef.current.clientWidth,
         });
       }
       didInitialScroll.current = true;
@@ -146,17 +178,17 @@ export default function Reader() {
       if (pageEl) pageEl.scrollIntoView({ behavior: 'auto', block: 'start' });
       didInitialScroll.current = true;
     });
-  }, [pagesData, currentProgress?.lastPageRead, readerSettings.direction]);
+  }, [pagesData, currentProgress?.lastPageRead, effectiveDirection]);
 
   useEffect(() => {
     const handleScroll = () => {
-      if (!pagesData?.pages.length || !mangaId || !chaptersData || !mangaData) return;
+      if (!effectivePages.length || !mangaId || !chaptersData || !mangaData) return;
       clearTimeout(scrollTimeout.current);
       scrollTimeout.current = setTimeout(() => {
-        const container = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical' ? window : containerRef.current;
+        const container = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical' ? window : containerRef.current;
         if (!container) return;
         let newPage = currentPage;
-        if (readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') {
+        if (effectiveDirection === 'webtoon' || effectiveDirection === 'vertical') {
           const scrollY = window.scrollY;
           const wh = window.innerHeight;
           const pageElements = Array.from(document.querySelectorAll('.reader-page'));
@@ -167,16 +199,16 @@ export default function Reader() {
           const docHeight = document.documentElement.scrollHeight;
           if (scrollY + wh >= docHeight * 0.9) {
             const ch = chaptersData.items.find(c => String(c.id) === chapterId);
-            if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, pagesData.pages.length);
+            if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, effectivePages.length);
           }
         } else {
           if (containerRef.current) {
             const scrollX = Math.abs(containerRef.current.scrollLeft);
             const cw = containerRef.current.clientWidth;
             newPage = Math.round(scrollX / cw);
-            if (newPage >= pagesData.pages.length - 1) {
+            if (newPage >= effectivePages.length - 1) {
               const ch = chaptersData.items.find(c => String(c.id) === chapterId);
-              if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, pagesData.pages.length);
+              if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, effectivePages.length);
             }
           }
         }
@@ -187,20 +219,20 @@ export default function Reader() {
             storeActions.recordProgress({
               mangaId, chapterId: ch.id, chapterNumber: ch.number,
               chapterTitle: ch.title, mangaTitle: mangaData.title,
-              mangaThumbnail: mangaData.thumbnail, totalPages: pagesData.pages.length,
+              mangaThumbnail: mangaData.thumbnail, totalPages: effectivePages.length,
               lastPageRead: newPage, isRead: false,
             });
           }
         }
       }, 500);
     };
-    const container = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical' ? window : containerRef.current;
+    const container = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical' ? window : containerRef.current;
     if (container) container.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       if (container) container.removeEventListener('scroll', handleScroll);
       clearTimeout(scrollTimeout.current);
     };
-  }, [readerSettings.direction, pagesData, mangaId, chaptersData, mangaData, currentPage, currentProgress?.isRead]);
+  }, [effectiveDirection, pagesData, mangaId, chaptersData, mangaData, currentPage, currentProgress?.isRead]);
 
   const navChapters = useMemo<any[]>(() => {
     if (!chaptersData?.items) return [];
@@ -223,10 +255,10 @@ export default function Reader() {
   const nextChapter = chapterIndex > 0 ? navChapters[chapterIndex - 1] : null;
 
   useEffect(() => {
-    const isVertical = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
+    const isVertical = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical';
     if (!isVertical || !nextChapter || loadingNextChapter) return;
     if (appendedIdsRef.current.has(nextChapter.id)) return;
-    const totalPages = pagesData?.pages.length ?? 0;
+    const totalPages = effectivePages.length;
     if (totalPages === 0 || currentPage < totalPages - 3) return;
     const nc = nextChapter;
     appendedIdsRef.current.add(nc.id);
@@ -238,7 +270,7 @@ export default function Reader() {
       })
       .catch(() => { appendedIdsRef.current.delete(nc.id); })
       .finally(() => setLoadingNextChapter(false));
-  }, [currentPage, nextChapter, pagesData, loadingNextChapter, readerSettings.direction]);
+  }, [currentPage, nextChapter, pagesData, loadingNextChapter, effectiveDirection]);
 
   const navigateToChapter = (id: string) => {
     setLocation(`/reader/${id}?mangaId=${mangaId}${sourceId ? `&sourceId=${sourceId}` : ""}`);
@@ -251,14 +283,14 @@ export default function Reader() {
 
   const handleKeydown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') { goBack(); return; }
-    const isPaginated = readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl';
+    const isPaginated = effectiveDirection === 'ltr' || effectiveDirection === 'rtl';
     if (e.key === 'ArrowRight') {
       if (isPaginated && containerRef.current) {
-        containerRef.current.scrollBy({ left: readerSettings.direction === 'ltr' ? containerRef.current.clientWidth : -containerRef.current.clientWidth, behavior: 'smooth' });
+        containerRef.current.scrollBy({ left: effectiveDirection === 'ltr' ? containerRef.current.clientWidth : -containerRef.current.clientWidth, behavior: 'smooth' });
       }
     } else if (e.key === 'ArrowLeft') {
       if (isPaginated && containerRef.current) {
-        containerRef.current.scrollBy({ left: readerSettings.direction === 'ltr' ? -containerRef.current.clientWidth : containerRef.current.clientWidth, behavior: 'smooth' });
+        containerRef.current.scrollBy({ left: effectiveDirection === 'ltr' ? -containerRef.current.clientWidth : containerRef.current.clientWidth, behavior: 'smooth' });
       }
     }
   };
@@ -266,9 +298,15 @@ export default function Reader() {
   useEffect(() => {
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
-  }, [readerSettings.direction]);
+  }, [effectiveDirection]);
 
-  if (pagesLoading) {
+  // Detect if a page URL is a video file.
+  // Matches /api/koofr/proxy?path=...video.mp4 as well as plain .mp4 URLs.
+  const isVideoUrl = (url: string) =>
+    /\.(mp4|webm|ogg|mov|mkv|avi)(\?|$|&)/i.test(url) ||
+    /\.(mp4|webm|mov|mkv|avi)$/i.test(decodeURIComponent(url));
+
+  if (effectiveLoading) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white/50">
         <Loader2 className="h-8 w-8 animate-spin mb-4" />
@@ -277,7 +315,7 @@ export default function Reader() {
     );
   }
 
-  if (!pagesData || pagesData.pages.length === 0) {
+  if (effectivePages.length === 0) {
     return (
       <div className="min-h-screen bg-[#1a1a1a] flex flex-col items-center justify-center gap-4 px-6 text-center">
         <div className="text-4xl">📭</div>
@@ -292,6 +330,26 @@ export default function Reader() {
     );
   }
 
+  // ── Video content → render dedicated cinematic player ─────────────────────
+  // When ALL pages are video URLs (Koofr video files), bypass the manga strip
+  // entirely and show the full-screen TV-style video player.
+  if (effectivePages.length > 0 && effectivePages.every(p => isVideoUrl(p.url))) {
+    const videoUrl = effectivePages[0].url;
+    const mangaTitle = mangaData?.title ?? "Video";
+    const chObj = chaptersData?.items.find(c => String(c.id) === chapterId);
+    const chapterTitle = chObj
+      ? `Ch. ${chObj.number}${chObj.title ? ` — ${chObj.title}` : ""}`
+      : undefined;
+    return (
+      <VideoPlayer
+        url={videoUrl}
+        title={mangaTitle}
+        subtitle={chapterTitle}
+        onBack={goBack}
+      />
+    );
+  }
+
   const bgClass = readerSettings.background === 'paper' ? 'bg-[#f4f1ea]' : readerSettings.background === 'black' ? 'bg-black' : 'bg-[#1a1a1a]';
   const textClass = readerSettings.background === 'paper' ? 'text-black' : 'text-white';
   const fitClass = readerSettings.fit === 'width' ? 'w-full h-auto' : readerSettings.fit === 'height' ? 'h-[100dvh] w-auto mx-auto' : 'w-auto h-auto mx-auto';
@@ -299,10 +357,10 @@ export default function Reader() {
   const handlePageClick = (e: React.MouseEvent) => {
     const x = e.clientX;
     const w = window.innerWidth;
-    if (readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl') {
-      const goNext = readerSettings.direction === 'ltr' ? x > w / 2 : x < w / 2;
+    if (effectiveDirection === 'ltr' || effectiveDirection === 'rtl') {
+      const goNext = effectiveDirection === 'ltr' ? x > w / 2 : x < w / 2;
       if (containerRef.current) {
-        containerRef.current.scrollBy({ left: goNext ? containerRef.current.clientWidth * (readerSettings.direction === 'rtl' ? -1 : 1) : -containerRef.current.clientWidth * (readerSettings.direction === 'rtl' ? -1 : 1), behavior: 'smooth' });
+        containerRef.current.scrollBy({ left: goNext ? containerRef.current.clientWidth * (effectiveDirection === 'rtl' ? -1 : 1) : -containerRef.current.clientWidth * (effectiveDirection === 'rtl' ? -1 : 1), behavior: 'smooth' });
       }
     } else {
       setShowControls(!showControls);
@@ -343,7 +401,16 @@ export default function Reader() {
                 <div className="py-6 space-y-6">
                   <div className="space-y-3">
                     <Label>Reading Direction</Label>
-                    <Select value={readerSettings.direction} onValueChange={(v: any) => storeActions.setReader({ direction: v })}>
+                    <Select
+                      value={effectiveDirection}
+                      onValueChange={(v: any) => {
+                        if (sourceId === 'en.rule34') {
+                          storeActions.setSourceReaderDirection('en.rule34', v);
+                        } else {
+                          storeActions.setReader({ direction: v });
+                        }
+                      }}
+                    >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="webtoon">Webtoon (Continuous)</SelectItem>
@@ -394,16 +461,16 @@ export default function Reader() {
       <div
         ref={containerRef}
         className={`w-full ${
-          readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl'
+          effectiveDirection === 'ltr' || effectiveDirection === 'rtl'
           ? 'h-[100dvh] flex overflow-x-auto snap-x snap-mandatory hide-scrollbar flex-row'
           : 'flex flex-col items-center max-w-3xl mx-auto'
-        } ${readerSettings.direction === 'rtl' ? 'flex-row-reverse' : ''}`}
+        } ${effectiveDirection === 'rtl' ? 'flex-row-reverse' : ''}`}
       >
-        {pagesData.pages.map((page, idx) => {
-          const isVerticalLike = readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical';
+        {effectivePages.map((page, idx) => {
+          const isVerticalLike = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical';
           const isLoaded = !!loadedImgs[idx];
-          const isWebtoon = readerSettings.direction === 'webtoon';
-          const isPaged = readerSettings.direction === 'ltr' || readerSettings.direction === 'rtl';
+          const isWebtoon = effectiveDirection === 'webtoon';
+          const isPaged = effectiveDirection === 'ltr' || effectiveDirection === 'rtl';
 
           // ── Windowed rendering for vertical/webtoon modes ──────────────
           // Only keep images in the DOM within ±12 pages of where the user is.
@@ -427,6 +494,42 @@ export default function Reader() {
             );
           }
 
+          // Determine load strategy: eager for ±5 pages around current, lazy otherwise
+          const distToPage = Math.abs(idx - currentPage);
+          const loadStrategy: 'eager' | 'lazy' = isPaged
+            ? (idx < 3 ? 'eager' : 'lazy')
+            : (distToPage <= 5 ? 'eager' : 'lazy');
+
+          // ── Video page (MP4 / WebM) ─────────────────────────────────────────
+          if (isVideoUrl(page.url)) {
+            return (
+              <div
+                key={page.index}
+                id={`page-${idx}`}
+                className="reader-page relative flex-shrink-0 flex items-center justify-center bg-black w-full min-h-[100dvh]"
+                onClick={e => e.stopPropagation()}
+              >
+                <video
+                  src={apiUrl(page.url)}
+                  controls
+                  controlsList="nodownload"
+                  playsInline
+                  autoPlay
+                  className="max-w-full max-h-[100dvh] w-full"
+                  style={{ outline: 'none' }}
+                  onPlay={() => setLoadedImgs(p => ({ ...p, [idx]: true }))}
+                  onCanPlay={() => setLoadedImgs(p => ({ ...p, [idx]: true }))}
+                />
+                {!isLoaded && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black text-white/40 pointer-events-none">
+                    <Loader2 className="h-10 w-10 animate-spin" />
+                    <p className="mt-3 text-sm">Loading video…</p>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
           return (
             <div
               key={page.index}
@@ -435,42 +538,65 @@ export default function Reader() {
                 isPaged
                 ? 'flex items-center justify-center bg-black w-[100vw] h-[100dvh] snap-center snap-always'
                 : isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full'
-              } ${readerSettings.direction === 'vertical' ? 'mb-8' : ''}`}
+              } ${effectiveDirection === 'vertical' ? 'mb-8' : ''}`}
             >
-              {!isLoaded && (
-                <div className="flex flex-col items-center justify-center min-h-[40vw] w-full bg-black text-white/40 pointer-events-none">
-                  <Loader2 className="h-10 w-10 animate-spin" />
-                  <div className="mt-3 text-xs tabular-nums">{idx + 1} / {pagesData.pages.length}</div>
-                </div>
-              )}
-              {readerSettings.direction === 'vertical' && (
+              {effectiveDirection === 'vertical' && (
                 <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
               )}
-              <img
-                src={getProxiedImageUrl(page.url, sourceId ?? "")}
-                alt={`Page ${page.index}`}
-                className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
-                loading={isPaged ? (idx < 3 ? 'eager' : 'lazy') : 'eager'}
-                decoding="async"
-                onLoad={(e) => {
-                  // Store rendered height for placeholder accuracy
-                  const el = (e.target as HTMLImageElement).parentElement;
-                  if (el) pageHeightsRef.current[idx] = el.offsetHeight;
-                  setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
-                }}
-                onError={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
-                style={
-                  isWebtoon
-                    ? { display: 'block', width: '100%', height: 'auto', margin: 0, padding: 0, verticalAlign: 'top', lineHeight: 0 }
-                    : { display: 'block', maxWidth: '100%', objectFit: 'contain' }
-                }
-              />
+              {/* Webtoon / vertical: keep image in normal flow to avoid layout shift.
+                  Loader overlays the image while it loads — no opacity-0+absolute swap. */}
+              {isWebtoon ? (
+                <div className="relative w-full" style={{ minHeight: isLoaded ? undefined : '40vw' }}>
+                  <img
+                    src={getProxiedImageUrl(page.url, sourceId ?? "")}
+                    alt={`Page ${page.index}`}
+                    loading={loadStrategy}
+                    decoding="async"
+                    onLoad={(e) => {
+                      const el = (e.target as HTMLImageElement).parentElement;
+                      if (el) pageHeightsRef.current[idx] = el.offsetHeight;
+                      setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
+                    }}
+                    onError={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
+                    style={{ display: 'block', width: '100%', height: 'auto', margin: 0, padding: 0, verticalAlign: 'top', lineHeight: 0 }}
+                  />
+                  {!isLoaded && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center min-h-[40vw] bg-black text-white/40 pointer-events-none">
+                      <Loader2 className="h-10 w-10 animate-spin" />
+                      <div className="mt-3 text-xs tabular-nums">{idx + 1} / {effectivePages.length}</div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {!isLoaded && (
+                    <div className="flex flex-col items-center justify-center min-h-[40vw] w-full bg-black text-white/40 pointer-events-none">
+                      <Loader2 className="h-10 w-10 animate-spin" />
+                      <div className="mt-3 text-xs tabular-nums">{idx + 1} / {effectivePages.length}</div>
+                    </div>
+                  )}
+                  <img
+                    src={getProxiedImageUrl(page.url, sourceId ?? "")}
+                    alt={`Page ${page.index}`}
+                    className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
+                    loading={loadStrategy}
+                    decoding="async"
+                    onLoad={(e) => {
+                      const el = (e.target as HTMLImageElement).parentElement;
+                      if (el) pageHeightsRef.current[idx] = el.offsetHeight;
+                      setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
+                    }}
+                    onError={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
+                    style={{ display: 'block', maxWidth: '100%', objectFit: 'contain' }}
+                  />
+                </>
+              )}
             </div>
           );
         })}
 
         {/* Continuous reading: appended chapters */}
-        {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && appendedChapters.map((ch) => (
+        {(effectiveDirection === 'webtoon' || effectiveDirection === 'vertical') && appendedChapters.map((ch) => (
           <div key={ch.id} className="w-full">
             <div className="flex items-center gap-4 px-4 py-6 bg-black/80 border-y border-white/10">
               <div className="flex-1 h-px bg-white/20" />
@@ -481,7 +607,7 @@ export default function Reader() {
               <div className="flex-1 h-px bg-white/20" />
             </div>
             {ch.pages.map((page) => {
-              const isWebtoon = readerSettings.direction === 'webtoon';
+              const isWebtoon = effectiveDirection === 'webtoon';
               return (
                 <div
                   key={page.index}
@@ -490,7 +616,6 @@ export default function Reader() {
                   }`}
                 >
                   <img
-                    // ── ONE FIXED LINE ────────────────────────────────────
                     src={getProxiedImageUrl(page.url, sourceId ?? "")}
                     alt={`Ch${ch.number} Page ${page.index}`}
                     loading="lazy"
@@ -507,14 +632,14 @@ export default function Reader() {
           </div>
         ))}
 
-        {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && loadingNextChapter && (
+        {(effectiveDirection === 'webtoon' || effectiveDirection === 'vertical') && loadingNextChapter && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-white/50">
             <Loader2 className="h-8 w-8 animate-spin" />
             <span className="text-sm">Loading next chapter…</span>
           </div>
         )}
 
-        {(readerSettings.direction === 'webtoon' || readerSettings.direction === 'vertical') && !nextChapter && appendedChapters.length === 0 && (
+        {(effectiveDirection === 'webtoon' || effectiveDirection === 'vertical') && !nextChapter && appendedChapters.length === 0 && (
           <div className="py-16 flex flex-col items-center gap-4 text-white/40">
             <div className="text-sm">You've reached the end</div>
             <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); goBack(); }}>
@@ -526,7 +651,7 @@ export default function Reader() {
 
       {readerSettings.showPageNumber && showControls && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 backdrop-blur text-white text-xs font-medium z-40 pointer-events-none animate-in fade-in duration-200">
-          {currentPage + 1} / {pagesData.pages.length}
+          {currentPage + 1} / {effectivePages.length}
         </div>
       )}
     </div>

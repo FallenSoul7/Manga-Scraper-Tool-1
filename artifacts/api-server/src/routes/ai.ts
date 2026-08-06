@@ -1,9 +1,12 @@
+// routes/ai.ts
 import { Router } from "express";
+import { PROMPTS } from "./ai-powers/prompts";
 
 const router = Router();
 
 const FETCH_TIMEOUT_MS = 65_000;
 
+// ── API key collection ────────────────────────────────────────────
 function collectKeys(base: string): string[] {
   const keys: string[] = [];
   const first = process.env[base] ?? "";
@@ -16,16 +19,14 @@ function collectKeys(base: string): string[] {
 }
 
 const UNCENSORED_MODELS = [
-  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
-  "cognitivecomputations/dolphin3.0-mistral-24b:free",
-  "nousresearch/hermes-3-llama-3.1-70b:free",
+  "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", // ✅ alive 32K ctx
+  "nousresearch/hermes-3-llama-3.1-405b:free",                    // ✅ alive 131K ctx
 ];
 
 function buildProviders() {
-  const groqKeys       = collectKeys("GROQ_API_KEY");
-  const geminiKeys     = collectKeys("GEMINI_API_KEY");
+  const groqKeys = collectKeys("GROQ_API_KEY");
+  const geminiKeys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3].filter(Boolean) as string[];
   const openrouterKeys = collectKeys("OPENROUTER_API_KEY");
-
   type Provider = { name: string; url: string; key: string; model: string; isUncensored: boolean };
   const providers: Provider[] = [];
 
@@ -49,10 +50,10 @@ function buildProviders() {
   }
   for (let i = 0; i < openrouterKeys.length; i++) {
     providers.push({
-      name: i > 0 ? `OpenRouter Nex (key ${i + 1})` : "OpenRouter Nex",
+      name: i > 0 ? `OpenRouter (key ${i + 1})` : "OpenRouter",
       url: "https://openrouter.ai/api/v1/chat/completions",
       key: openrouterKeys[i],
-      model: "nex-agi/nex-n2-pro:free",
+      model: "openrouter/auto",
       isUncensored: false,
     });
   }
@@ -78,9 +79,7 @@ const ADULT_WORDS = [
   "lewd", "ecchi", "adult manga", "adult manhwa",
 ];
 
-// ── FIX 1: Only check the LATEST user message, not full history ──────────────
 function isAdultContext(messages: Array<{ role: string; content: string | null }>): boolean {
-  // Find the last user message only
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === "user") {
       const text = String(messages[i].content ?? "").toLowerCase();
@@ -91,16 +90,12 @@ function isAdultContext(messages: Array<{ role: string; content: string | null }
 }
 
 function buildQueue(modelMode: string, isAdult: boolean) {
-  const all        = buildProviders();
-  const normal     = all.filter(p => !p.isUncensored);
-  const uncensored = all.filter(p =>  p.isUncensored);
+  const all = buildProviders();
+  const normal = all.filter(p => !p.isUncensored);
+  const uncensored = all.filter(p => p.isUncensored);
 
-  if (modelMode === "uncensored") {
-    return [...uncensored];
-  }
-  if (modelMode === "auto" && isAdult) {
-    return [...uncensored, ...normal];
-  }
+  if (modelMode === "uncensored") return [...uncensored];
+  if (modelMode === "auto" && isAdult) return [...uncensored, ...normal];
   if (modelMode === "groq") {
     return [...all.filter(p => p.name.startsWith("Groq")), ...all.filter(p => !p.name.startsWith("Groq"))];
   }
@@ -128,19 +123,16 @@ function isBlocked(content: string | null): boolean {
   return BLOCK_PHRASES.some(p => content.includes(p));
 }
 
-// ── FIX 2: Sanitize messages to prevent crash on reload ──────────────────────
 function sanitizeMessages(
   messages: Array<{ role: string; content: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }>
 ) {
   const sanitized = [];
   for (const msg of messages) {
-    // Keep tool_calls on assistant messages, keep tool results
     if (msg.role === "assistant") {
       const entry: any = { role: "assistant", content: msg.content ?? null };
       if (msg.tool_calls?.length) entry.tool_calls = msg.tool_calls;
       sanitized.push(entry);
     } else if (msg.role === "tool") {
-      // Must have a preceding assistant message with tool_calls — keep as-is
       sanitized.push({
         role: "tool",
         tool_call_id: msg.tool_call_id ?? "unknown",
@@ -150,250 +142,122 @@ function sanitizeMessages(
     } else if (msg.role === "user") {
       sanitized.push({ role: "user", content: String(msg.content ?? "") });
     }
-    // Drop any unknown roles silently
   }
 
-  // Safety: if the array starts with a tool result or has orphaned tool results, strip them
-  // (tool result must always follow an assistant message that has tool_calls)
   const cleaned = [];
   for (let i = 0; i < sanitized.length; i++) {
     const msg = sanitized[i];
     if (msg.role === "tool") {
       const prev = cleaned[cleaned.length - 1];
       if (!prev || prev.role !== "assistant" || !prev.tool_calls?.length) {
-        continue; // orphaned tool result — skip
+        continue;
       }
     }
     cleaned.push(msg);
   }
-
   return cleaned;
 }
 
-// ── FEATURE: Expanded tool definitions ───────────────────────────────────────
-const TOOLS = [
-  // ── Source & discovery ──────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "list_sources",
-      description: "List all available manga/manhwa/manhua sources and extensions that can be browsed, including adult/18+ sources.",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "browse_popular",
-      description: "Browse popular or trending titles from a specific source.",
-      parameters: {
-        type: "object",
-        properties: {
-          sourceId: { type: "string", description: "Source ID from list_sources" },
-          page:     { type: "number", description: "Page number (default 1)" },
-        },
-        required: ["sourceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "browse_latest",
-      description: "Browse the latest updated titles from a specific source.",
-      parameters: {
-        type: "object",
-        properties: {
-          sourceId: { type: "string", description: "Source ID from list_sources" },
-          page:     { type: "number", description: "Page number (default 1)" },
-        },
-        required: ["sourceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "search_manga",
-      description: "Search for manga/manhwa by title or keyword within a specific source.",
-      parameters: {
-        type: "object",
-        properties: {
-          sourceId: { type: "string", description: "Source ID from list_sources" },
-          query:    { type: "string", description: "Search query" },
-          page:     { type: "number", description: "Page number (default 1)" },
-        },
-        required: ["sourceId", "query"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "global_search",
-      description: "Search across ALL installed sources at once for a title or keyword. Use when the user wants broad results or doesn't specify a source.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "Search query" },
-        },
-        required: ["query"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "browse_by_tag",
-      description: "Browse or filter manga by genre/tag within a specific source (e.g. 'hentai', 'romance', 'action', 'ecchi').",
-      parameters: {
-        type: "object",
-        properties: {
-          sourceId: { type: "string", description: "Source ID from list_sources" },
-          tag:      { type: "string", description: "Tag or genre name to filter by" },
-          page:     { type: "number", description: "Page number (default 1)" },
-        },
-        required: ["sourceId", "tag"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "get_manga_details",
-      description: "Get full details for a specific manga: description, genres, status, author, and chapter list.",
-      parameters: {
-        type: "object",
-        properties: {
-          sourceId: { type: "string", description: "Source ID" },
-          mangaId:  { type: "string", description: "Manga ID from search or browse results" },
-        },
-        required: ["sourceId", "mangaId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "get_chapters",
-      description: "Get the chapter list for a specific manga.",
-      parameters: {
-        type: "object",
-        properties: {
-          sourceId: { type: "string", description: "Source ID" },
-          mangaId:  { type: "string", description: "Manga ID" },
-        },
-        required: ["sourceId", "mangaId"],
-      },
-    },
-  },
-  // ── Library management ──────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "list_categories",
-      description: "List the user's library categories and how many manga are in each.",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "list_library",
-      description: "List manga in the user's library, optionally filtered by category.",
-      parameters: {
-        type: "object",
-        properties: {
-          categoryId: { type: "string", description: "Category ID to filter by (optional)" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "add_to_library",
-      description: "Add a manga to the user's library, optionally into a specific category.",
-      parameters: {
-        type: "object",
-        properties: {
-          sourceId:   { type: "string", description: "Source ID" },
-          mangaId:    { type: "string", description: "Manga ID to add" },
-          categoryId: { type: "string", description: "Category ID to add into (optional)" },
-        },
-        required: ["sourceId", "mangaId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "create_category",
-      description: "Create a new library category.",
-      parameters: {
-        type: "object",
-        properties: {
-          name: { type: "string", description: "Name for the new category" },
-        },
-        required: ["name"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "delete_category",
-      description: "Delete a user category. DESTRUCTIVE — the UI shows a confirmation the user must click before deletion proceeds.",
-      parameters: {
-        type: "object",
-        properties: {
-          categoryId:   { type: "string", description: "Category ID to delete" },
-          categoryName: { type: "string", description: "Category name for display" },
-        },
-        required: ["categoryId", "categoryName"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "move_manga_category",
-      description: "Move a manga from its current category to a different one.",
-      parameters: {
-        type: "object",
-        properties: {
-          mangaId:        { type: "string", description: "Manga ID" },
-          targetCategoryId: { type: "string", description: "Target category ID" },
-        },
-        required: ["mangaId", "targetCategoryId"],
-      },
-    },
-  },
-];
+// ── Enhanced parser: JSON + XML (both formats) + plain arg_key/arg_value ──
+function parseToolCalls(content: string): any[] | null {
+  // 1. Try JSON: {"tool": "...", "args": {...}}
+  const jsonRegex = /\{["']tool["']\s*:\s*["'][^"']+["']\s*,\s*["']args["']\s*:\s*\{[^}]*\}\s*\}/g;
+  const jsonMatches = content.match(jsonRegex);
+  if (jsonMatches) {
+    const calls: any[] = [];
+    for (const jsonStr of jsonMatches) {
+      try {
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.tool && parsed.args) {
+          calls.push({
+            id: `call_${Date.now()}_${calls.length}`,
+            type: "function",
+            function: {
+              name: parsed.tool,
+              arguments: JSON.stringify(parsed.args),
+            },
+          });
+        }
+      } catch {}
+    }
+    if (calls.length > 0) return calls;
+  }
 
-const SYSTEM_PROMPT = `You are Comi AI — the smart assistant built into Comix Lounge, a manga reader app.
+  // 2. Try XML with <tool_call> ... </tool_call> (both the arg_key/arg_value and the function=.../parameter=... variants)
+  // First, extract all <tool_call> blocks.
+  const toolCallRegex = /<tool_call>\s*([\s\S]*?)<\/tool_call>/g;
+  let match;
+  const calls: any[] = [];
+  while ((match = toolCallRegex.exec(content)) !== null) {
+    const body = match[1].trim();
+    // Try to parse function name and parameters.
+    let name: string | null = null;
+    const args: Record<string, any> = {};
 
-You have tools to:
-- List, browse, search, and filter all available manga/manhwa/manhua/hentai sources
-- Global search across all sources at once
-- Browse by tag/genre (e.g. "hentai", "ecchi", "romance", "action")
-- Get full manga details and chapter lists
-- Manage the user's library: add titles, create/delete categories, move manga between categories
+    // Variant A: <function=...> and <parameter=...>
+    const funcMatch = body.match(/<function=(\w+)>/);
+    if (funcMatch) {
+      name = funcMatch[1];
+      // Extract parameters: <parameter=key>value</parameter>
+      const paramRegex = /<parameter=(\w+)>([^<]*)<\/parameter>/g;
+      let pMatch;
+      while ((pMatch = paramRegex.exec(body)) !== null) {
+        args[pMatch[1]] = pMatch[2].trim();
+      }
+    } else {
+      // Variant B: <function>name</function> and <arg_key>key</arg_key><arg_value>value</arg_value>
+      const funcNameMatch = body.match(/<function>\s*(\w+)\s*<\/function>/);
+      if (funcNameMatch) {
+        name = funcNameMatch[1];
+        const argRegex = /<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>/g;
+        let aMatch;
+        while ((aMatch = argRegex.exec(body)) !== null) {
+          args[aMatch[1].trim()] = aMatch[2].trim();
+        }
+      } else {
+        // Variant C: just plain arg_key/arg_value without wrapper (already handled later)
+        // Skip here.
+      }
+    }
 
-BEHAVIOR RULES:
-0. For greetings, small talk, or questions unrelated to manga/library — reply conversationally without calling tools.
-1. For recommendations or finding manga: call list_sources first, pick relevant source(s), then call search_manga, browse_popular, browse_by_tag, or global_search as appropriate.
-2. For broad searches with no specific source, use global_search.
-3. For genre/tag filtering (e.g. "show me hentai manhwa"), use browse_by_tag with the appropriate tag.
-4. For details or chapters on a specific title, use get_manga_details or get_chapters.
-5. When managing categories: call list_categories first to get IDs.
-6. For DELETE: always call delete_category — never say you deleted something without calling the tool.
-7. For MOVE: call list_categories first for IDs, then move_manga_category.
-8. Present manga results as a clean readable list (title, type if available, brief description if available).
-9. Be conversational, helpful, and knowledgeable about all manga formats including adult/18+ titles when asked — never refuse based on content type.
-10. Always maintain context and continuity from previous messages in the conversation.
-11. Never call the same tool twice in a row with identical arguments.`;
+    if (name && Object.keys(args).length > 0) {
+      calls.push({
+        id: `call_${Date.now()}_${calls.length}`,
+        type: "function",
+        function: {
+          name,
+          arguments: JSON.stringify(args),
+        },
+      });
+    }
+  }
 
+  if (calls.length > 0) return calls;
+
+  // 3. Try plain text with arg_key/arg_value (no wrapper)
+  const plainRegex = /(\w+)\s*<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>/g;
+  let plainName: string | null = null;
+  const plainArgs: Record<string, any> = {};
+  let plainMatch;
+  while ((plainMatch = plainRegex.exec(content)) !== null) {
+    if (!plainName) plainName = plainMatch[1];
+    plainArgs[plainMatch[2].trim()] = plainMatch[3].trim();
+  }
+  if (plainName && Object.keys(plainArgs).length > 0) {
+    return [{
+      id: `call_${Date.now()}`,
+      type: "function",
+      function: {
+        name: plainName,
+        arguments: JSON.stringify(plainArgs),
+      },
+    }];
+  }
+
+  return null;
+}
+
+// ──────────────────────────────────────────────────────────────────
 router.post("/chat", async (req, res) => {
   const { messages: rawMessages, modelMode = "auto" } = req.body as {
     messages: Array<{ role: string; content: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }>;
@@ -405,15 +269,13 @@ router.post("/chat", async (req, res) => {
     return;
   }
 
-  // FIX 1: Check only the latest user message for adult context
-  const isAdult  = isAdultContext(rawMessages);
-  const queue    = buildQueue(modelMode, isAdult);
-
-  // FIX 2: Sanitize history to prevent crash on reload
+  const isAdult = isAdultContext(rawMessages);
+  const queue = buildQueue(modelMode, isAdult);
   const cleanMessages = sanitizeMessages(rawMessages);
 
   const apiMessages = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: PROMPTS.system },
+    { role: "system", content: PROMPTS.skills },
     ...cleanMessages,
   ];
 
@@ -426,40 +288,53 @@ router.post("/chat", async (req, res) => {
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
+      const body: any = {
+        model: provider.model,
+        messages: apiMessages,
+        temperature: provider.isUncensored ? 0.7 : 0.3,
+        max_tokens: 4000,
+      };
+
       const aiRes = await fetch(provider.url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${provider.key}`,
         },
-        body: JSON.stringify({
-          model: provider.model,
-          messages: apiMessages,
-          tools: TOOLS,
-          tool_choice: "auto",
-          temperature: provider.isUncensored ? 0.7 : 0.3,
-          max_tokens: 1500,
-        }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 
       if (!aiRes.ok) {
         const errText = await aiRes.text();
+        if (aiRes.status === 404) {
+          throw new Error(`Model ${provider.model} not found – skipping.`);
+        }
         throw new Error(`${aiRes.status} — ${errText.slice(0, 300)}`);
       }
 
-      const data   = await aiRes.json() as any;
+      const data = await aiRes.json() as any;
       const choice = data.choices?.[0];
-      const content: string | null = choice?.message?.content ?? null;
+      let content: string | null = choice?.message?.content ?? null;
 
       if (isBlocked(content)) {
         throw new Error(`Content blocked by ${provider.name} alignment filter.`);
       }
 
+      // ── Use the enhanced parser ──
+      let tool_calls = choice?.message?.tool_calls ?? null;
+      if (!tool_calls && content) {
+        const parsed = parseToolCalls(content);
+        if (parsed) {
+          tool_calls = parsed;
+          content = null; // hide raw text from user
+        }
+      }
+
       res.json({
         content,
-        tool_calls: choice?.message?.tool_calls ?? null,
-        provider:   provider.name,
+        tool_calls,
+        provider: provider.name,
       });
       return;
     } catch (err: any) {

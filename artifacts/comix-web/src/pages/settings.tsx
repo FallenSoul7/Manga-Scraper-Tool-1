@@ -233,6 +233,13 @@ export default function SettingsPage() {
                 />
               </SettingRow>
               <Separator />
+              <SettingRow label="Show 18+ Badge on Covers" description="Red label on adult manga thumbnails">
+                <Switch
+                  checked={settings.showNsfwBadge}
+                  onCheckedChange={(checked) => updateSettings({ showNsfwBadge: checked })}
+                />
+              </SettingRow>
+              <Separator />
               <SettingRow label="Show Alternative Titles" description="Japanese/Korean names on details">
                 <Switch
                   checked={settings.showAltNames}

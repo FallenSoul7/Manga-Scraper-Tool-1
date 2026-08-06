@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { proxyImage } from "@/lib/utils";
 import { Check } from "lucide-react";
 import type { MangaSummary } from "@workspace/api-client-react";
+import { useSettings } from "@/hooks/use-settings";
 
 interface MangaCardProps {
   manga: MangaSummary;
@@ -30,6 +31,9 @@ function sourceLabel(sourceId: string): string {
     "all.danbooru": "Danbooru",
     "all.hentaifox": "HentaiFox",
     "en.ninehentai": "9Hentai",
+    "en.onlythebesthentai": "OnlyTheBestHentai",
+    "en.pandachaika": "PandaChaika",
+    "video.hentaiyoga": "HentaiYoga",
   };
   if (known[sourceId]) return known[sourceId];
   const slug = sourceId.split(".").pop() ?? sourceId;
@@ -45,6 +49,7 @@ export const MangaCard = memo(function MangaCard({
   onNavigate,
   showSourceBadge,
 }: MangaCardProps) {
+  const { settings } = useSettings();
   const inner = (
     <div className="group relative flex flex-col gap-2 cursor-pointer select-none">
       <div
@@ -65,7 +70,7 @@ export const MangaCard = memo(function MangaCard({
           loading="lazy"
           draggable={false}
         />
-        {manga.isNsfw && (
+        {manga.isNsfw && settings.showNsfwBadge && (
           <div className="absolute top-2 right-2 rounded-md bg-destructive/90 px-1.5 py-0.5 text-[10px] font-semibold text-destructive-foreground backdrop-blur-sm">
             18+
           </div>

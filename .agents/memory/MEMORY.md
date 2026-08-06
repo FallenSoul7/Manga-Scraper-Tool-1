@@ -1,5 +1,8 @@
 - [Comix Lounge port routing](comix-port-routing.md) — API server owns port 8080 (external 80); must proxy non-API reqs to Vite (19597) in dev.
-- [AsuraScans source](asurascans-source.md) — uses api.asurascans.com/api; chapters need public_url slug (different from API slug) for web URLs.
+- [Koofr local URL proxy bug](koofr-local-url-proxy.md) — proxyImage() must skip /api/ and /public/ paths; esbuild external list needs all runtime deps listed explicitly.
+- [AsuraScans source](asurascans-source.md) — uses api.asurascans.com/api; chapters use ch.slug (e.g. "chapter-318") not ch.number for page URLs.
+- [OTBH image proxying](otbh-proxy.md) — OnlyTheBestHentai direct WP CDN URLs get hotlink-blocked; must wrap all images via /api/image-proxy with BASE referer.
+- [MangaDex chapters language fallback](mangadex-chapters.md) — chapters endpoint filters English first; falls back to all languages if 0 results so non-EN manga show chapters.
 - [ComickFan pages blocked](comickfan-pages.md) — chapter pages unfixable from server: JS-rendered shell, api.comick.fun blocked by Cloudflare.
 - [Webtoons source](webtoons-source.md) — episode list via m.webtoons.com mobile API; pages via HTML viewer; 290+ panels/episode is normal for vertical scroll.
 - [mkissa.to blocked](mkissa-blocked.md) — SvelteKit SSR app; API at api.mkissa.net returns CF 400/403; __data.json returns null nodes; no RSS/sitemap; no X-Frame-Options (may allow iframe). Completely unscrapable server-side.

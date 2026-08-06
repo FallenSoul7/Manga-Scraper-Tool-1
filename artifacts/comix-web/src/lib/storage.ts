@@ -29,6 +29,9 @@ const SavedMangaSchema = z.object({
   sourceId: z.string().optional(),
   downloadedAt: z.number().optional(),
   addedAt: z.number(),
+  // updatedAt is stamped on every mutation so the cloud merge can always pick
+  // the truly-newest version of a manga entry, regardless of addedAt.
+  updatedAt: z.number().optional(),
   categoryIds: z.array(z.string()),
   lastChapterCountSeen: z.number(),
   pendingUpdates: z.array(PendingChapterSchema).default([]),
@@ -139,6 +142,9 @@ const StoreStateSchema = z.object({
   // Real, tracked time spent on the reader page (in milliseconds). The reader
   // adds to this every few seconds while the page is visible.
   readingTimeMs: z.number().default(0),
+  // Per-source reading direction overrides. When a source has an entry here
+  // the reader uses it instead of the global reader.direction setting.
+  sourceReaderDirections: z.record(z.string(), ReaderDirectionSchema).default({}),
 });
 export type StoreState = z.infer<typeof StoreStateSchema>;
 
@@ -167,6 +173,7 @@ const DEFAULT_STATE: StoreState = {
   installedSources: { [DEFAULT_SOURCE.id]: DEFAULT_SOURCE },
   activeSourceId: DEFAULT_SOURCE.id,
   readingTimeMs: 0,
+  sourceReaderDirections: {},
 };
 
 // --- Store Implementation ---
@@ -236,6 +243,14 @@ function loadState(): StoreState {
       // Make sure activeSourceId points at an installed source
       if (!validated.data.installedSources[validated.data.activeSourceId]) {
         validated.data.activeSourceId = DEFAULT_SOURCE.id;
+      }
+      // Migration: rename "My Koofr Library" → "K-Cafe" and ensure it is not pinned
+      if (validated.data.installedSources["local.koofr"]) {
+        validated.data.installedSources["local.koofr"] = {
+          ...validated.data.installedSources["local.koofr"],
+          name: "K-Cafe",
+          isPinned: false,
+        };
       }
       return validated.data;
     }
@@ -336,7 +351,7 @@ export const storeActions = {
       ...memoryState,
       library: {
         ...memoryState.library,
-        [manga.id]: manga
+        [manga.id]: { ...manga, updatedAt: Date.now() }
       }
     });
   },
@@ -358,7 +373,7 @@ export const storeActions = {
       ...memoryState,
       library: {
         ...memoryState.library,
-        [mangaId]: { ...manga, categoryIds }
+        [mangaId]: { ...manga, categoryIds, updatedAt: Date.now() }
       }
     });
   },
@@ -412,9 +427,24 @@ export const storeActions = {
     saveState({ ...memoryState, library: newLib });
   },
 
-  setLibrary(newLibrary: Record<string, SavedManga>) {
+    setLibrary(newLibrary: Record<string, SavedManga>) {
     saveState({ ...memoryState, library: newLibrary });
   },
+
+  // ✅ NEW: Restores library, categories, and extensions from the cloud
+  restoreCloudSync(data: { 
+    library?: Record<string, SavedManga>; 
+    categories?: Category[]; 
+    installedSources?: Record<string, InstalledSource> 
+  }) {
+    saveState({
+      ...memoryState,
+      library: data.library || memoryState.library,
+      categories: data.categories || memoryState.categories,
+      installedSources: data.installedSources || memoryState.installedSources,
+    });
+  },
+
 
   addCategory(name: string): Category {
     const id = Math.random().toString(36).substring(2, 9);
@@ -452,8 +482,9 @@ export const storeActions = {
   // Batch-patch any fields on multiple library entries in a single state write.
   batchPatchLibrary(patches: Array<{ mangaId: string; patch: Partial<Pick<SavedManga, 'categoryIds' | 'sourceId'>> }>) {
     const newLib = { ...memoryState.library };
+    const now = Date.now();
     for (const { mangaId, patch } of patches) {
-      if (newLib[mangaId]) newLib[mangaId] = { ...newLib[mangaId], ...patch };
+      if (newLib[mangaId]) newLib[mangaId] = { ...newLib[mangaId], ...patch, updatedAt: now };
     }
     saveState({ ...memoryState, library: newLib });
   },
@@ -593,6 +624,18 @@ export const storeActions = {
     saveState({
       ...memoryState,
       reader: { ...memoryState.reader, ...updates }
+    });
+  },
+
+  /** Save a reading-direction override for a specific source.
+   *  Only affects that source; other sources keep their global setting. */
+  setSourceReaderDirection(sourceId: string, direction: ReaderDirection) {
+    saveState({
+      ...memoryState,
+      sourceReaderDirections: {
+        ...(memoryState.sourceReaderDirections ?? {}),
+        [sourceId]: direction,
+      },
     });
   },
   

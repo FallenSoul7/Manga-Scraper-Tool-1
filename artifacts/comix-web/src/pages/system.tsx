@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import {
   Settings, Download, BarChart3, Info, FolderOpen, Sparkles,
-  Shield, Trash2, AppWindow, LogIn,
+  Shield, Trash2, AppWindow, LogIn, Wand2,
 } from "lucide-react";
 
 interface SystemBlock {
@@ -61,6 +61,13 @@ const blocks: SystemBlock[] = [
     label: "Comi AI",
     description: "AI chat assistant — sort your Tachimanga library by genre, tags, or any rule.",
     icon: Sparkles,
+    highlight: true,
+  },
+  {
+    href: "/generation",
+    label: "Generation",
+    description: "AI art drawing, live animation, and manga knowledge training.",
+    icon: Wand2,
     highlight: true,
   },
   {

@@ -1,3 +1,4 @@
+// sources/mangadex.ts
 import axios, { type AxiosInstance } from "axios";
 import type {
   MangaSource,
@@ -14,8 +15,7 @@ const API_URL = "https://api.mangadex.org";
 const COVER_URL = "https://uploads.mangadex.org/covers";
 const PER_PAGE = 32;
 
-/** Custom param serialiser so arrays become `key[]=a&key[]=b` and nested
- *  objects become `key[sub]=val` — exactly what the MangaDex API expects. */
+/** Serialize params for MangaDex: arrays → `key[]=a&key[]=b`, objects → `key[sub]=val` */
 function serializeParams(params: Record<string, unknown>): string {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -35,7 +35,7 @@ function serializeParams(params: Record<string, unknown>): string {
 
 const client: AxiosInstance = axios.create({
   baseURL: API_URL,
-  timeout: 25000,
+  timeout: 30000,
   headers: {
     "User-Agent": "Comix Lounge / 1.0 (web reader)",
     Accept: "application/json",
@@ -44,6 +44,7 @@ const client: AxiosInstance = axios.create({
   paramsSerializer: { serialize: serializeParams },
 });
 
+// ── Types ──────────────────────────────────────────────────────────────
 interface MdRel {
   id: string;
   type: string;
@@ -78,20 +79,24 @@ interface MdList<T> {
   offset: number;
 }
 
+// ── Helpers ─────────────────────────────────────────────────────────────
 function pickTitle(m: MdManga): string {
   const t = m.attributes.title;
   return t.en ?? Object.values(t)[0] ?? "(Untitled)";
 }
+
 function pickDesc(m: MdManga): string {
   const d = m.attributes.description;
   return d.en ?? Object.values(d)[0] ?? "";
 }
+
 function coverUrl(m: MdManga): string {
   const cover = m.relationships.find((r) => r.type === "cover_art");
   const filename = cover?.attributes?.["fileName"] as string | undefined;
   if (!filename) return "";
   return `${COVER_URL}/${m.id}/${filename}.512.jpg`;
 }
+
 function pickAuthors(m: MdManga, type: "author" | "artist"): string {
   return m.relationships
     .filter((r) => r.type === type)
@@ -99,6 +104,7 @@ function pickAuthors(m: MdManga, type: "author" | "artist"): string {
     .filter(Boolean)
     .join(", ");
 }
+
 function statusToString(s: string): string {
   switch (s) {
     case "ongoing": return "Ongoing";
@@ -108,9 +114,11 @@ function statusToString(s: string): string {
     default: return "Unknown";
   }
 }
+
 function isNsfw(m: MdManga): boolean {
   return ["pornographic", "erotica"].includes(m.attributes.contentRating);
 }
+
 function getGenres(m: MdManga): string[] {
   const out: string[] = [];
   if (m.attributes.publicationDemographic) {
@@ -126,6 +134,7 @@ function getGenres(m: MdManga): string[] {
   if (isNsfw(m)) out.push("NSFW");
   return Array.from(new Set(out));
 }
+
 function toSummary(m: MdManga) {
   return {
     id: m.id,
@@ -138,7 +147,7 @@ function toSummary(m: MdManga) {
 
 function buildListParams(
   opts: ListOptions,
-  order: Record<string, string>,
+  order: Record<string, string> | undefined,
 ): Record<string, unknown> {
   const params: Record<string, unknown> = {
     limit: PER_PAGE,
@@ -147,10 +156,10 @@ function buildListParams(
     contentRating: opts.nsfw
       ? ["safe", "suggestive", "erotica", "pornographic"]
       : ["safe", "suggestive"],
-    order,
   };
 
-  // Tag filtering: IDs prefixed with "-" are excluded, the rest included.
+  if (order) params.order = order;
+
   if (opts.tagIds && opts.tagIds.length > 0) {
     const included = opts.tagIds.filter((t) => !t.startsWith("-"));
     const excluded = opts.tagIds.filter((t) => t.startsWith("-")).map((t) => t.slice(1));
@@ -161,7 +170,7 @@ function buildListParams(
   return params;
 }
 
-// Cache tags so we don't hammer the endpoint.
+// ── Tag cache ──────────────────────────────────────────────────────────
 let cachedMdTags: SourceTag[] | null = null;
 
 export const MangaDexSource: MangaSource = {
@@ -171,7 +180,7 @@ export const MangaDexSource: MangaSource = {
   isNsfw: false,
   imageReferer: "https://mangadex.org/",
 
-  async popular(opts) {
+  async popular(opts): Promise<MangaListResponse> {
     const res = await client.get<MdList<MdManga>>("/manga", {
       params: buildListParams(opts, { followedCount: "desc" }),
     });
@@ -183,7 +192,7 @@ export const MangaDexSource: MangaSource = {
     };
   },
 
-  async latest(opts) {
+  async latest(opts): Promise<MangaListResponse> {
     const res = await client.get<MdList<MdManga>>("/manga", {
       params: buildListParams(opts, { latestUploadedChapter: "desc" }),
     });
@@ -195,10 +204,10 @@ export const MangaDexSource: MangaSource = {
     };
   },
 
-  async search(query, opts): Promise<MangaListResponse> {
-    const res = await client.get<MdList<MdManga>>("/manga", {
-      params: { ...buildListParams(opts, { relevance: "desc" }), title: query },
-    });
+  async search(query: string, opts: ListOptions): Promise<MangaListResponse> {
+    const params = buildListParams(opts, { relevance: "desc" });
+    params.title = query;
+    const res = await client.get<MdList<MdManga>>("/manga", { params });
     if (res.status >= 400) throw new Error(`MangaDex error ${res.status}`);
     return {
       items: res.data.data.map(toSummary),
@@ -210,8 +219,10 @@ export const MangaDexSource: MangaSource = {
   async tags(): Promise<SourceTag[]> {
     if (cachedMdTags) return cachedMdTags;
     try {
-      const res = await client.get<{ data: Array<{ id: string; attributes: { name: Record<string, string>; group: string } }> }>("/manga/tag");
-      if (res.status >= 400) return [];
+      const res = await client.get<{
+        data: Array<{ id: string; attributes: { name: Record<string, string>; group: string } }>;
+      }>("/manga/tag");
+      if (res.status >= 400 || !res.data?.data) return [];
       const tags: SourceTag[] = res.data.data
         .filter((t) => t.attributes?.name?.en)
         .map((t) => ({
@@ -228,7 +239,7 @@ export const MangaDexSource: MangaSource = {
     }
   },
 
-  async details(id, opts: DetailOptions): Promise<MangaDetail> {
+  async details(id: string, opts: DetailOptions): Promise<MangaDetail> {
     const res = await client.get<MdResp<MdManga>>(`/manga/${id}`, {
       params: { includes: ["cover_art", "author", "artist"] },
     });
@@ -260,7 +271,7 @@ export const MangaDexSource: MangaSource = {
     };
   },
 
-  async chapters(mangaId): Promise<ChapterListResponse> {
+  async chapters(mangaId: string): Promise<ChapterListResponse> {
     interface MdChapter {
       id: string;
       attributes: {
@@ -272,29 +283,32 @@ export const MangaDexSource: MangaSource = {
       };
       relationships: MdRel[];
     }
-    const all: MdChapter[] = [];
-    let offset = 0;
-    const limit = 100;
-    let total = 0;
-    do {
-      const res = await client.get<MdList<MdChapter>>(
-        `/manga/${mangaId}/feed`,
-        {
-          params: {
-            limit,
-            offset,
-            translatedLanguage: ["en"],
-            order: { chapter: "desc", volume: "desc" },
-            includes: ["scanlation_group"],
-            contentRating: ["safe", "suggestive", "erotica", "pornographic"],
-          },
-        },
-      );
-      if (res.status >= 400) throw new Error(`MangaDex error ${res.status}`);
-      total = res.data.total;
-      all.push(...res.data.data);
-      offset += limit;
-    } while (offset < total && offset < 1000);
+
+    async function fetchFeed(langs?: string[]): Promise<MdChapter[]> {
+      const all: MdChapter[] = [];
+      let offset = 0;
+      const limit = 100;
+      let total = 0;
+      do {
+        const params: Record<string, unknown> = {
+          limit,
+          offset,
+          order: { chapter: "desc", volume: "desc" },
+          includes: ["scanlation_group"],
+          contentRating: ["safe", "suggestive", "erotica", "pornographic"],
+        };
+        if (langs && langs.length > 0) params.translatedLanguage = langs;
+        const res = await client.get<MdList<MdChapter>>(`/manga/${mangaId}/feed`, { params });
+        if (res.status >= 400) throw new Error(`MangaDex error ${res.status}`);
+        total = res.data.total;
+        all.push(...res.data.data);
+        offset += limit;
+      } while (offset < total && offset < 1000);
+      return all;
+    }
+
+    // Fetch all languages so the frontend language selector can work
+    const all = await fetchFeed();
 
     return {
       items: all.map((c) => {
@@ -311,6 +325,7 @@ export const MangaDexSource: MangaSource = {
           title,
           scanlator,
           date: Math.floor(new Date(c.attributes.publishAt).getTime() / 1000),
+          lang: c.attributes.translatedLanguage || undefined,
         };
       }),
     };

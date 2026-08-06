@@ -259,7 +259,12 @@ export default function SourceBrowsePage() {
   }, [searchInput]);
 
   const appliedTagKey = JSON.stringify(appliedTagState);
-  useEffect(() => { setFilterPage(1); setFilterItems([]); }, [searchQuery, appliedTagKey]);
+  // Skip on first mount so restored snapshot items + scroll position aren't wiped
+  const filterClearFirstMount = useRef(true);
+  useEffect(() => {
+    if (filterClearFirstMount.current) { filterClearFirstMount.current = false; return; }
+    setFilterPage(1); setFilterItems([]);
+  }, [searchQuery, appliedTagKey]);
 
   const includedTagIds = useMemo(
     () => Object.entries(appliedTagState).filter(([, s]) => s === "include").map(([id]) => id),
@@ -712,18 +717,36 @@ interface GridProps {
 
 function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridProps) {
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const hasNextRef = useRef(hasNext);
+  const fetchingRef = useRef(fetching);
+  const onLoadMoreRef = useRef(onLoadMore);
 
-  // Auto-load more when sentinel scrolls into view
+  // Keep refs in sync so the observer callback always reads the latest values
+  // without needing to be recreated (which was the root cause of the stuck-at-20 bug).
+  useEffect(() => { hasNextRef.current = hasNext; }, [hasNext]);
+  useEffect(() => { fetchingRef.current = fetching; }, [fetching]);
+  useEffect(() => { onLoadMoreRef.current = onLoadMore; }, [onLoadMore]);
+
+  // Create (or recreate) the observer whenever items go from 0→>0.
+  // Previously the effect ran with empty deps and the sentinel wasn't in the DOM
+  // yet (loading=true), so the observer was never set up. Now we re-run when
+  // hasItems changes so the sentinel is guaranteed to exist.
+  const hasItems = items.length > 0;
   useEffect(() => {
+    if (!hasItems) return;
     const el = sentinelRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting && hasNext && !fetching) onLoadMore(); },
+      ([entry]) => {
+        if (entry.isIntersecting && hasNextRef.current && !fetchingRef.current) {
+          onLoadMoreRef.current();
+        }
+      },
       { rootMargin: "400px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasNext, fetching, onLoadMore]);
+  }, [hasItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -794,9 +817,12 @@ function TagPicker({ tags, initialTagState, onApply, onClearAndClose }: TagPicke
 
   const grouped = useMemo(() => {
     const q = tagSearch.trim().toLowerCase();
+    // Normalize both sides: strip spaces/underscores so "rimjob" matches "rim_job" / "rim job"
+    const normalize = (s: string) => s.toLowerCase().replace(/[\s_]+/g, "");
+    const qNorm = normalize(q);
     const map = new Map<string, SourceTag[]>();
     for (const t of tags) {
-      if (q && !t.name.toLowerCase().includes(q)) continue;
+      if (q && !normalize(t.name).includes(qNorm) && !normalize(t.id).includes(qNorm)) continue;
       const key = t.group ?? "Tags";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);

@@ -27,7 +27,8 @@
     "passport-google-oauth20": "^2.0.0",
     "pino": "^9.14.0",
     "pino-http": "^10.5.0",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "unzipper": "^0.12.5"
   },
   "devDependencies": {
     "@types/connect-pg-simple": "^7.0.3",
@@ -38,6 +39,7 @@
     "@types/node": "catalog:",
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
+    "@types/unzipper": "^0.10.11",
     "esbuild": "0.27.3",
     "esbuild-plugin-pino": "^2.3.3",
     "pino-pretty": "^13.1.3",

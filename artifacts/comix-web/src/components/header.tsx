@@ -1,5 +1,5 @@
 import { Link, useLocation, useSearch } from "wouter";
-import { Search, Library, Clock, RefreshCw, Sun, Moon, Laptop, X, Boxes, LayoutGrid, Trash2 } from "lucide-react";
+import { Search, Library, Clock, RefreshCw, Sun, Moon, Laptop, X, Boxes, LayoutGrid, Trash2, Cloud, CloudOff, CheckCircle2 } from "lucide-react";
 import { Input } from "./ui/input";
 import { useEffect, useState } from "react";
 import { useUpdatesCount } from "@/hooks/use-updates-count";
@@ -8,6 +8,8 @@ import { Button } from "./ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { useHistoryHeader } from "@/lib/header-history";
 import { usePwa } from "@/lib/pwa-context";
+import { useSyncStatus } from "@/lib/sync-status";
+import { getAccessToken } from "@/lib/auth-cache";
 
 const PAGE_TITLES: Record<string, string> = {
   "/updates": "Updates",
@@ -18,6 +20,35 @@ const PAGE_TITLES: Record<string, string> = {
   "/stats": "Stats",
   "/login": "Account",
 };
+
+function SyncIndicator() {
+  const status = useSyncStatus();
+  const isLoggedIn = !!getAccessToken();
+  if (!isLoggedIn || status === "idle") return null;
+
+  if (status === "syncing") {
+    return (
+      <span title="Syncing your library…" className="flex items-center text-muted-foreground">
+        <Cloud className="h-4 w-4 animate-pulse" />
+      </span>
+    );
+  }
+  if (status === "done") {
+    return (
+      <span title="Library synced" className="flex items-center text-green-500">
+        <CheckCircle2 className="h-4 w-4" />
+      </span>
+    );
+  }
+  if (status === "error") {
+    return (
+      <span title="Sync failed — offline?" className="flex items-center text-muted-foreground/50">
+        <CloudOff className="h-4 w-4" />
+      </span>
+    );
+  }
+  return null;
+}
 
 export function Header() {
   const [location, setLocation] = useLocation();
@@ -135,6 +166,8 @@ export function Header() {
           <div className="flex-1 md:hidden" />
 
           <div className="flex items-center gap-1 shrink-0">
+            <SyncIndicator />
+
             {/* Mobile sources search button */}
             {isSources && (
               <Button
