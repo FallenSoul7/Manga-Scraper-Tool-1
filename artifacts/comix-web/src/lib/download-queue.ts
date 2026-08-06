@@ -130,7 +130,12 @@ async function runDownload(id: string): Promise<void> {
     if (!pagesRes.ok || handle.cancelled) throw new Error('pages fetch failed');
 
     const raw = await pagesRes.json();
-    const pageUrls: string[] = Array.isArray(raw) ? raw : (raw.pages ?? raw.data ?? []);
+    // API returns PageListResponse: { chapterId, pages: [{index, url}] }
+    // Extract the .url string from each page object (or pass through if already a string).
+    const rawPages: unknown[] = Array.isArray(raw) ? raw : (raw.pages ?? raw.data ?? []);
+    const pageUrls: string[] = rawPages
+      .map((p: unknown) => (typeof p === 'string' ? p : (p as { url: string }).url))
+      .filter(Boolean);
 
     if (pageUrls.length === 0) throw new Error('empty page list');
     mutateItem(id, { pagesTotal: pageUrls.length });

@@ -28,7 +28,12 @@ export async function saveChapterToFile(opts: SaveToFileOptions): Promise<void> 
   if (!pagesRes.ok) throw new Error(`Pages request failed: ${pagesRes.status}`);
 
   const raw      = await pagesRes.json();
-  const pageUrls: string[] = Array.isArray(raw) ? raw : (raw.pages ?? raw.data ?? []);
+  // API returns PageListResponse: { chapterId, pages: [{index, url}] }
+  // Extract the .url string from each page object (or pass through if already a string).
+  const rawPages: unknown[] = Array.isArray(raw) ? raw : (raw.pages ?? raw.data ?? []);
+  const pageUrls: string[] = rawPages
+    .map((p: unknown) => (typeof p === 'string' ? p : (p as { url: string }).url))
+    .filter(Boolean);
   if (pageUrls.length === 0) throw new Error('No pages found for this chapter');
 
   // ── 2. Create ZIP ─────────────────────────────────────────────────────────
