@@ -19,7 +19,7 @@ import {
   BookOpen, Trash2, HardDrive, WifiOff,
   AlertCircle, CheckCircle2,
 } from "lucide-react";
-import { proxyImage } from "@/lib/utils";
+import { proxyImage, readerUrl } from "@/lib/utils";
 import { format } from "date-fns";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -298,7 +298,7 @@ function OfflineLibraryTab() {
             className="flex items-center gap-3 rounded-2xl bg-card border border-border/50 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
             onClick={() => {
               setLocation(
-                `/reader/${chapter.chapterId}?mangaId=${chapter.mangaId}&sourceId=${chapter.sourceId}&offline=1`
+                readerUrl(chapter.chapterId, chapter.mangaId, chapter.sourceId, true)
               );
             }}
           >
@@ -335,7 +335,7 @@ function OfflineLibraryTab() {
                   onClick={e => {
                     e.stopPropagation();
                     setLocation(
-                      `/reader/${chapter.chapterId}?mangaId=${chapter.mangaId}&sourceId=${chapter.sourceId}&offline=1`
+                      readerUrl(chapter.chapterId, chapter.mangaId, chapter.sourceId, true)
                     );
                   }}
                 >

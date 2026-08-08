@@ -8,7 +8,7 @@ import {
   getGetMangaDetailsQueryKey,
   setExtraHeader,
 } from "@workspace/api-client-react";
-import { proxyImage } from "@/lib/utils";
+import { proxyImage, readerUrl } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
 // ── Keep this import ─────────────────────────────────────────────────────
 import { getProxiedImageUrl } from "@/lib/vpn";
@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 
 export default function Reader() {
   const [, params] = useRoute("/reader/:chapterId");
-  const chapterId = params?.chapterId || "";
+  const chapterId = params?.chapterId ? decodeURIComponent(params.chapterId) : "";
   const searchString = useSearch();
   const mangaId = new URLSearchParams(searchString).get("mangaId");
   const sourceIdFromUrl = new URLSearchParams(searchString).get("sourceId");
@@ -78,6 +78,7 @@ export default function Reader() {
   const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(currentProgress?.lastPageRead || 0);
   const [loadedImgs, setLoadedImgs] = useState<Record<number, boolean>>({});
+  const [failedImgs, setFailedImgs] = useState<Record<number, boolean>>({});
 
   type AppendedChapter = { id: string; number: number; title: string; pages: { index: number; url: string }[] };
   const [appendedChapters, setAppendedChapters] = useState<AppendedChapter[]>([]);
@@ -90,7 +91,7 @@ export default function Reader() {
   // Stores measured heights of rendered pages so off-screen placeholders keep correct scroll position
   const pageHeightsRef = useRef<Record<number, number>>({});
 
-  const { data: pagesData, isLoading: pagesLoading } = useGetChapterPages(chapterId, {
+  const { data: pagesData, isLoading: pagesLoading, error: pagesError } = useGetChapterPages(chapterId, {
     query: {
       // Skip API when reading an offline chapter — pages come from IndexedDB
       enabled: !isOfflineMode && !!chapterId && chapterId !== "0",
@@ -102,6 +103,7 @@ export default function Reader() {
   const effectivePages: { index: number; url: string }[] =
     (isOfflineMode && offlinePages) ? offlinePages : (pagesData?.pages ?? []);
   const effectiveLoading = isOfflineMode ? offlineLoading : pagesLoading;
+  const effectiveError = isOfflineMode ? null : pagesError;
 
   const chapterFetchParams = { dedupe: false };
   const { data: chaptersData } = useGetChapters(mangaId || "", chapterFetchParams, {
@@ -263,8 +265,11 @@ export default function Reader() {
     const nc = nextChapter;
     appendedIdsRef.current.add(nc.id);
     setLoadingNextChapter(true);
-    fetch(`/api/chapter/${nc.id}/pages`, { headers: sourceId ? { "X-Source": sourceId } : {} })
-      .then(r => r.json())
+    fetch(`/api/chapter/${encodeURIComponent(nc.id)}/pages`, { headers: sourceId ? { "X-Source": sourceId } : {} })
+      .then(r => {
+        if (!r.ok) throw new Error(`Chapter pages request failed (${r.status})`);
+        return r.json();
+      })
       .then((data: { pages: { index: number; url: string }[] }) => {
         setAppendedChapters(prev => [...prev, { id: nc.id, number: nc.number, title: nc.title ?? '', pages: data.pages }]);
       })
@@ -273,7 +278,7 @@ export default function Reader() {
   }, [currentPage, nextChapter, pagesData, loadingNextChapter, effectiveDirection]);
 
   const navigateToChapter = (id: string) => {
-    setLocation(`/reader/${id}?mangaId=${mangaId}${sourceId ? `&sourceId=${sourceId}` : ""}`);
+    setLocation(readerUrl(id, mangaId || "", sourceId));
   };
 
   const goBack = () => {
@@ -311,6 +316,21 @@ export default function Reader() {
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white/50">
         <Loader2 className="h-8 w-8 animate-spin mb-4" />
         <p>Loading chapter pages...</p>
+      </div>
+    );
+  }
+
+  if (effectiveError) {
+    return (
+      <div className="min-h-screen bg-[#1a1a1a] flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="text-4xl">⚠️</div>
+        <h2 className="text-white text-lg font-bold">Couldn’t load this chapter</h2>
+        <p className="text-white/60 text-sm max-w-md">
+          {effectiveError instanceof Error ? effectiveError.message : "The source returned an error while loading the chapter pages."}
+        </p>
+        <Button variant="outline" className="mt-2 text-white border-white/30 hover:bg-white/10" onClick={goBack}>
+          Go Back
+        </Button>
       </div>
     );
   }
@@ -547,20 +567,30 @@ export default function Reader() {
                   Loader overlays the image while it loads — no opacity-0+absolute swap. */}
               {isWebtoon ? (
                 <div className="relative w-full" style={{ minHeight: isLoaded ? undefined : '40vw' }}>
-                  <img
-                    src={getProxiedImageUrl(page.url, sourceId ?? "")}
-                    alt={`Page ${page.index}`}
-                    loading={loadStrategy}
-                    decoding="async"
-                    onLoad={(e) => {
-                      const el = (e.target as HTMLImageElement).parentElement;
-                      if (el) pageHeightsRef.current[idx] = el.offsetHeight;
-                      setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
-                    }}
-                    onError={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
-                    style={{ display: 'block', width: '100%', height: 'auto', margin: 0, padding: 0, verticalAlign: 'top', lineHeight: 0 }}
-                  />
-                  {!isLoaded && (
+                  {failedImgs[idx] ? (
+                    <div className="min-h-[40vw] flex flex-col items-center justify-center gap-2 bg-black text-white/60 text-sm px-4 text-center">
+                      <span className="text-2xl">⚠️</span>
+                      <span>Page {idx + 1} could not be loaded</span>
+                    </div>
+                  ) : (
+                    <img
+                      src={getProxiedImageUrl(page.url, sourceId ?? "")}
+                      alt={`Page ${page.index}`}
+                      loading={loadStrategy}
+                      decoding="async"
+                      onLoad={(e) => {
+                        const el = (e.target as HTMLImageElement).parentElement;
+                        if (el) pageHeightsRef.current[idx] = el.offsetHeight;
+                        setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
+                      }}
+                      onError={() => {
+                        setFailedImgs((p) => ({ ...p, [idx]: true }));
+                        setLoadedImgs((p) => ({ ...p, [idx]: true }));
+                      }}
+                      style={{ display: 'block', width: '100%', height: 'auto', margin: 0, padding: 0, verticalAlign: 'top', lineHeight: 0 }}
+                    />
+                  )}
+                  {!isLoaded && !failedImgs[idx] && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center min-h-[40vw] bg-black text-white/40 pointer-events-none">
                       <Loader2 className="h-10 w-10 animate-spin" />
                       <div className="mt-3 text-xs tabular-nums">{idx + 1} / {effectivePages.length}</div>
@@ -575,20 +605,30 @@ export default function Reader() {
                       <div className="mt-3 text-xs tabular-nums">{idx + 1} / {effectivePages.length}</div>
                     </div>
                   )}
-                  <img
-                    src={getProxiedImageUrl(page.url, sourceId ?? "")}
-                    alt={`Page ${page.index}`}
-                    className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
-                    loading={loadStrategy}
-                    decoding="async"
-                    onLoad={(e) => {
-                      const el = (e.target as HTMLImageElement).parentElement;
-                      if (el) pageHeightsRef.current[idx] = el.offsetHeight;
-                      setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
-                    }}
-                    onError={() => setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }))}
-                    style={{ display: 'block', maxWidth: '100%', objectFit: 'contain' }}
-                  />
+                  {failedImgs[idx] ? (
+                    <div className="flex flex-col items-center justify-center gap-2 min-h-[40vw] w-full bg-black text-white/60 text-sm px-4 text-center">
+                      <span className="text-2xl">⚠️</span>
+                      <span>Page {idx + 1} could not be loaded</span>
+                    </div>
+                  ) : (
+                    <img
+                      src={getProxiedImageUrl(page.url, sourceId ?? "")}
+                      alt={`Page ${page.index}`}
+                      className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
+                      loading={loadStrategy}
+                      decoding="async"
+                      onLoad={(e) => {
+                        const el = (e.target as HTMLImageElement).parentElement;
+                        if (el) pageHeightsRef.current[idx] = el.offsetHeight;
+                        setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
+                      }}
+                      onError={() => {
+                        setFailedImgs((p) => ({ ...p, [idx]: true }));
+                        setLoadedImgs((p) => ({ ...p, [idx]: true }));
+                      }}
+                      style={{ display: 'block', maxWidth: '100%', objectFit: 'contain' }}
+                    />
+                  )}
                 </>
               )}
             </div>

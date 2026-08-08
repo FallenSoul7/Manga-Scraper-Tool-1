@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import type { ChapterProgress } from "@/lib/storage";
 import { Link } from "wouter";
-import { proxyImage } from "@/lib/utils";
+import { proxyImage, readerUrl } from "@/lib/utils";
 import { formatDistanceToNow, isToday, isYesterday, isThisWeek } from "date-fns";
 import { BookOpen, Clock, Film, Search, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -155,7 +155,7 @@ export default function HistoryPage() {
                 {items.map((item) => {
                   const isVideo = isVideoItem(item);
                   const sid = library[item.mangaId]?.sourceId;
-                  const readerHref = `/reader/${item.chapterId}?mangaId=${item.mangaId}${sid ? `&sourceId=${sid}` : ""}`;
+                  const readerHref = readerUrl(item.chapterId, item.mangaId, sid);
                   const progressPct = item.totalPages > 1
                     ? Math.min(100, Math.round((item.lastPageRead / item.totalPages) * 100))
                     : item.isRead ? 100 : 0;

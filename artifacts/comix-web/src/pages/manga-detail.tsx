@@ -6,7 +6,7 @@ import {
   getGetChaptersQueryKey,
 } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
-import { proxyImage } from "@/lib/utils";
+import { proxyImage, readerUrl } from "@/lib/utils";
 import { applyActiveSource } from "@/lib/source";
 import {
   Loader2, ArrowLeft, Star, ChevronDown, ChevronUp,
@@ -672,7 +672,7 @@ export default function MangaDetail() {
           ) : latestProgress ? (
             <Button
               className="w-full h-12 text-base font-semibold rounded-xl"
-              onClick={() => setLocation(`/reader/${latestProgress.chapterId}?mangaId=${manga.id}${(sourceContext ?? activeSourceId) ? `&sourceId=${sourceContext ?? activeSourceId}` : ""}`)}
+              onClick={() => setLocation(readerUrl(latestProgress.chapterId, manga.id, sourceContext ?? activeSourceId))}
             >
               {isKoofrVideo ? <Play className="mr-2 h-5 w-5" /> : <BookOpen className="mr-2 h-5 w-5" />}
               {isKoofrVideo ? 'Continue watching' : `Continue reading · Ch. ${latestProgress.chapterNumber}`}
@@ -680,7 +680,7 @@ export default function MangaDetail() {
           ) : firstChapter ? (
             <Button
               className="w-full h-12 text-base font-semibold rounded-xl"
-              onClick={() => setLocation(`/reader/${firstChapter.id}?mangaId=${manga.id}${(sourceContext ?? activeSourceId) ? `&sourceId=${sourceContext ?? activeSourceId}` : ""}`)}
+              onClick={() => setLocation(readerUrl(firstChapter.id, manga.id, sourceContext ?? activeSourceId))}
             >
               <Play className="mr-2 h-5 w-5" />
               {isKoofrVideo ? 'Watch' : 'Start reading'}
@@ -855,7 +855,7 @@ export default function MangaDetail() {
                           totalPages: 0, lastPageRead: 0, isRead: false,
                         });
                       }
-                      setLocation(`/reader/${chapter.id}?mangaId=${manga.id}${(sourceContext ?? activeSourceId) ? `&sourceId=${sourceContext ?? activeSourceId}` : ""}`);
+                      setLocation(readerUrl(chapter.id, manga.id, sourceContext ?? activeSourceId));
                     }}
                     onContextMenu={e => {
                       e.preventDefault();

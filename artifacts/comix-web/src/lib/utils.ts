@@ -17,3 +17,18 @@ export function proxyImage(url: string | undefined, source?: string): string {
   const sourceParam = source ? `&source=${encodeURIComponent(source)}` : '';
   return `${apiOrigin}/api/image?url=${encodeURIComponent(url)}${sourceParam}`;
 }
+
+/** Build a reader URL that remains one route segment even when an extension
+ * uses a path/query string as its chapter ID (notably Webtoons). */
+export function readerUrl(
+  chapterId: string | number,
+  mangaId: string,
+  sourceId?: string | null,
+  offline = false,
+): string {
+  const params = new URLSearchParams();
+  params.set("mangaId", String(mangaId));
+  if (sourceId) params.set("sourceId", sourceId);
+  if (offline) params.set("offline", "1");
+  return `/reader/${encodeURIComponent(String(chapterId))}?${params.toString()}`;
+}
