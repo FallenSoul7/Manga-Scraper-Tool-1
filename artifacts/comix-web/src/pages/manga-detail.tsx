@@ -447,6 +447,7 @@ export default function MangaDetail() {
   const altTitles = manga?.altTitles || [];
   const effectiveSource = sourceContext ?? activeSourceId;
   const sourceName = effectiveSource ? formatSourceId(effectiveSource) : null;
+  const isRule34 = effectiveSource === "en.rule34";
   // Detect Koofr video entries so we can show "Watch" instead of "Read"
   const isKoofrVideo = effectiveSource === 'local.koofr' && !!id && isKoofrVideoId(id);
 
@@ -675,7 +676,7 @@ export default function MangaDetail() {
               onClick={() => setLocation(readerUrl(latestProgress.chapterId, manga.id, sourceContext ?? activeSourceId))}
             >
               {isKoofrVideo ? <Play className="mr-2 h-5 w-5" /> : <BookOpen className="mr-2 h-5 w-5" />}
-              {isKoofrVideo ? 'Continue watching' : `Continue reading · Ch. ${latestProgress.chapterNumber}`}
+              {isKoofrVideo ? 'Continue watching' : isRule34 ? "View artwork" : `Continue reading · Ch. ${latestProgress.chapterNumber}`}
             </Button>
           ) : firstChapter ? (
             <Button
@@ -683,7 +684,7 @@ export default function MangaDetail() {
               onClick={() => setLocation(readerUrl(firstChapter.id, manga.id, sourceContext ?? activeSourceId))}
             >
               <Play className="mr-2 h-5 w-5" />
-              {isKoofrVideo ? 'Watch' : 'Start reading'}
+              {isKoofrVideo ? 'Watch' : isRule34 ? "View artwork" : "Start reading"}
             </Button>
           ) : (
             <Button className="w-full h-12 text-base font-semibold rounded-xl" disabled>
@@ -693,13 +694,17 @@ export default function MangaDetail() {
         </div>
 
         {/* ── Chapters section ── */}
-        <div className="border-t border-border/50">
+        {!isRule34 && <div className="border-t border-border/50">
 
           {/* Chapter header — Tachiyomi style */}
           <div className="flex items-center gap-2 px-4 py-3">
             <div className="flex-1 min-w-0">
               <span className="font-bold text-sm">
-                {chaptersLoading ? "…" : `${visibleChapters.length} Chapter${visibleChapters.length !== 1 ? "s" : ""}`}
+                {chaptersLoading
+                  ? "…"
+                  : isRule34
+                    ? "Artwork"
+                    : `${visibleChapters.length} Chapter${visibleChapters.length !== 1 ? "s" : ""}`}
               </span>
               <div className="flex items-center gap-2 flex-wrap mt-0.5">
                 {availableLanguages.length > 1 && (
@@ -882,7 +887,9 @@ export default function MangaDetail() {
                           <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Pg {p.lastPageRead + 1}</Badge>
                         )}
                         <span className="font-medium text-sm text-foreground">
-                          Chapter {chapter.number}{chapter.title ? `: ${chapter.title}` : ""}
+                           {isRule34
+                             ? "Open artwork"
+                             : `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}`}
                         </span>
                         {chapter.isOfficial && (
                           <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 bg-amber-500/20 text-amber-600 shrink-0">Official</Badge>
@@ -927,7 +934,7 @@ export default function MangaDetail() {
               })}
             </div>
           )}
-        </div>
+        </div>}
       </div>
 
       {chapterSelectionMode && (

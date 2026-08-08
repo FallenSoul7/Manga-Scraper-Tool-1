@@ -1,0 +1,44 @@
+Hey buddy so we had doje a lot of thing then i gone to other ai got around 2 month of stuff done and first i want you to understand the current project then we will work on this so right now the extention ninehentia and thunder scan are only working one i want the extention comix and utoon to work along with elf toon also comick fanmade in wich pages are not heoing and insted show symbols same with mangadex in wich oages are being emoty also webtoon wich give thus error when i tried to read did you fogget to add this page or something to router fix them for me at once properly take your yime
+I’ll first map the current source registry, reader/page pipeline, and the failing API logs before changing anything. Then I’ll fix each source against the current architecture, not the older snapshot.
+I’m mapping the current implementations and exact failure points first. I won’t touch the deployed Vercel/Render stack or make broad guesses; I’ll separate source/API failures from reader/rendering failures, then fix them in a controlled pass.
+I’ve confirmed this is a multi-source compatibility pass, not one missing route. I’m going to inspect the six source adapters and the reader’s image-loading contract in parallel, then I’ll propose the safest repair order before editing.
+The current project confirms the failures are in two layers: source adapters (Comix, Utoon, Elf Toon, ComicK Fan, MangaDex, Webtoon) and the shared reader’s page URL/rendering behavior. I’m doing one focused read-only audit now so the repair plan matches the code that exists today.
+I understand the current project now. The failures are coming from several different causes, not one missing router entry:
+
+Webtoon: chapter IDs contain / and ?, so the reader URL breaks before the reader route matches.
+Comix: its page proxy helper points to /api/proxy-image, but the server route is /api/image-proxy.
+MangaDex: page URLs are being returned directly, so CDN images can appear empty or blocked.
+ComicK Fan: its chapter page is JavaScript-rendered, so the current server parser receives a shell instead of image URLs.
+Utoon / Elf Toon: they rely on generic adapters that no longer match the sites’ current HTML/API responses.
+Reader: failed images are left as broken/empty elements, which is why you see symbols or blank pages instead of a useful error.
+My recommended repair is:
+
+Make chapter navigation safe by encoding chapter IDs in the reader URL and decoding them through the route.
+Create one reliable image proxy path and make every affected source use it consistently.
+Fix MangaDex and Comix page URLs with the correct referer/proxy behavior.
+Rewrite Utoon and Elf Toon adapters against their current page structure instead of depending on the generic parser.
+Handle ComicK Fan explicitly: use its currently available page/API path if accessible; if Cloudflare still blocks it, return a clear source-unavailable error rather than blank symbols.
+Improve Webtoon extraction with multiple current selectors and safe decoding of viewer links.
+Improve reader error states so failed pages show “image unavailable” and the actual source error instead of appearing empty.
+Test each source through the real API routes and verify the reader navigation afterward.
+There are two possible alternatives:
+
+Recommended: fix each source adapter properly and keep the shared reader stable.
+Quick workaround: add source-specific hardcoded URL rules in the reader. Faster, but fragile and likely to break again.
+Fallback-only: leave blocked sources unchanged and show a clear unavailable message. Safest for ComicK if its Cloudflare block cannot be bypassed, but it will not restore its pages.
+I recommend the first approach, with the fallback behavior only where the upstream site is genuinely blocking server access. Does this repair plan look right?
+Do what you think is best and now fix them all
+I’m implementing the recommended path now: safe chapter routing, shared proxy consistency, source-specific page fixes, and reader error handling. I’ll verify each API contract locally before declaring any source fixed.
+The current reader confirms the Webtoon route bug and a second shared problem: image failures are converted into “loaded,” leaving blank/broken elements. I’m applying the core fixes first, then I’ll test source endpoints and only adjust adapters where the live responses prove necessary.
+I’m starting with the shared fixes that affect every source: encode/decode chapter IDs safely, make image URLs production-safe through the backend proxy, correct the proxy helper typo, and replace blank failed pages with explicit error cards.
+The shared URL/proxy fixes are in. Next I’m wiring every reader entry point through the safe URL helper and making the reader surface API/image failures instead of rendering blank pages.
+The first reader patch hit a context mismatch, so I’m narrowing the edit to the current exact lines rather than forcing a broad replacement.
+The shared fixes are underway. I’m finishing the exact reader wiring now, including all entry points (detail, history, updates, downloads), so Webtoon chapter IDs cannot break navigation anywhere.
+I’ve isolated the next edits precisely. Applying the route-safe navigation and reader error-state changes now, then I’ll patch the source adapters and run endpoint checks.
+The reader routing and failure-state fixes are applied. I’m restarting the API, checking compile errors, and probing each requested source through the real endpoints so I can fix only the adapters that are actually failing.
+The shared reader changes are in place. The typecheck output also exposed pre-existing workspace errors, but no new fatal build error from the route helper itself. I’m now probing the six source APIs directly to identify which adapters need targeted fixes rather than guessing.
+The live probes found two concrete adapter failures: Comix’s current API endpoint returns 404, while Utoon’s generic Madara path is wrong. Elf Toon, ComicK Fan, MangaDex, and Webtoons can list titles, so I’m testing their chapter/page contracts next and checking the current upstream routes for Comix/Utoon before changing those adapters.
+The live checks are useful: Elf Toon and MangaDex return page lists, Webtoon returns page lists, but ComicK’s parser is including menu SVGs as “pages.” Comix now clearly uses a tokenized /api/v1 API, and Utoon is not a /manga Madara site at all. I’m fixing ComicK filtering first, then replacing the stale Comix/Utoon assumptions from their current HTML/API contracts.
+The source probes found the main page-level causes: ComicK’s parser is treating site SVGs as manga pages, and the Comix/Utoon adapters are pointed at obsolete routes. I’m checking the current upstream HTML/API with plain curl now, then I’ll patch those adapters rather than adding more frontend workarounds.
+I’m going to verify the current source adapters and workflow state, then I’ll fix the remaining upstream-specific failures before running targeted endpoint checks and a browser pass.
+You've reached your daily free quota limit. It will reset at 12:00 AM UTC.

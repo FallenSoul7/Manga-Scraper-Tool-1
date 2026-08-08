@@ -63,11 +63,12 @@ export default function Reader() {
 
   const readerSettings = useStore(s => s.reader);
   const sourceReaderDirections = useStore(s => s.sourceReaderDirections);
+  const isRule34 = sourceId === "en.rule34";
   // Rule34 defaults to LTR (single-image posts look terrible in webtoon mode).
   // The user can still change it from the reader settings panel — that change
   // is stored per-source so it never bleeds into other sources.
-  const effectiveDirection = sourceId === 'en.rule34'
-    ? ((sourceReaderDirections ?? {})['en.rule34'] ?? 'ltr')
+  const effectiveDirection = isRule34
+    ? ((sourceReaderDirections ?? {})["en.rule34"] ?? "ltr")
     : readerSettings.direction;
   const progressMap = useStore(s => s.progress);
   const scanlatorPrefs = useStore(s => s.scanlatorPrefs);
@@ -400,7 +401,11 @@ export default function Reader() {
             </Button>
             <div className="min-w-0 flex flex-col justify-center">
               <div className="text-xs text-white/50 truncate leading-none mb-1">{mangaData?.title || "Loading..."}</div>
-              <div className="text-sm font-semibold truncate leading-none">Ch. {currChapterObj?.number} {currChapterObj?.title ? `- ${currChapterObj.title}` : ""}</div>
+              <div className="text-sm font-semibold truncate leading-none">
+                {isRule34
+                  ? "Artwork"
+                  : `Ch. ${currChapterObj?.number} ${currChapterObj?.title ? `- ${currChapterObj.title}` : ""}`}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
@@ -556,7 +561,9 @@ export default function Reader() {
               id={`page-${idx}`}
               className={`reader-page relative flex-shrink-0 ${
                 isPaged
-                ? 'flex items-center justify-center bg-black w-[100vw] h-[100dvh] snap-center snap-always'
+                ? isRule34
+                  ? 'flex items-center justify-center bg-black w-auto min-w-[100vw] h-[100dvh] snap-center snap-always'
+                  : 'flex items-center justify-center bg-black w-[100vw] h-[100dvh] snap-center snap-always'
                 : isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full'
               } ${effectiveDirection === 'vertical' ? 'mb-8' : ''}`}
             >
@@ -626,7 +633,13 @@ export default function Reader() {
                         setFailedImgs((p) => ({ ...p, [idx]: true }));
                         setLoadedImgs((p) => ({ ...p, [idx]: true }));
                       }}
-                      style={{ display: 'block', maxWidth: '100%', objectFit: 'contain' }}
+                       style={{
+                         display: 'block',
+                         maxWidth: isRule34 ? '100vw' : '100%',
+                         maxHeight: isRule34 ? 'calc(100dvh - 3.5rem)' : undefined,
+                         width: isRule34 ? 'auto' : undefined,
+                         objectFit: 'contain',
+                       }}
                     />
                   )}
                 </>
