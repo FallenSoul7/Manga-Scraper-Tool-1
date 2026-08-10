@@ -4,7 +4,8 @@
  * hotlink-protection), bundles them as a ZIP, then triggers a browser download.
  *
  * On desktop/Android → file goes to Downloads folder.
- * On iOS PWA        → blob URL is opened in a new tab (share sheet → Save to Files).
+ * On iOS/Safari      → the native share sheet opens with the ZIP attached.
+ *                       The user can choose "Save to Files" directly.
  */
 import JSZip from 'jszip';
 import { apiUrl } from './api-url';
@@ -77,29 +78,44 @@ export async function saveChapterToFile(opts: SaveToFileOptions): Promise<void> 
     meta => onProgress?.(80 + Math.round(meta.percent * 0.2)),
   );
 
-  // ── 5. Trigger download ───────────────────────────────────────────────────
-  const objectUrl  = URL.createObjectURL(zipBlob);
-  const fileName   = `${sanitize(`${mangaTitle} - ${chapterLabel}`)}.zip`;
+  // ── 5. Share or download the ZIP ───────────────────────────────────────────
+  const fileName = `${sanitize(`${mangaTitle} - ${chapterLabel}`)}.zip`;
+  const zipFile = new File([zipBlob], fileName, { type: 'application/zip' });
 
-  // iOS PWA / Safari: <a download> is silently ignored.
-  // Opening the blob URL in a new tab shows a preview with a share sheet
-  // where the user can "Save to Files".
-  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  // Safari/iOS does not reliably honor <a download> for blob URLs. When the
+  // browser supports sharing files, hand the ZIP to the native share sheet so
+  // the user can choose "Save to Files" without opening a second browser page.
+  const canShareFile =
+    typeof navigator.share === 'function' &&
+    typeof navigator.canShare === 'function' &&
+    navigator.canShare({ files: [zipFile] });
 
-  if (isIos) {
-    window.open(objectUrl, '_blank');
-    // Revoke after a delay so the tab can read the blob
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-  } else {
-    const a      = document.createElement('a');
-    a.href       = objectUrl;
-    a.download   = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 5_000);
+  if (canShareFile) {
+    try {
+      await navigator.share({
+        files: [zipFile],
+        title: fileName,
+        text: `${mangaTitle} — ${chapterLabel}`,
+      });
+      return;
+    } catch (error) {
+      // Closing the share sheet is a normal user action, not a failed export.
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      // Some Safari versions reject a share request when the ZIP took long
+      // enough for the original tap's user activation to expire. Preserve a
+      // usable export path instead of silently losing the completed ZIP.
+    }
   }
+
+  // Fallback for browsers that cannot share files (including older Safari).
+  const objectUrl = URL.createObjectURL(zipBlob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 5_000);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
