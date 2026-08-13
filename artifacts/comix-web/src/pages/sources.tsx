@@ -382,7 +382,8 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
 }
 
 // ─── Anime tab ────────────────────────────────────────────────────────────────
-const ANIME_SOURCE_IDS = new Set(["en.allanime", "video.hentaiyoga"]);
+const ALLMANGA_SOURCE_ID = "en.allanime";
+const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga", ALLMANGA_SOURCE_ID]);
 
 function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null }) {
   const { toast } = useToast();
@@ -442,10 +443,28 @@ function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; active
     );
   }
 
+  const allMangaCatalogEntry = catalog?.extensions.find(e => e.id === ALLMANGA_SOURCE_ID);
+
   // Hardcoded discoverable anime extensions (always visible for install)
   const ANIME_EXTENSIONS = [
-    { id: "en.allanime", name: "AllManga", lang: "en", isNsfw: true, description: "Manga and anime catalog" },
-    { id: "video.hentaiyoga", name: "Hentai Yoga", lang: "en", isNsfw: true, description: "Hentai anime videos" },
+    {
+      id: "video.hentaiyoga",
+      name: "Hentai Yoga",
+      lang: "en",
+      isNsfw: true,
+      description: "Hentai anime videos",
+      iconUrl: null,
+      supported: true,
+    },
+    {
+      id: ALLMANGA_SOURCE_ID,
+      name: allMangaCatalogEntry?.name ?? "AllManga",
+      lang: allMangaCatalogEntry?.lang ?? "en",
+      isNsfw: allMangaCatalogEntry?.isNsfw ?? true,
+      description: "Manga and anime catalog",
+      iconUrl: allMangaCatalogEntry?.iconUrl ?? null,
+      supported: allMangaCatalogEntry?.supported ?? false,
+    },
   ];
 
   return (
@@ -468,13 +487,7 @@ function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; active
         const isInstalled = animeSources.some(s => s.id === ext.id);
         return (
           <div key={ext.id} className="flex items-center gap-3 px-4 py-3">
-            <SourceAvatar
-              src={{
-                name: ext.name,
-                iconUrl: catalog?.extensions.find((entry) => entry.id === ext.id)?.iconUrl ?? null,
-              }}
-              size={44}
-            />
+            <SourceAvatar src={{ name: ext.name, iconUrl: ext.iconUrl }} size={44} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <p className="font-semibold text-sm text-foreground truncate">{ext.name}</p>
@@ -489,13 +502,15 @@ function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; active
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Installed
                 </span>
+              ) : !ext.supported ? (
+                <span className="text-xs text-muted-foreground">Coming soon</span>
               ) : (
                 <Button
                   size="sm"
                   variant="outline"
                   className="h-8 text-xs px-3 gap-1.5"
                   onClick={() => {
-                    storeActions.installSource({ id: ext.id, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: null, isPinned: false });
+                    storeActions.installSource({ id: ext.id, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl, isPinned: false });
                     toast({ title: `Installed ${ext.name}` });
                   }}
                 >
@@ -538,7 +553,10 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
     const q = search.trim().toLowerCase();
     return (catalog.extensions ?? [])
       .filter(e => lang === "all-langs" ? true : e.lang === lang)
-      .filter(e => showNsfw ? true : !e.isNsfw)
+      // AllManga is intentionally discoverable in the normal Extensions tab
+      // as well as the Anime tab. Keep its 18+ badge, but do not hide it behind
+      // the opt-in NSFW filter.
+      .filter(e => showNsfw || !e.isNsfw || e.id === ALLMANGA_SOURCE_ID)
       .filter(e => supportedOnly ? e.supported : true)
       .filter(e => q ? e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) || e.slug.toLowerCase().includes(q) : true)
       .sort(SUPPORTED_FIRST);

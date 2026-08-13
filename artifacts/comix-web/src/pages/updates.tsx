@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { useStore, storeActions } from "@/lib/storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetChaptersQueryOptions } from "@workspace/api-client-react";
-import { proxyImage } from "@/lib/utils";
+import { proxyImage, readerUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, CheckCircle2, Clock, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -126,7 +126,7 @@ export default function UpdatesPage() {
 
                   <div className="flex flex-wrap gap-1.5 sm:gap-2">
                     {visibleChapters.map(ch => (
-                      <Link key={ch.id} href={`/reader/${ch.id}?mangaId=${manga.id}`}>
+                      <Link key={ch.id} href={readerUrl(ch.id, manga.id, manga.sourceId)}>
                         <span className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-primary/10 text-primary text-xs sm:text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer">
                           <Sparkles className="h-2.5 w-2.5" />
                           Ch. {ch.number}

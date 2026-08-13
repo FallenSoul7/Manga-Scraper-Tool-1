@@ -272,9 +272,11 @@ function fileTitle(koofrPath: string): string {
 
 function coverUrl(koofrPath: string): string {
   const name = nodePath.basename(koofrPath);
-  // ZIPs get a placeholder — downloading the whole zip just for a cover is way too slow
+  // ZIPs get a placeholder — downloading the whole zip just for a cover is too slow
   if (isZip(name)) return `/public/koofr-zip-cover.png`;
-  // Images, GIFs, videos: stream directly from Koofr (Koofr's thumbnail API returns 404)
+  // Videos get a static placeholder — browsers can't render video streams as <img>
+  if (isVideo(name)) return `/public/koofr-video-cover.svg`;
+  // Images / GIFs: proxy them directly from Koofr
   return `/api/koofr/proxy?path=${encodeURIComponent(koofrPath)}`;
 }
 
@@ -303,7 +305,7 @@ function buildList(entries: KoofrEntry[], page: number): MangaListResponse {
 
 export const KoofrSource: MangaSource = {
   id: "local.koofr",
-  name: "My Koofr Library",
+  name: "K-Cafe",
   lang: "all",
   isNsfw: false,
 

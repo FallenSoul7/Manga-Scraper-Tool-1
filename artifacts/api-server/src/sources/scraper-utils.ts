@@ -106,6 +106,6 @@ export function proxifyImage(originalUrl: string, referer: string, useProxy: boo
   
   const encodedUrl = encodeURIComponent(originalUrl);
   const encodedRef = encodeURIComponent(referer);
-  return `/api/proxy-image?url=${encodedUrl}&referer=${encodedRef}`;
+  return `/api/image-proxy?url=${encodedUrl}&referer=${encodedRef}`;
 }
 

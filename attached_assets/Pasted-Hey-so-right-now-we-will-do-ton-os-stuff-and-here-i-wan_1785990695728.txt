@@ -1,0 +1,21 @@
+Hey so right now we will do ton os stuff and here i want you to use your dezine skill a lit as well as coding so you can do our best so right now we have two teamplate a base so i want to add another exatntion just a scraper code and just add it to list and it done same like that we will do our vedio system that we alredy pretty much polished but we will polish it to another level and we will redesine our setting tab too wich is inisde system tab i want you to make it better for friendly and i want you to temove useless stuff that are nit needed there or just dumb stuff trmoved from there and redesign it also the orignal color is grey and not black for the whole web vhnage it to pitch balck for better quality also we will add another extention tgat will be added to both anime and normal section wich is manga one extntion one woch is this webite https://mkissa.to/manga so what dose this website has a anime and manga mahwa bith also has an tier list ,recommendations tags trending tag world map,gamepipular game borswe game so what we will do is scrap this and add this as pined extention that is alredy fownloaded like comix but temove comix frok alredy download one and butt this so what this will offer inside ut it will have manga section anime then game and you can chose but nriamly they all are together in here you can chise we will do is make a teamplte for these type of extention that we will add in the furture wich are pary of the alredy vedio system we have but this will upgrade it further so i want you to understand this webiste deeply then screp almost evrything ut has more soecific the stuff i mention they can be orgined hust like there and nirmaly they are all together at home page in our extention then i want you to make our hisoty support vedio make the history tab better more organized then i want you fo do is fix bugs in it properly check evry also make sure evrything is displayed priperly and unlike koofer the icon show here after you do this i will give yoy the other instructions
+This is a big one — let me explore the codebase and the mkissa.to site in parallel before writing a single line of code.
+Let me read all the key files and visit mkissa.to simultaneously before writing any code:
+Let me screenshot more of mkissa.to and read the remaining files I need:
+Let me read the remaining key files I need before writing anything:
+MKissa is a SvelteKit SSR app — let me probe their API endpoints and read the remaining files I need simultaneously:
+Let me probe mkissa.to API endpoints while reading the remaining files I need:
+MKissa is pure client-side — empty HTML shell, all data loaded via JS. I need to find their API in the bundle. Let me search the JS while executing the UI work in parallel:
+Let me search mkissa's actual app chunks for API endpoints:
+They have an API! /graphql, /api/v1/manga/latest, and /api/v2/manga all return 200. Let me probe them all at once:
+The 200s might be the SvelteKit fallback. Let me probe with exact JSON headers and scan their JS bundle for real API endpoints:
+MKissa blocks POST to GraphQL but returns 200 to GET. Let me try their GraphQL with GET and start executing all UI work simultaneously:
+MKissa's API is fully behind Cloudflare — all routes return the HTML shell regardless of Accept headers. Let me use a subagent to scan their JS chunks for internal API calls while I execute all the UI work in parallel right now.
+Let me proceed with all the UI work immediately while collecting the mkissa result. I'll execute the color change, settings redesign, and history improvements all in parallel:
+// Collect mkissa result in background - don't block
+waitForJob({ jobId: "mkissa-api-hunter:8", timeout: 30 }).then(r => {
+  console.log("MKISSA RESULT:", r.text.slice(0, 5000));
+}).catch(e => console.log("mkissa timeout:", e.message));
+console.log("mkissa job collecting in background, proceeding with UI work");
+
+You've reached your monthly free quota limit. It will reset on August 31, 2026.

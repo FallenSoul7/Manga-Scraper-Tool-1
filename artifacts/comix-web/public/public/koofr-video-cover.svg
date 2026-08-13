@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="200" height="300">
+  <rect width="200" height="300" fill="#1a1a2e"/>
+  <rect x="10" y="10" width="180" height="280" rx="8" fill="#16213e"/>
+  <!-- Film strip decoration top -->
+  <rect x="10" y="10" width="180" height="32" rx="8" fill="#0f3460"/>
+  <rect x="10" y="278" width="180" height="22" rx="8" fill="#0f3460"/>
+  <!-- Film holes -->
+  <rect x="20" y="16" width="16" height="20" rx="3" fill="#1a1a2e"/>
+  <rect x="46" y="16" width="16" height="20" rx="3" fill="#1a1a2e"/>
+  <rect x="72" y="16" width="16" height="20" rx="3" fill="#1a1a2e"/>
+  <rect x="98" y="16" width="16" height="20" rx="3" fill="#1a1a2e"/>
+  <rect x="124" y="16" width="16" height="20" rx="3" fill="#1a1a2e"/>
+  <rect x="150" y="16" width="16" height="20" rx="3" fill="#1a1a2e"/>
+  <!-- Play button circle -->
+  <circle cx="100" cy="158" r="44" fill="#e94560" opacity="0.9"/>
+  <circle cx="100" cy="158" r="40" fill="#e94560"/>
+  <!-- Play triangle -->
+  <polygon points="90,140 90,176 124,158" fill="white"/>
+  <!-- Video label -->
+  <text x="100" y="240" font-family="system-ui,sans-serif" font-size="14" font-weight="600" fill="#e94560" text-anchor="middle">VIDEO</text>
+</svg>

@@ -71,6 +71,37 @@ app.use("/public/source-icons", express.static(iconPath));
 const publicPath = path.join(__dirname, "../../comix-web/public");
 app.use("/public", express.static(publicPath));
 
+// Inline fallback icons — served directly from memory so they always work
+// even if the static path doesn't resolve on the deployment server.
+app.get("/public/koofr-video-cover.svg", (_req, res) => {
+  res.setHeader("Content-Type", "image/svg+xml");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.send(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160" fill="none">
+  <rect width="120" height="160" rx="10" fill="#1a1a2e"/>
+  <rect x="10" y="10" width="100" height="140" rx="8" fill="#16213e"/>
+  <circle cx="60" cy="75" r="28" fill="#0f3460"/>
+  <polygon points="52,62 52,88 78,75" fill="#e94560"/>
+  <rect x="20" y="120" width="80" height="8" rx="4" fill="#0f3460"/>
+  <rect x="20" y="134" width="50" height="6" rx="3" fill="#0f3460"/>
+</svg>`);
+});
+
+app.get("/public/koofr-zip-cover.png", (_req, res) => {
+  // Redirect to a data-uri inline SVG served as a redirect target
+  res.setHeader("Content-Type", "image/svg+xml");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.send(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160" fill="none">
+  <rect width="120" height="160" rx="10" fill="#1a1a2e"/>
+  <rect x="10" y="10" width="100" height="140" rx="8" fill="#16213e"/>
+  <rect x="35" y="30" width="50" height="65" rx="4" fill="#0f3460"/>
+  <rect x="42" y="38" width="36" height="4" rx="2" fill="#4a90d9"/>
+  <rect x="42" y="47" width="36" height="4" rx="2" fill="#4a90d9" opacity=".6"/>
+  <rect x="42" y="56" width="24" height="4" rx="2" fill="#4a90d9" opacity=".4"/>
+  <rect x="20" y="115" width="80" height="8" rx="4" fill="#0f3460"/>
+  <rect x="20" y="129" width="55" height="6" rx="3" fill="#0f3460"/>
+</svg>`);
+});
+
 // 🚀 ADDED: Direct proxy interceptor to beat hotlink protections
 app.get("/api/image-proxy", async (req, res) => {
   const targetUrl = req.query.url as string;
@@ -134,11 +165,31 @@ app.get("/api/koofr/proxy", async (req, res) => {
   // Only allow /folder/filename paths with supported media extensions — blocks traversal and private files
   if (!isProxySafe(koofrPath)) return res.status(403).json({ error: "forbidden" });
   try {
-    const { stream, contentType } = await koofrStream(koofrPath);
+    const rangeHeader = req.headers["range"];
+    const extraHeaders: Record<string, string> = {};
+    if (rangeHeader) extraHeaders["Range"] = rangeHeader;
+
+    const koofrAuth = `Basic ${Buffer.from(`${process.env.KOOFR_EMAIL}:${process.env.KOOFR_APP_PASSWORD}`).toString("base64")}`;
+    const upstream = await axios.get(`https://app.koofr.net/api/v2/mounts/primary/files/get`, {
+      params: { path: koofrPath },
+      headers: {
+        Authorization: koofrAuth,
+        ...extraHeaders,
+      },
+      responseType: "stream",
+      timeout: 120_000,
+      validateStatus: () => true,
+    });
+
+    res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Cache-Control", "public, max-age=3600");
-    if (contentType) res.setHeader("Content-Type", contentType);
-    (stream as any).pipe(res);
-    (stream as any).on("error", () => { if (!res.headersSent) res.status(502).end(); });
+    if (upstream.headers["content-type"]) res.setHeader("Content-Type", upstream.headers["content-type"] as string);
+    if (upstream.headers["content-length"]) res.setHeader("Content-Length", upstream.headers["content-length"] as string);
+    if (upstream.headers["content-range"]) res.setHeader("Content-Range", upstream.headers["content-range"] as string);
+
+    res.status(upstream.status);
+    (upstream.data as NodeJS.ReadableStream).pipe(res);
+    (upstream.data as NodeJS.ReadableStream).on("error", () => { if (!res.headersSent) res.status(502).end(); });
   } catch (err: any) {
     logger.error({ err: err.message, path: koofrPath }, "Koofr proxy failed");
     if (!res.headersSent) res.status(502).json({ error: "failed to stream file" });

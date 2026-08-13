@@ -6,7 +6,7 @@ import {
   getGetChaptersQueryKey,
 } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
-import { proxyImage } from "@/lib/utils";
+import { proxyImage, readerUrl } from "@/lib/utils";
 import { applyActiveSource } from "@/lib/source";
 import {
   Loader2, ArrowLeft, Star, ChevronDown, ChevronUp,
@@ -20,11 +20,23 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { format } from "date-fns";
 import { useStore, storeActions, type PendingChapter } from "@/lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { queueActions } from "@/lib/download-queue";
+import { queueActions, useDownloadQueue } from "@/lib/download-queue";
+import { saveChapterToFile } from "@/lib/save-to-file";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
+
+/** Decode a Koofr base64url manga ID back to its file path and check if it's a video. */
+function isKoofrVideoId(mangaId: string): boolean {
+  try {
+    const b64 = mangaId.replace(/-/g, '+').replace(/_/g, '/');
+    const path = atob(b64);
+    return /\.(mp4|webm|mov|mkv|avi)$/i.test(path);
+  } catch {
+    return false;
+  }
+}
 
 function dedupeChapters(items: any[]): any[] {
   const map = new Map<number, any>();
@@ -62,6 +74,69 @@ function getSourceWebUrl(sourceId: string, mangaId: string): string | null {
   if (sourceId.includes("mangafreak"))   return `https://mangafreak.net/manga/${id}`;
   if (sourceId.includes("danbooru"))     return `https://danbooru.donmai.us/posts/${mangaId}`;
   return null;
+}
+
+/** Circular SVG progress ring for chapter download button */
+function DownloadProgressRing({ progress, size = 32 }: { progress: number; size?: number }) {
+  const r = (size - 4) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (progress / 100) * circ;
+  return (
+    <svg width={size} height={size} className="rotate-[-90deg]">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth={2} opacity={0.2} />
+      <circle
+        cx={size / 2} cy={size / 2} r={r} fill="none"
+        stroke="currentColor" strokeWidth={2}
+        strokeDasharray={circ} strokeDashoffset={offset}
+        strokeLinecap="round"
+        className="transition-[stroke-dashoffset] duration-300"
+      />
+    </svg>
+  );
+}
+
+/** Chapter download button — shows ring when queued/downloading, checkmark when done */
+function ChapterDownloadButton({ chapterId, onClick }: { chapterId: number | string; onClick: (e: React.MouseEvent) => void }) {
+  const item = useDownloadQueue(s => s.items.find(i => String(i.chapterId) === String(chapterId)));
+  const status = item?.status;
+  const progress = item?.progress ?? 0;
+
+  if (status === 'done') {
+    return (
+      <button
+        type="button"
+        className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-green-500"
+        title="Downloaded"
+        onClick={e => e.stopPropagation()}
+      >
+        <Check className="h-4 w-4" />
+      </button>
+    );
+  }
+
+  if (status === 'downloading' || status === 'queued') {
+    return (
+      <button
+        type="button"
+        className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-primary"
+        title={`${Math.round(progress)}%`}
+        onClick={e => e.stopPropagation()}
+      >
+        <DownloadProgressRing progress={progress} size={28} />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-white/30 hover:text-white/80 transition-colors"
+      onClick={onClick}
+      title="Download chapter"
+    >
+      <ArrowDownToLine className="h-4 w-4" />
+    </button>
+  );
 }
 
 const LANG_NAMES: Record<string, string> = {
@@ -130,6 +205,8 @@ export default function MangaDetail() {
     sourceId?: string;
     label: string;
   } | null>(null);
+  const [exportingToFile, setExportingToFile] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
   const [scanlatorSheetOpen, setScanlatorSheetOpen] = useState(false);
   const [langSheetOpen, setLangSheetOpen] = useState(false);
   const [selectedLang, setSelectedLang] = useState<string | null>(null);
@@ -370,6 +447,9 @@ export default function MangaDetail() {
   const altTitles = manga?.altTitles || [];
   const effectiveSource = sourceContext ?? activeSourceId;
   const sourceName = effectiveSource ? formatSourceId(effectiveSource) : null;
+  const isRule34 = effectiveSource === "en.rule34";
+  // Detect Koofr video entries so we can show "Watch" instead of "Read"
+  const isKoofrVideo = effectiveSource === 'local.koofr' && !!id && isKoofrVideoId(id);
 
   if (showLoading) {
     return <div className="flex justify-center py-32"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -593,18 +673,18 @@ export default function MangaDetail() {
           ) : latestProgress ? (
             <Button
               className="w-full h-12 text-base font-semibold rounded-xl"
-              onClick={() => setLocation(`/reader/${latestProgress.chapterId}?mangaId=${manga.id}${(sourceContext ?? activeSourceId) ? `&sourceId=${sourceContext ?? activeSourceId}` : ""}`)}
+              onClick={() => setLocation(readerUrl(latestProgress.chapterId, manga.id, sourceContext ?? activeSourceId))}
             >
-              <BookOpen className="mr-2 h-5 w-5" />
-              Continue reading · Ch. {latestProgress.chapterNumber}
+              {isKoofrVideo ? <Play className="mr-2 h-5 w-5" /> : <BookOpen className="mr-2 h-5 w-5" />}
+              {isKoofrVideo ? 'Continue watching' : isRule34 ? "View artwork" : `Continue reading · Ch. ${latestProgress.chapterNumber}`}
             </Button>
           ) : firstChapter ? (
             <Button
               className="w-full h-12 text-base font-semibold rounded-xl"
-              onClick={() => setLocation(`/reader/${firstChapter.id}?mangaId=${manga.id}${(sourceContext ?? activeSourceId) ? `&sourceId=${sourceContext ?? activeSourceId}` : ""}`)}
+              onClick={() => setLocation(readerUrl(firstChapter.id, manga.id, sourceContext ?? activeSourceId))}
             >
               <Play className="mr-2 h-5 w-5" />
-              Start reading
+              {isKoofrVideo ? 'Watch' : isRule34 ? "View artwork" : "Start reading"}
             </Button>
           ) : (
             <Button className="w-full h-12 text-base font-semibold rounded-xl" disabled>
@@ -614,13 +694,17 @@ export default function MangaDetail() {
         </div>
 
         {/* ── Chapters section ── */}
-        <div className="border-t border-border/50">
+        {!isRule34 && <div className="border-t border-border/50">
 
           {/* Chapter header — Tachiyomi style */}
           <div className="flex items-center gap-2 px-4 py-3">
             <div className="flex-1 min-w-0">
               <span className="font-bold text-sm">
-                {chaptersLoading ? "…" : `${visibleChapters.length} Chapter${visibleChapters.length !== 1 ? "s" : ""}`}
+                {chaptersLoading
+                  ? "…"
+                  : isRule34
+                    ? "Artwork"
+                    : `${visibleChapters.length} Chapter${visibleChapters.length !== 1 ? "s" : ""}`}
               </span>
               <div className="flex items-center gap-2 flex-wrap mt-0.5">
                 {availableLanguages.length > 1 && (
@@ -776,7 +860,7 @@ export default function MangaDetail() {
                           totalPages: 0, lastPageRead: 0, isRead: false,
                         });
                       }
-                      setLocation(`/reader/${chapter.id}?mangaId=${manga.id}${(sourceContext ?? activeSourceId) ? `&sourceId=${sourceContext ?? activeSourceId}` : ""}`);
+                      setLocation(readerUrl(chapter.id, manga.id, sourceContext ?? activeSourceId));
                     }}
                     onContextMenu={e => {
                       e.preventDefault();
@@ -803,7 +887,9 @@ export default function MangaDetail() {
                           <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 shrink-0">Pg {p.lastPageRead + 1}</Badge>
                         )}
                         <span className="font-medium text-sm text-foreground">
-                          Chapter {chapter.number}{chapter.title ? `: ${chapter.title}` : ""}
+                           {isRule34
+                             ? "Open artwork"
+                             : `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}`}
                         </span>
                         {chapter.isOfficial && (
                           <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 bg-amber-500/20 text-amber-600 shrink-0">Official</Badge>
@@ -816,9 +902,8 @@ export default function MangaDetail() {
                     </div>
 
                     {!chapterSelectionMode ? (
-                      <button
-                        type="button"
-                        className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-white/30 hover:text-white/80 transition-colors"
+                      <ChapterDownloadButton
+                        chapterId={chapter.id}
                         onClick={e => {
                           e.stopPropagation();
                           setDownloadTarget({
@@ -830,10 +915,7 @@ export default function MangaDetail() {
                             label: `Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ""}`,
                           });
                         }}
-                        title="Download chapter"
-                      >
-                        <ArrowDownToLine className="h-4 w-4" />
-                      </button>
+                      />
                     ) : (
                       <button
                         type="button"
@@ -852,7 +934,7 @@ export default function MangaDetail() {
               })}
             </div>
           )}
-        </div>
+        </div>}
       </div>
 
       {chapterSelectionMode && (
@@ -902,10 +984,15 @@ export default function MangaDetail() {
       )}
 
       {downloadTarget && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setDownloadTarget(null)}>
-          <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-background px-5 pt-4 pb-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => { if (!exportingToFile) setDownloadTarget(null); }}
+        >
+          <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-background px-5 pt-4 pb-6 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted" />
-            <div className="flex items-start gap-3">
+
+            {/* Manga info */}
+            <div className="flex items-start gap-3 mb-5">
               <img
                 src={proxyImage(downloadTarget.thumbnail, downloadTarget.sourceId)}
                 alt={downloadTarget.mangaTitle}
@@ -916,10 +1003,13 @@ export default function MangaDetail() {
                 <div className="text-sm text-muted-foreground truncate">{downloadTarget.label}</div>
               </div>
             </div>
-            <div className="mt-5 flex gap-2">
-              <Button variant="secondary" className="flex-1" onClick={() => setDownloadTarget(null)}>Cancel</Button>
-              <Button
-                className="flex-1"
+
+            {/* Two download options */}
+            <div className="space-y-2.5">
+              {/* Save to App */}
+              <button
+                type="button"
+                disabled={exportingToFile}
                 onClick={() => {
                   queueActions.enqueueMany(
                     downloadTarget.chapters.map(ch => ({
@@ -933,12 +1023,80 @@ export default function MangaDetail() {
                     }))
                   );
                   setDownloadTarget(null);
-                  setLocation("/downloads");
                 }}
+                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border border-border/60 bg-card hover:bg-muted/50 active:scale-[0.98] transition-all text-left disabled:opacity-40"
               >
-                <ArrowDownToLine className="h-4 w-4 mr-2" /> Download
-              </Button>
+                <div className="h-9 w-9 rounded-xl bg-primary/12 flex items-center justify-center shrink-0">
+                  <ArrowDownToLine className="h-4.5 w-4.5 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">Save to App</div>
+                  <div className="text-xs text-muted-foreground">Read offline — stored in this web app</div>
+                </div>
+              </button>
+
+              {/* Export to Files */}
+              <button
+                type="button"
+                disabled={exportingToFile}
+                onClick={async () => {
+                  if (!downloadTarget.sourceId) return;
+                  setExportingToFile(true);
+                  setExportProgress(0);
+                  try {
+                    for (const ch of downloadTarget.chapters) {
+                      await saveChapterToFile({
+                        chapterId: ch.id,
+                        sourceId: downloadTarget.sourceId,
+                        mangaTitle: downloadTarget.mangaTitle,
+                        chapterLabel: `Chapter ${ch.number}${ch.title ? ` - ${ch.title}` : ''}`,
+                        onProgress: pct => setExportProgress(pct),
+                      });
+                    }
+                  } catch {
+                    /* ignore — browser will show download error */
+                  } finally {
+                    setExportingToFile(false);
+                    setExportProgress(0);
+                    setDownloadTarget(null);
+                  }
+                }}
+                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border border-border/60 bg-card hover:bg-muted/50 active:scale-[0.98] transition-all text-left disabled:opacity-40"
+              >
+                <div className="h-9 w-9 rounded-xl bg-primary/12 flex items-center justify-center shrink-0">
+                  {exportingToFile
+                    ? <Loader2 className="h-4.5 w-4.5 text-primary animate-spin" />
+                    : <ArrowDown className="h-4.5 w-4.5 text-primary" />
+                  }
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold">Export to Files</div>
+                  <div className="text-xs text-muted-foreground">
+                    {exportingToFile
+                      ? `Packing ZIP… ${exportProgress}%`
+                      : 'Download ZIP to device Files app'}
+                  </div>
+                  {exportingToFile && (
+                    <div className="mt-1.5 h-1 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-300"
+                        style={{ width: `${exportProgress}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </button>
             </div>
+
+            {/* Cancel */}
+            <button
+              type="button"
+              disabled={exportingToFile}
+              onClick={() => setDownloadTarget(null)}
+              className="w-full mt-3 h-10 rounded-2xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
