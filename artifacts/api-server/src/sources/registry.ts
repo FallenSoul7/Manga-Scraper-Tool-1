@@ -16,6 +16,7 @@ import { HentaiYogaSource } from "./hentaiyoga";
 import { PandaChaikaSource } from "./pandachaika";
 import { KoofrSource } from "./koofr";
 import { Rule34Source } from "./rule34";
+import { AllMangaSource } from "./allmanga";
 import catalogJson from "./catalog.generated.json" with { type: "json" };
 
 interface CatalogExtension {
@@ -56,6 +57,7 @@ register(HentaiYogaSource);
 register(PandaChaikaSource);
 register(KoofrSource);
 register(Rule34Source);
+register(AllMangaSource);
 
 // Madara-themed sources
 register(createMadaraSource({

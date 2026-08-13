@@ -382,7 +382,7 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
 }
 
 // ─── Anime tab ────────────────────────────────────────────────────────────────
-const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga"]);
+const ANIME_SOURCE_IDS = new Set(["en.allanime", "video.hentaiyoga"]);
 
 function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null }) {
   const { toast } = useToast();
@@ -444,6 +444,7 @@ function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; active
 
   // Hardcoded discoverable anime extensions (always visible for install)
   const ANIME_EXTENSIONS = [
+    { id: "en.allanime", name: "AllManga", lang: "en", isNsfw: true, description: "Manga and anime catalog" },
     { id: "video.hentaiyoga", name: "Hentai Yoga", lang: "en", isNsfw: true, description: "Hentai anime videos" },
   ];
 
@@ -467,7 +468,13 @@ function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; active
         const isInstalled = animeSources.some(s => s.id === ext.id);
         return (
           <div key={ext.id} className="flex items-center gap-3 px-4 py-3">
-            <SourceAvatar src={{ name: ext.name, iconUrl: null }} size={44} />
+            <SourceAvatar
+              src={{
+                name: ext.name,
+                iconUrl: catalog?.extensions.find((entry) => entry.id === ext.id)?.iconUrl ?? null,
+              }}
+              size={44}
+            />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <p className="font-semibold text-sm text-foreground truncate">{ext.name}</p>
