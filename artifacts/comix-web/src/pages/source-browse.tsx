@@ -21,7 +21,7 @@ import type { SourceTag } from "@/lib/header-search";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-interface MangaSummary { id: string; title: string; thumbnail: string; type: string; isNsfw: boolean }
+interface MangaSummary { id: string; title: string; thumbnail: string; type: string; isNsfw: boolean; mediaType?: "manga" | "anime" }
 interface ListResponse { items: MangaSummary[]; page: number; hasNextPage: boolean }
 interface PageSnapshot {
   tab: ActiveTab;
@@ -36,6 +36,7 @@ interface PageSnapshot {
   popularItems: MangaSummary[];
   latestItems: MangaSummary[];
   filterItems: MangaSummary[];
+  mediaType?: "all" | "manga" | "anime";
   scrollY: number;
 }
 type TagTriState = "include" | "exclude";
@@ -139,6 +140,10 @@ export default function SourceBrowsePage() {
   const searchString = useSearch();
   const urlQ = useMemo(() => new URLSearchParams(searchString).get("q") ?? "", [searchString]);
   const urlTagId = useMemo(() => new URLSearchParams(searchString).get("tagId") ?? "", [searchString]);
+  const urlMediaType = useMemo(() => {
+    const value = new URLSearchParams(searchString).get("media");
+    return value === "manga" || value === "anime" ? value : "all";
+  }, [searchString]);
   const installedMap = useStore((s) => s.installedSources);
   const installedSource = installedMap[sourceId];
   const theme = useStore(s => s.theme);
@@ -170,7 +175,7 @@ export default function SourceBrowsePage() {
   const pageScrollKey = `source-scroll:${sourceId}`;
 
   const storedSnapshot = useMemo<PageSnapshot | null>(() => {
-    if (urlQ || urlTagId) return null;
+    if (urlQ || urlTagId || urlMediaType !== "all") return null;
     try {
       const raw = sessionStorage.getItem(pageStateKey);
       if (!raw) return null;
@@ -194,6 +199,10 @@ export default function SourceBrowsePage() {
   );
   const [searchQuery, setSearchQuery] = useState(
     () => storedSnapshot?.searchQuery ?? urlQ
+  );
+  const isAllManga = sourceId === "en.allanime";
+  const [mediaType, setMediaType] = useState<"all" | "manga" | "anime">(
+    () => urlMediaType !== "all" ? urlMediaType : (storedSnapshot?.mediaType ?? "all"),
   );
 
   const isFirstMountRef = useRef(true);
@@ -249,9 +258,16 @@ export default function SourceBrowsePage() {
   }, [sourceId]);
 
   useEffect(() => {
+    if (urlMediaType !== mediaType && (urlMediaType !== "all" || mediaType === "all")) {
+      setMediaType(urlMediaType);
+    }
+  }, [urlMediaType]);
+
+  useEffect(() => {
     setPopularPage(1); setPopularItems([]);
     setLatestPage(1); setLatestItems([]);
-  }, [popularSort]);
+    setFilterPage(1); setFilterItems([]);
+  }, [popularSort, mediaType]);
 
   useEffect(() => {
     const id = window.setTimeout(() => setSearchQuery(searchInput.trim()), DEBOUNCE_MS);
@@ -294,10 +310,11 @@ export default function SourceBrowsePage() {
   const commonOpts = {
     nsfw: settings.hideNsfw ? "false" : "true",
     poster: settings.posterQuality,
+    ...(isAllManga ? { media: mediaType } : {}),
   };
 
   const popularQuery = useQuery<ListResponse>({
-    queryKey: ["source-popular", sourceId, popularPage, popularSort, settings.hideNsfw, settings.posterQuality],
+    queryKey: ["source-popular", sourceId, mediaType, popularPage, popularSort, settings.hideNsfw, settings.posterQuality],
     queryFn: () => customFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
     enabled: !!sourceId && !!source && tab === "popular" && !isFiltering,
     staleTime: 5 * 60 * 1000,
@@ -305,7 +322,7 @@ export default function SourceBrowsePage() {
   });
 
   const latestQuery = useQuery<ListResponse>({
-    queryKey: ["source-latest", sourceId, latestPage, popularSort, settings.hideNsfw, settings.posterQuality],
+    queryKey: ["source-latest", sourceId, mediaType, latestPage, popularSort, settings.hideNsfw, settings.posterQuality],
     queryFn: () => customFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
     enabled: !!sourceId && !!source && tab === "latest" && !isFiltering,
     staleTime: 5 * 60 * 1000,
@@ -313,7 +330,7 @@ export default function SourceBrowsePage() {
   });
 
   const filterQuery = useQuery<ListResponse>({
-    queryKey: ["source-filter", sourceId, searchQuery, allTagIds.join(","), filterPage, settings.hideNsfw, settings.posterQuality],
+    queryKey: ["source-filter", sourceId, mediaType, searchQuery, allTagIds.join(","), filterPage, settings.hideNsfw, settings.posterQuality],
     queryFn: () => customFetch<ListResponse>(`/api/search${buildQuery({
       ...commonOpts,
       query: searchQuery || undefined,
@@ -381,13 +398,14 @@ export default function SourceBrowsePage() {
       popularItems,
       latestItems,
       filterItems,
+      mediaType,
       scrollY: window.scrollY,
     };
     try { sessionStorage.setItem(pageStateKey, JSON.stringify(snapshot)); } catch { /* quota */ }
     sessionStorage.setItem(pageScrollKey, String(window.scrollY));
   }, [
     pageStateKey, pageScrollKey,
-    tab, popularSort, searchOpen, searchInput, searchQuery, appliedTagState,
+    tab, popularSort, searchOpen, searchInput, searchQuery, appliedTagState, mediaType,
     popularPage, latestPage, filterPage, popularItems, latestItems, filterItems,
   ]);
 
@@ -474,6 +492,13 @@ export default function SourceBrowsePage() {
   }
 
   const activeTabValue: ActiveTab = inSearchMode ? "filter" : inFilterMode ? "filter" : tab;
+
+  const handleMediaType = (next: "all" | "manga" | "anime") => {
+    setMediaType(next);
+    const query = new URLSearchParams(searchString);
+    if (next === "all") query.delete("media"); else query.set("media", next);
+    setLocation(`/sources/${sourceId}${query.toString() ? `?${query.toString()}` : ""}`);
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -567,6 +592,22 @@ export default function SourceBrowsePage() {
         {/* Tab bar */}
         {!inSearchMode && (
           <div className="flex flex-col gap-1.5 px-4 pb-3">
+            {isAllManga && (
+              <div className="flex items-center gap-1 rounded-full bg-muted/50 p-1 w-fit">
+                {(["all", "manga", "anime"] as const).map(kind => (
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() => handleMediaType(kind)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                      mediaType === kind ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {kind === "all" ? "All" : kind === "manga" ? "Manga" : "Anime"}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex items-center gap-1">
             {(["popular", "latest"] as const).map(v => (
               <button

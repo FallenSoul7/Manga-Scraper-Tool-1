@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Link } from "wouter";
 import { proxyImage } from "@/lib/utils";
 import { Check } from "lucide-react";
+import { Film } from "lucide-react";
 import type { MangaSummary } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
 
@@ -73,6 +74,11 @@ export const MangaCard = memo(function MangaCard({
         {manga.isNsfw && settings.showNsfwBadge && (
           <div className="absolute top-2 right-2 rounded-md bg-destructive/90 px-1.5 py-0.5 text-[10px] font-semibold text-destructive-foreground backdrop-blur-sm">
             18+
+          </div>
+        )}
+        {manga.mediaType === "anime" && (
+          <div className="absolute bottom-2 right-2 rounded-md bg-black/75 px-1.5 py-1 text-white backdrop-blur-sm" title="Video">
+            <Film className="h-3.5 w-3.5" />
           </div>
         )}
         {showSourceBadge && sourceId && sourceId !== "en.comix" && (

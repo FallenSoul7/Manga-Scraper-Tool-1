@@ -131,6 +131,50 @@ app.get("/api/image-proxy", async (req, res) => {
   }
 });
 
+// ── AllManga video proxy — preserves CDN referer + byte ranges ──────────────
+// AllAnime video paths are not consistently playable cross-origin. Keep the
+// source URL server-side, validate the hostname, and forward range requests
+// so seeking works in the shared video player.
+app.get("/api/allmanga/video", async (req, res) => {
+  const targetUrl = String(req.query.url ?? "");
+  let target: URL;
+  try {
+    target = new URL(targetUrl);
+  } catch {
+    return res.status(400).json({ error: "Invalid video URL" });
+  }
+  if (target.protocol !== "https:" || !target.hostname.endsWith(".youtube-anime.com")) {
+    return res.status(403).json({ error: "Video host is not allowed" });
+  }
+  try {
+    const range = req.headers.range;
+    const upstream = await axios.get(target.toString(), {
+      responseType: "stream",
+      headers: {
+        Referer: "https://allmanga.to/",
+        Origin: "https://allmanga.to",
+        "User-Agent": "Mozilla/5.0",
+        ...(range ? { Range: range } : {}),
+      },
+      timeout: 120_000,
+      validateStatus: () => true,
+    });
+    res.status(upstream.status);
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    for (const header of ["content-type", "content-length", "content-range"]) {
+      if (upstream.headers[header]) res.setHeader(header, upstream.headers[header] as string);
+    }
+    (upstream.data as NodeJS.ReadableStream).pipe(res);
+    (upstream.data as NodeJS.ReadableStream).on("error", () => {
+      if (!res.headersSent) res.status(502).end();
+    });
+  } catch (err: any) {
+    logger.error({ err: err.message, url: target.hostname }, "AllManga video proxy failed");
+    if (!res.headersSent) res.status(502).json({ error: "Failed to stream AllManga video" });
+  }
+});
+
 // ── Koofr: serve extracted zip page from local cache ─────────────────────────
 app.get("/api/koofr/file", (req, res) => {
   const dir  = req.query.dir  as string;

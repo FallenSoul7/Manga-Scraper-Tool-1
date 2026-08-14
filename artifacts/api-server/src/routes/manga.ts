@@ -19,6 +19,9 @@ function listOpts(req: Request): ListOptions {
     poster: (["small", "medium", "large"].includes(String(q.poster))
       ? q.poster
       : "medium") as PosterQuality,
+    media: (["all", "manga", "anime"].includes(String(q.media))
+      ? String(q.media)
+      : "all") as ListOptions["media"],
     sort: q.sort ? String(q.sort) : undefined,
     tagIds: Array.isArray(q["tagIds[]"])
       ? (q["tagIds[]"] as string[])

@@ -48,6 +48,8 @@ const LANG_LABELS: Record<string, string> = {
   tr: "Türkçe", uk: "Українська", vi: "Tiếng Việt", zh: "中文",
 };
 const langLabel = (code: string) => LANG_LABELS[code] ?? code.toUpperCase();
+const ALLMANGA_SOURCE_ID = "en.allanime";
+const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga", ALLMANGA_SOURCE_ID]);
 
 function SourceAvatar({ src, size = 44 }: { src: { name: string; iconUrl: string | null }; size?: number }) {
   const [errored, setErrored] = useState(false);
@@ -382,9 +384,6 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
 }
 
 // ─── Anime tab ────────────────────────────────────────────────────────────────
-const ALLMANGA_SOURCE_ID = "en.allanime";
-const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga", ALLMANGA_SOURCE_ID]);
-
 function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -409,8 +408,8 @@ function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; active
       <div
         role="button"
         tabIndex={0}
-        onClick={() => { storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}`); }}
-        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}`); } }}
+        onClick={() => { storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}${src.id === ALLMANGA_SOURCE_ID ? "?media=anime" : ""}`); }}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}${src.id === ALLMANGA_SOURCE_ID ? "?media=anime" : ""}`); } }}
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/40 active:bg-muted/60 transition-colors"
       >
         <SourceAvatar src={src} size={44} />

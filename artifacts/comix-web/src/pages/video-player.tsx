@@ -31,6 +31,7 @@ import {
   Volume2,
   VolumeX,
   RotateCcw,
+  Gauge,
   ChevronLeft as ArrowLeft,
   ChevronRight as ArrowRight,
 } from "lucide-react";
@@ -69,8 +70,8 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
   // ── Refs ──────────────────────────────────────────────────────────────────
   const videoRef       = useRef<HTMLVideoElement>(null);
   const wrapRef        = useRef<HTMLDivElement>(null);
-  const hideTimerRef   = useRef<ReturnType<typeof setTimeout>>();
-  const tapTimerRef    = useRef<ReturnType<typeof setTimeout>>();
+  const hideTimerRef   = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const tapTimerRef    = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastTapRef     = useRef<{ time: number; x: number }>({ time: 0, x: 0 });
   const touchDoneRef   = useRef(false);   // prevents click firing after touchend
   const rippleCounter  = useRef(0);
@@ -84,9 +85,13 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
   const [controls,    setControls]    = useState(true);   // whether controls overlay is visible
   const [loading,     setLoading]     = useState(true);
   const [hasError,    setHasError]    = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   const [fullscreen,  setFullscreen]  = useState(false);
   const [seeking,     setSeeking]     = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [ripples,     setRipples]     = useState<SeekRipple[]>([]);
+  const resumeKey = `comix-video-progress:${url}`;
+  const resumeTimeRef = useRef(0);
 
   // Keep a ref in sync so setTimeout callbacks can read the latest value
   const playingRef  = useRef(playing);
@@ -123,6 +128,24 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
     clearTimeout(hideTimerRef.current);
     clearTimeout(tapTimerRef.current);
   }, []);
+
+  // Keep a small local resume point per video. This works for both Koofr
+  // library videos and source-backed anime without coupling the player to the
+  // manga progress store.
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem(resumeKey));
+      resumeTimeRef.current = Number.isFinite(saved) && saved > 3 ? saved : 0;
+    } catch {
+      resumeTimeRef.current = 0;
+    }
+    setCurrentTime(0);
+    setDuration(0);
+    setBuffered(0);
+    setHasError(false);
+    setErrorMessage("");
+    setLoading(true);
+  }, [resumeKey]);
 
   // ── Fullscreen listener ───────────────────────────────────────────────────
 
@@ -170,11 +193,25 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
 
   function retry() {
     setHasError(false);
+    setErrorMessage("");
     setLoading(true);
     const v = videoRef.current;
     if (!v) return;
     v.load();
     v.play().catch(() => {});
+  }
+
+  function cyclePlaybackRate() {
+    const rates = [1, 1.25, 1.5, 2, 0.75];
+    const next = rates[(rates.indexOf(playbackRate) + 1) % rates.length] ?? 1;
+    setPlaybackRate(next);
+    if (videoRef.current) videoRef.current.playbackRate = next;
+    showControls();
+  }
+
+  function saveResumePoint(time: number) {
+    if (!Number.isFinite(time) || time < 3) return;
+    try { localStorage.setItem(resumeKey, String(Math.floor(time))); } catch { /* storage unavailable */ }
   }
 
   // ── Seek ripples ──────────────────────────────────────────────────────────
@@ -235,6 +272,8 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
           e.preventDefault(); seekBy(10); showControls(); break;
         case "m":
           toggleMute(); break;
+        case "x":
+          cyclePlaybackRate(); break;
         case "f":
           toggleFullscreen(); break;
         case "Escape":
@@ -266,6 +305,18 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
         className="absolute inset-0 w-full h-full object-contain"
         playsInline
         muted={muted}
+        preload="metadata"
+        onLoadedMetadata={() => {
+          const v = videoRef.current;
+          if (!v) return;
+          v.playbackRate = playbackRate;
+          setDuration(v.duration);
+          const resume = resumeTimeRef.current;
+          if (resume > 0 && resume < v.duration - 5) {
+            v.currentTime = resume;
+            setCurrentTime(resume);
+          }
+        }}
         onPlay={()             => { setPlaying(true);  setLoading(false); }}
         onPause={()            => setPlaying(false)}
         onWaiting={()          => setLoading(true)}
@@ -278,8 +329,13 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
           setCurrentTime(v.currentTime);
           if (v.buffered.length > 0) setBuffered(v.buffered.end(v.buffered.length - 1));
         }}
-        onEnded={()            => setPlaying(false)}
-        onError={()            => { setHasError(true); setLoading(false); }}
+        onEnded={()            => { setPlaying(false); saveResumePoint(0); }}
+        onError={()            => {
+          const code = videoRef.current?.error?.code;
+          setErrorMessage(code === 4 ? "This video format or stream is not supported here." : "The source did not respond with a playable video.");
+          setHasError(true);
+          setLoading(false);
+        }}
       />
 
       {/* ── Layer 10: Gesture layer ────────────────────────────────────── */}
@@ -311,8 +367,9 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
       {hasError && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 px-8 text-center">
           <span className="text-5xl">⚠️</span>
-          <p className="text-white font-semibold text-lg">Couldn't load video</p>
+          <p className="text-white font-semibold text-lg">Couldn’t load video</p>
           <p className="text-white/50 text-sm truncate max-w-[280px]">{title}</p>
+          <p className="text-white/45 text-xs max-w-sm">{errorMessage || "The source returned an unavailable stream."}</p>
           <button
             className="flex items-center gap-2 px-6 py-3 rounded-full bg-white/15 text-white font-medium hover:bg-white/25 active:scale-95 transition-all"
             onClick={retry}
@@ -363,6 +420,14 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
             >
               {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             </button>
+            <button
+              className="pointer-events-auto shrink-0 h-10 min-w-10 px-2 flex items-center justify-center gap-1 rounded-full bg-black/50 backdrop-blur border border-white/15 text-white hover:bg-black/70 active:scale-90 transition-all"
+              onClick={cyclePlaybackRate}
+              title="Playback speed (X)"
+            >
+              <Gauge className="h-4 w-4" />
+              <span className="text-[11px] font-semibold">{playbackRate}×</span>
+            </button>
           </div>
         </div>
 
@@ -407,7 +472,7 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
                 value={currentTime}
                 onPointerDown={e => { setSeeking(true); (e.target as HTMLInputElement).setPointerCapture(e.pointerId); }}
                 onPointerUp={() => { setSeeking(false); showControls(); }}
-                onChange={e => seekTo(parseFloat(e.target.value))}
+                onChange={e => { const next = parseFloat(e.target.value); seekTo(next); saveResumePoint(next); }}
                 onClick={e => e.stopPropagation()}
               />
               {/* Thumb */}
