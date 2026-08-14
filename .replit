@@ -72,3 +72,6 @@ externalPort = 3000
 
 [userenv.shared]
 KOOFR_EMAIL = "asimboss00789@gmail.com"
+
+[nix]
+channel = "stable-25_05"
