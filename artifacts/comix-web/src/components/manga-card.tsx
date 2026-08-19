@@ -57,7 +57,7 @@ export const MangaCard = memo(function MangaCard({
     <div className={`group relative cursor-pointer select-none ${browseStyle ? "" : "flex flex-col gap-2"}`}>
       <div
         className={[
-          browseStyle ? "relative aspect-[3/4] overflow-hidden rounded-xl bg-muted shadow-sm transition-all duration-300" : "relative aspect-[2/3] overflow-hidden rounded-xl bg-muted shadow-sm transition-all duration-300",
+          browseStyle ? "relative aspect-[0.72] overflow-hidden rounded-xl bg-muted shadow-sm transition-all duration-300" : "relative aspect-[2/3] overflow-hidden rounded-xl bg-muted shadow-sm transition-all duration-300",
           !isSelecting && "hover-elevate group-hover:shadow-md",
           isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "",
         ].filter(Boolean).join(" ")}
