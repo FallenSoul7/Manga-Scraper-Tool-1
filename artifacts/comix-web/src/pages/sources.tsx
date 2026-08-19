@@ -565,10 +565,9 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
     const q = search.trim().toLowerCase();
     return (catalog.extensions ?? [])
       .filter(e => lang === "all-langs" ? true : e.lang === lang)
-      // AllManga is intentionally discoverable in the normal Extensions tab
-      // as well as the Anime tab. Keep its 18+ badge, but do not hide it behind
-      // the opt-in NSFW filter.
-      .filter(e => showNsfw || !e.isNsfw || e.id === ALLMANGA_SOURCE_ID)
+      // The 18+ toggle acts as an "NSFW only" filter: off (default) shows all
+      // extensions (18+ and non-18+ alike), on shows only 18+ sources.
+      .filter(e => !showNsfw || e.isNsfw)
       .filter(e => supportedOnly ? e.supported : true)
       // Keep the curated "hidden" sources out of the default list; they only
       // show up once the user is actively searching for them.
@@ -602,7 +601,7 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
           </label>
           <label className="inline-flex items-center gap-1.5 text-xs px-3 h-8 rounded-md border border-input bg-background cursor-pointer shrink-0">
             <input type="checkbox" checked={showNsfw} onChange={e => setShowNsfw(e.target.checked)} className="rounded" />
-            18+
+            18+ only
           </label>
         </div>
         <p className="text-xs text-muted-foreground">Showing {visible.length.toLocaleString()} of {filtered.length.toLocaleString()}</p>
