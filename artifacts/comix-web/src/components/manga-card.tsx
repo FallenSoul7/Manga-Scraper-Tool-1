@@ -14,6 +14,7 @@ interface MangaCardProps {
   isSelected?: boolean;
   onNavigate?: () => void;
   showSourceBadge?: boolean;
+  browseStyle?: boolean;
 }
 
 /** Turn "en.comickfan" → "ComicKFan", "all.mangadex" → "MangaDex", etc. */
@@ -49,13 +50,14 @@ export const MangaCard = memo(function MangaCard({
   isSelected,
   onNavigate,
   showSourceBadge,
+  browseStyle = false,
 }: MangaCardProps) {
   const { settings } = useSettings();
   const inner = (
-    <div className="group relative flex flex-col gap-2 cursor-pointer select-none">
+    <div className={`group relative cursor-pointer select-none ${browseStyle ? "" : "flex flex-col gap-2"}`}>
       <div
         className={[
-          "relative aspect-[2/3] overflow-hidden rounded-xl bg-muted shadow-sm transition-all duration-300",
+          browseStyle ? "relative aspect-[3/4] overflow-hidden rounded-xl bg-muted shadow-sm transition-all duration-300" : "relative aspect-[2/3] overflow-hidden rounded-xl bg-muted shadow-sm transition-all duration-300",
           !isSelecting && "hover-elevate group-hover:shadow-md",
           isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "",
         ].filter(Boolean).join(" ")}
@@ -64,7 +66,7 @@ export const MangaCard = memo(function MangaCard({
           src={proxyImage(manga.thumbnail, sourceId)}
           alt={manga.title}
           className={[
-            "h-full w-full object-cover transition-all duration-300",
+            `h-full w-full transition-all duration-300 ${browseStyle ? "object-cover" : "object-cover"}`,
             !isSelecting && "group-hover:scale-105",
             isSelected && "opacity-70",
           ].filter(Boolean).join(" ")}
@@ -99,9 +101,11 @@ export const MangaCard = memo(function MangaCard({
           </div>
         )}
       </div>
-      <h3
+        <h3
         className={[
-          "font-semibold text-xs sm:text-sm text-foreground line-clamp-2 leading-snug transition-colors px-0.5",
+          browseStyle
+            ? "absolute bottom-0 left-0 right-0 z-10 px-2 pb-2 pt-8 font-normal text-[13px] text-white line-clamp-2 leading-snug bg-gradient-to-t from-black/90 via-black/55 to-transparent"
+            : "font-semibold text-xs sm:text-sm text-foreground line-clamp-2 leading-snug transition-colors px-0.5",
           !isSelecting && "group-hover:text-primary",
         ].filter(Boolean).join(" ")}
       >
