@@ -51,6 +51,19 @@ const langLabel = (code: string) => LANG_LABELS[code] ?? code.toUpperCase();
 const ALLMANGA_SOURCE_ID = "en.allanime";
 const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga", ALLMANGA_SOURCE_ID]);
 
+// Implemented (supported) sources that are intentionally hidden from the
+// default Extensions list. They are still installable — but only when found
+// through the search box, so they don't sit at the top of the browse list.
+const HIDDEN_FROM_DEFAULT_BROWSE = new Set([
+  "en.ninehentai",        // NineHentai
+  "all.danbooru",         // Danbooru
+  "local.koofr",          // K-Cafe
+  "en.mangafreak",        // Mangafreak
+  "all.hentaifox",        // HentaiFox
+  "en.onlythebesthentai", // Only The Best Hentai
+  "en.rule34",            // Rule34
+]);
+
 function SourceAvatar({ src, size = 44 }: { src: { name: string; iconUrl: string | null }; size?: number }) {
   const [errored, setErrored] = useState(false);
   const resolvedIcon = resolveIconUrl(src.iconUrl);
@@ -557,6 +570,9 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
       // the opt-in NSFW filter.
       .filter(e => showNsfw || !e.isNsfw || e.id === ALLMANGA_SOURCE_ID)
       .filter(e => supportedOnly ? e.supported : true)
+      // Keep the curated "hidden" sources out of the default list; they only
+      // show up once the user is actively searching for them.
+      .filter(e => q ? true : !HIDDEN_FROM_DEFAULT_BROWSE.has(e.id))
       .filter(e => q ? e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) || e.slug.toLowerCase().includes(q) : true)
       .sort(SUPPORTED_FIRST);
   }, [catalog, search, lang, showNsfw, supportedOnly]);
