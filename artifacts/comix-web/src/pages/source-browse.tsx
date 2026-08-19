@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   ArrowLeft, Search, X, SlidersHorizontal, Loader2,
-  Globe2, Check, AlertTriangle, RefreshCw, Heart,
+  Sun, Moon, Laptop, Check, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import type { SourceTag } from "@/lib/header-search";
 
@@ -45,7 +45,7 @@ type ActiveTab = "popular" | "latest" | "filter";
 interface PopularSortOption { value: string; label: string; }
 interface CatalogEntry {
   id: string; name: string; lang: string; isNsfw: boolean;
-  iconUrl?: string | null; baseUrl?: string | null; supported?: boolean;
+  iconUrl?: string | null; supported?: boolean;
   popularSorts?: PopularSortOption[];
 }
 
@@ -167,10 +167,6 @@ export default function SourceBrowsePage() {
     lang: catalogEntry.lang,
     isNsfw: catalogEntry.isNsfw,
   } : null);
-
-  const sourceSiteUrl = catalogEntry?.baseUrl ?? (
-    sourceId === "en.allanime" ? "https://allmanga.to" : null
-  );
 
   const popularSorts: PopularSortOption[] = catalogEntry?.popularSorts ?? [];
 
@@ -510,64 +506,57 @@ export default function SourceBrowsePage() {
       {/* ── Sticky header ──────────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
 
-        {/* Compact browser-style title row */}
-        <div className="flex items-center gap-2 px-3 h-[72px] bg-[#171719] text-[#f5f5f7]">
-          <Button
-            variant="ghost" size="icon"
-            className="h-11 w-10 shrink-0 text-[#f1f1f4] hover:bg-white/10 hover:text-white"
-            aria-label="Back"
-            onClick={() => setLocation("/sources")}
-          >
-            <ArrowLeft className="h-7 w-7" strokeWidth={2.2} />
-          </Button>
+        {/* Title row */}
+        <div className="flex items-center gap-3 px-4 h-14">
           {catalogEntry?.iconUrl ? (
             <img
               src={catalogEntry.iconUrl}
               alt=""
-              className="hidden h-8 w-8 rounded-lg shrink-0 object-contain bg-black/20 border border-white/10"
+              className="h-8 w-8 rounded-xl shrink-0 object-cover bg-muted border border-border/30"
             />
           ) : (
-            <div className="hidden h-8 w-8 rounded-lg shrink-0 bg-white/10 items-center justify-center border border-white/10">
+            <div className="h-8 w-8 rounded-xl shrink-0 bg-primary/10 flex items-center justify-center border border-border/30">
               <span className="text-[11px] font-bold text-primary">
                 {source.name.slice(0, 2).toUpperCase()}
               </span>
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <h1 className="font-sans font-semibold text-[17px] truncate leading-tight">{source.name} ({source.lang.toUpperCase()})</h1>
-            <p className="text-[12px] text-[#a9a9b0] truncate leading-none mt-1">
-              {sourceSiteUrl ? sourceSiteUrl.replace(/^https?:\/\//, "").replace(/\/$/, "") : "Extension source"}
+            <h1 className="font-serif font-bold text-lg sm:text-xl truncate leading-tight">{source.name}</h1>
+            <p className="text-[11px] text-muted-foreground leading-none mt-0.5">
+              {source.lang.toUpperCase()}
+              {source.isNsfw && <span className="ml-1.5 text-rose-500">18+</span>}
             </p>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Button
+              variant="ghost" size="icon" className="h-9 w-9"
+              aria-label="Back"
+              onClick={() => setLocation("/sources")}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+
             <Button
               variant="ghost" size="icon"
-              className={`h-11 w-10 text-[#e6e6eb] hover:bg-white/10 hover:text-white ${searchOpen ? "text-primary" : ""}`}
+              className={`h-9 w-9 ${searchOpen ? "text-primary" : ""}`}
               aria-label="Search"
               onClick={() => setSearchOpen(o => !o)}
             >
-              <Search className="h-7 w-7" strokeWidth={2.1} />
+              <Search className="h-5 w-5" />
             </Button>
-            <Button
-              variant="ghost" size="icon"
-              className="h-11 w-10 text-[#e6e6eb] hover:bg-white/10 hover:text-white"
-              aria-label={`Open ${source.name} website`}
-              disabled={!sourceSiteUrl}
-              onClick={() => sourceSiteUrl && window.open(sourceSiteUrl, "_blank", "noopener,noreferrer")}
-            >
-              <Globe2 className="h-7 w-7" strokeWidth={2.1} />
-            </Button>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-11 w-8 text-[#e6e6eb] hover:bg-white/10 hover:text-white" aria-label="More options">
-                  <span className="text-3xl leading-none -mt-2">⋮</span>
+                <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" aria-label="Theme">
+                  {theme === "light" ? <Sun className="h-5 w-5" /> : theme === "dark" ? <Moon className="h-5 w-5" /> : <Laptop className="h-5 w-5" />}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => storeActions.setTheme("light")}>Light theme</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => storeActions.setTheme("dark")}>Dark theme</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => storeActions.setTheme("system")}>System theme</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => storeActions.setTheme("light")}><Sun className="mr-2 h-4 w-4" />Light</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => storeActions.setTheme("dark")}><Moon className="mr-2 h-4 w-4" />Dark</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => storeActions.setTheme("system")}><Laptop className="mr-2 h-4 w-4" />System</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -575,17 +564,16 @@ export default function SourceBrowsePage() {
 
         {/* Search bar */}
         {searchOpen && (
-          <div className="px-3 pb-3 pt-1 bg-[#171719] animate-in slide-in-from-top-1 duration-150">
-            <div className="relative rounded-md border-2 border-[#b7c7f5] bg-[#171719]">
+          <div className="px-4 pb-3 animate-in slide-in-from-top-1 duration-150">
+            <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <label className="absolute -top-2 left-2 px-1 bg-[#171719] text-[13px] leading-none text-[#b7c7f5]">Search</label>
               <Input
                 ref={searchInputRef}
                 type="search"
-                placeholder=""
+                placeholder={`Search ${source.name}…`}
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
-                className="h-12 pl-9 pr-9 rounded-md border-0 bg-transparent text-[16px] text-white focus-visible:ring-0"
+                className="pl-9 pr-9 rounded-full bg-muted/50 border-muted-foreground/20 focus-visible:ring-primary/50"
               />
               {searchInput && (
                 <button
@@ -603,31 +591,35 @@ export default function SourceBrowsePage() {
 
         {/* Tab bar */}
         {!inSearchMode && (
-          <div className="grid grid-cols-3 gap-2 px-3 pb-3 bg-[#171719]">
+          <div className="flex flex-col gap-1.5 px-4 pb-3">
             {isAllManga && (
-              <div className="col-span-3 flex items-center gap-2 pb-1">
+              <div className="flex items-center gap-1 rounded-full bg-muted/50 p-1 w-fit">
                 {(["all", "manga", "anime"] as const).map(kind => (
-                  <button key={kind} type="button" onClick={() => handleMediaType(kind)}
-                    className={`flex-1 px-2 py-2 text-[13px] font-medium rounded-xl border-2 transition-colors ${
-                      mediaType === kind ? "bg-[#1557bc] border-[#1557bc] text-white" : "border-[#4b4b50] bg-transparent text-[#e6e6eb] hover:bg-white/10"
-                    }`}>
-                    {mediaType === kind && <Check className="inline-block h-3.5 w-3.5 mr-1 -mt-0.5" />}
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() => handleMediaType(kind)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                      mediaType === kind ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
                     {kind === "all" ? "All" : kind === "manga" ? "Manga" : "Anime"}
                   </button>
                 ))}
               </div>
             )}
-            <div className="col-span-3 grid grid-cols-3 gap-2">
+            <div className="flex items-center gap-1">
             {(["popular", "latest"] as const).map(v => (
               <button
                 key={v}
                 type="button"
                 onClick={() => handleBrowseTab(v)}
-                className={`flex items-center justify-center gap-1.5 px-2 py-2.5 text-[14px] font-medium rounded-xl border-2 transition-colors whitespace-nowrap capitalize ${
-                  activeTabValue === v ? "bg-[#1557bc] border-[#1557bc] text-white" : "border-[#4b4b50] bg-transparent text-[#e6e6eb] hover:bg-white/10"
+                className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap capitalize ${
+                  activeTabValue === v
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
               >
-                {activeTabValue === v ? <Check className="h-4 w-4" /> : v === "popular" ? <Heart className="h-4 w-4" /> : null}
                 {v === "popular" ? "Popular" : "Latest"}
               </button>
             ))}
@@ -637,10 +629,10 @@ export default function SourceBrowsePage() {
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className={`flex items-center justify-center gap-1.5 px-2 py-2.5 text-[14px] font-medium rounded-xl transition-colors whitespace-nowrap border-2 ${
+                    className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap border ${
                       inFilterMode
-                        ? "bg-[#1557bc] text-white border-[#1557bc]"
-                        : "text-[#e6e6eb] hover:bg-white/10 border-[#4b4b50]"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted border-transparent"
                     }`}
                   >
                     <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -679,6 +671,24 @@ export default function SourceBrowsePage() {
             </div>
 
             {/* Sort sub-pills */}
+            {(tab === "popular" || tab === "latest") && !isFiltering && popularSorts.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {popularSorts.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setPopularSort(opt.value === popularSort ? null : opt.value)}
+                    className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors whitespace-nowrap ${
+                      popularSort === opt.value
+                        ? "bg-primary/15 text-primary border-primary/40"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted border-transparent"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -727,7 +737,6 @@ export default function SourceBrowsePage() {
             hasNext={gridHasNext}
             onLoadMore={gridLoadMore}
             sourceId={sourceId}
-            browseStyle
           />
         )}
       </main>
