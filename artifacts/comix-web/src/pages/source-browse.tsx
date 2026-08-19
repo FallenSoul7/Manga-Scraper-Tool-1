@@ -512,7 +512,7 @@ export default function SourceBrowsePage() {
             <img
               src={catalogEntry.iconUrl}
               alt=""
-              className="h-8 w-8 rounded-xl shrink-0 object-cover bg-muted border border-border/30"
+              className="h-8 w-8 rounded-xl shrink-0 object-contain bg-muted border border-border/30"
             />
           ) : (
             <div className="h-8 w-8 rounded-xl shrink-0 bg-primary/10 flex items-center justify-center border border-border/30">
