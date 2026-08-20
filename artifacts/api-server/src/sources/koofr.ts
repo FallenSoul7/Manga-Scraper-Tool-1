@@ -150,12 +150,24 @@ function cacheKey(filename: string): string {
  * Returns the local path of the saved cover, or null if no image found.
  */
 export async function extractCoverOnly(koofrPath: string, key: string): Promise<string | null> {
-  const dir = nodePath.join(CACHE_ROOT, key);
+  const dir = nodePath.resolve(nodePath.join(CACHE_ROOT, key));
+  const base = nodePath.resolve(CACHE_ROOT);
+  const relativeCheck = nodePath.relative(base, dir);
+  if (relativeCheck.startsWith('..') || nodePath.isAbsolute(relativeCheck)) {
+    throw new Error('Invalid path');
+  }
 
   // Already cached?
   if (fs.existsSync(dir)) {
     const hit = fs.readdirSync(dir).find(f => f.startsWith(".cover."));
-    if (hit) return nodePath.join(dir, hit);
+    if (hit) {
+      const hitPath = nodePath.resolve(nodePath.join(dir, hit));
+      const hitRelative = nodePath.relative(base, hitPath);
+      if (hitRelative.startsWith('..') || nodePath.isAbsolute(hitRelative)) {
+        throw new Error('Invalid path');
+      }
+      return hitPath;
+    }
   }
 
   await fsp.mkdir(dir, { recursive: true });
@@ -175,12 +187,17 @@ export async function extractCoverOnly(koofrPath: string, key: string): Promise<
 
     parser.on("entry", (entry: unzipper.Entry) => {
       if (saved) { entry.autodrain(); return; }
-      const base = nodePath.basename(entry.path);
-      if (entry.path.includes("__MACOSX") || !isImage(base)) { entry.autodrain(); return; }
+      const entryBase = nodePath.basename(entry.path);
+      if (entry.path.includes("__MACOSX") || !isImage(entryBase)) { entry.autodrain(); return; }
 
       saved = true;
-      const ext = nodePath.extname(base);
-      const coverPath = nodePath.join(dir, `.cover${ext}`);
+      const ext = nodePath.extname(entryBase);
+      const coverPath = nodePath.resolve(nodePath.join(dir, `.cover${ext}`));
+      const coverRelative = nodePath.relative(base, coverPath);
+      if (coverRelative.startsWith('..') || nodePath.isAbsolute(coverRelative)) {
+        reject(new Error('Invalid path'));
+        return;
+      }
       const ws = fs.createWriteStream(coverPath);
 
       entry.pipe(ws);
@@ -202,7 +219,13 @@ export async function extractCoverOnly(koofrPath: string, key: string): Promise<
  * Returns sorted array of image basenames.
  */
 async function extractZip(koofrPath: string, key: string): Promise<string[]> {
-  const finalDir = nodePath.join(CACHE_ROOT, key);
+  const resolvedCacheRoot = nodePath.resolve(CACHE_ROOT);
+  const resolvedFinalDir = nodePath.resolve(resolvedCacheRoot, key);
+  const relativeFinalDir = nodePath.relative(resolvedCacheRoot, resolvedFinalDir);
+  if (relativeFinalDir.startsWith('..') || nodePath.isAbsolute(relativeFinalDir)) {
+    throw new Error('Invalid key parameter');
+  }
+  const finalDir = resolvedFinalDir;
   const sentinel = nodePath.join(finalDir, DONE_SENTINEL);
 
   if (fs.existsSync(sentinel)) {
@@ -215,7 +238,13 @@ async function extractZip(koofrPath: string, key: string): Promise<string[]> {
     await fsp.rm(finalDir, { recursive: true, force: true });
   }
 
+  const resolvedTmpBase = nodePath.resolve(os.tmpdir());
   const tmpDir = await fsp.mkdtemp(nodePath.join(os.tmpdir(), `koofr-${key}-`));
+  const resolvedTmpDir = nodePath.resolve(tmpDir);
+  const relativeTmpDir = nodePath.relative(resolvedTmpBase, resolvedTmpDir);
+  if (relativeTmpDir.startsWith('..') || nodePath.isAbsolute(relativeTmpDir)) {
+    throw new Error('Invalid temporary directory');
+  }
 
   try {
     const response = await axios.get(`${KOOFR_API}/mounts/primary/files/get`, {
@@ -234,7 +263,7 @@ async function extractZip(koofrPath: string, key: string): Promise<string[]> {
         .on("entry", (entry: unzipper.Entry) => {
           const rawName = nodePath.basename(entry.path);
           if (entry.path.includes("__MACOSX") || !isImage(rawName)) { entry.autodrain(); return; }
-          const outPath = nodePath.join(tmpDir, rawName);
+          const outPath = nodePath.join(resolvedTmpDir, rawName);
           const ws = fs.createWriteStream(outPath);
           const p = new Promise<void>((res2, rej2) => { ws.on("finish", res2); ws.on("error", rej2); });
           entry.pipe(ws);
@@ -246,13 +275,13 @@ async function extractZip(koofrPath: string, key: string): Promise<string[]> {
     });
 
     await Promise.all(writePromises);
-    await fsp.writeFile(nodePath.join(tmpDir, DONE_SENTINEL), "");
+    await fsp.writeFile(nodePath.join(resolvedTmpDir, DONE_SENTINEL), "");
     await fsp.mkdir(CACHE_ROOT, { recursive: true });
-    await fsp.rename(tmpDir, finalDir);
+    await fsp.rename(resolvedTmpDir, finalDir);
 
     return imageFiles.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   } catch (err) {
-    await fsp.rm(tmpDir, { recursive: true, force: true });
+    await fsp.rm(resolvedTmpDir, { recursive: true, force: true });
     throw err;
   }
 }
