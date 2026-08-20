@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import passport from "passport";
+import helmet from "helmet";
 import router from "./routes";
 import { buildSessionMiddleware } from "./routes/auth";
 import { logger } from "./lib/logger";
@@ -13,6 +14,8 @@ import axios from "axios";
 import { getKoofrCover, koofrStream, koofrThumbnail, isProxySafe, CACHE_ROOT as KOOFR_CACHE_ROOT } from "./sources/koofr.js";
 
 const app: Express = express();
+
+app.use(helmet());
 
 app.use(
   pinoHttp({
