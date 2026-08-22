@@ -1,0 +1,56 @@
+Hey i want to add a another extention this extention is open sourced meaning it give it own api for many stuff inside first i will give a photo of how this app structure it self so from what i could see this app unlike other offer like this an group like lest day milf a name you click you dont just see one mahwa it has many of it bcuse an artist or an community upload thir art to a group only no like an songle manga mutiple time or choater but a famdon and soo you could understand it it has art anime and so muvh more i want them all in my website vedio and manga and so much more so we will build a custom framework for this good thing abiut this manga is it give api what o could get is these are soke api you can get them your self more GET /creators List All Creators and Posts Version one
+
+GET /creators List All Creators List all creators with details. (don't use the try it out button or your page will crash)
+
+Parameters Try it out No parameters Responses Code Description Links 200 List of all creators
+
+Media type
+
+Controls Accept header. Example Value Schema [ { "favorited": 1, "id": "21101760", "indexed": 1672534800, "name": "RAIGYO", "service": "fanbox", "updated": 1672534800 } ] No links
+
+GET /posts List recent posts
+
+GET /{service}/user/{creator_id} Get a list of creator posts
+
+GET /{service}/user/{creator_id}/announcements Get creator announcements
+
+GET /{service}/user/{creator_id}/fancards Get fancards by creator, fanbox only
+
+GET /{service}/user/{creator_id}/post/{post_id} Get a specific post
+
+GET /{service}/user/{creator_id}/post/{post_id}/revisions List a Post's Revisions Creators
+
+GET /{service}/user/{creator_id}/profile Get a creator
+
+GET /{service}/user/{creator_id}/links Get a creator's linked accounts Comments
+
+GET /{service}/user/{creator_id}/post/{post_id}/comments List a post's comments Post Flagging Flag post for re-import
+
+POST /{service}/user/{creator_id}/post/{post}/flag Flag a post
+
+GET /{service}/user/{creator_id}/post/{post}/flag Check if a Post is flagged Favorites
+
+GET /account/favorites List Account Favorites
+
+POST /favorites/post/{service}/{creator_id}/{post_id} Add Favorite Post
+
+DELETE /favorites/post/{service}/{creator_id}/{post_id} Remove Favorite Post
+
+POST /favorites/creator/{service}/{creator_id} Add Favorite creator
+
+DELETE /favorites/creator/{service}/{creator_id} Remove Favorite Creator
+
+File Search
+
+GET /search_hash/{file_hash} Lookup file by hash Misc
+
+GET /app_version and i want you to. Do this like this you know how we build an icon done to it the name of the mabga in wich the iocn show the image of for this the iocn would be an group a fandom icon you click it open a page of that famdom like popular and lastest it support vedio and has everything in the oicture another way it dose is a picture you click you see the picture in thie web and its attchment and you click on artist it open this gallry like an famdom so now dezimw it in our way better than thir website structure while keeping evrythign they has to offer that we can get and yes if we can get them theought api scrape it ask me question if is needed
+I understand the product direction: this is not a normal manga source. It is a creator-and-post archive where a creator/fandom becomes the “extension tile,” and each fandom page can contain galleries, attachments, videos, recent posts, favorites, comments, tags, and related creators. I’ll first map the existing extension/source architecture so the design fits ComiXHub instead of forcing this into the manga-only model.
+The existing app is currently built around a strict manga contract—summary → detail → chapters → page images—so this should be a new “archive source” framework rather than pretending each creator is a manga. The screenshot confirms the source has separate creator, post, search, recent, popular, random, tag, attachment, and account concepts.
+
+Before I design the API contract, I need the exact open-source project or API host so I can verify the real response shapes and media URLs.
+API docs or repository link
+https://pawchive.pw/api/schema
+Great—this gives us the live OpenAPI schema. I’ll inspect it now to map creators, posts, attachments, media types, and any authentication limits, then I’ll propose the framework design and its trade-offs before writing code.
+The live docs confirm the API base is https://pawchive.pw/api/v1. It is an OAS3 API with public-looking read routes plus account-protected favorites/flagging, and the site separates creators from posts exactly as you described. I’m checking whether the machine-readable OpenAPI JSON is exposed so the design can preserve every available attachment/video field instead of guessing.
+You've reached your monthly free quota limit. It will reset on August 27, 2026.
