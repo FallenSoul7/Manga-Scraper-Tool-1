@@ -137,8 +137,8 @@ const StoreStateSchema = z.object({
   searchHistory: z.array(z.string()),
   scanlatorPrefs: z.record(z.string(), z.string().nullable()).default({}),
   chapterSortAsc: z.record(z.string(), z.boolean()).default({}),
-  installedSources: z.record(z.string(), InstalledSourceSchema).default({ [DEFAULT_SOURCE.id]: DEFAULT_SOURCE }),
-  activeSourceId: z.string().default(DEFAULT_SOURCE.id),
+  installedSources: z.record(z.string(), InstalledSourceSchema).default({}),
+  activeSourceId: z.string().default(""),
   // Real, tracked time spent on the reader page (in milliseconds). The reader
   // adds to this every few seconds while the page is visible.
   readingTimeMs: z.number().default(0),
@@ -170,8 +170,8 @@ const DEFAULT_STATE: StoreState = {
   searchHistory: [],
   scanlatorPrefs: {},
   chapterSortAsc: {},
-  installedSources: { [DEFAULT_SOURCE.id]: DEFAULT_SOURCE },
-  activeSourceId: DEFAULT_SOURCE.id,
+  installedSources: {},
+  activeSourceId: "",
   readingTimeMs: 0,
   sourceReaderDirections: {},
 };
@@ -229,20 +229,16 @@ function loadState(): StoreState {
       if (!validated.data.categories.find(c => c.id === 'default')) {
         validated.data.categories = [...DEFAULT_CATEGORIES, ...validated.data.categories];
       }
-      // Always make sure the default Comix source is installed and up-to-date
-      const existingDefault = validated.data.installedSources[DEFAULT_SOURCE.id];
-      if (!existingDefault) {
-        validated.data.installedSources[DEFAULT_SOURCE.id] = DEFAULT_SOURCE;
-      } else if (existingDefault.isNsfw !== DEFAULT_SOURCE.isNsfw) {
-        // Reconcile metadata fixes (e.g. NSFW flag corrections)
-        validated.data.installedSources[DEFAULT_SOURCE.id] = {
-          ...existingDefault,
-          isNsfw: DEFAULT_SOURCE.isNsfw,
-        };
+      // Comix is no longer pre-installed. Drop the legacy auto-installed copy
+      // (installedAt === 0) so it behaves like any other optional source; a
+      // copy the user installed manually (installedAt > 0) is kept.
+      const legacyComix = validated.data.installedSources["en.comix"];
+      if (legacyComix && legacyComix.installedAt === 0) {
+        delete validated.data.installedSources["en.comix"];
       }
-      // Make sure activeSourceId points at an installed source
+      // Make sure activeSourceId points at an installed source (or is empty)
       if (!validated.data.installedSources[validated.data.activeSourceId]) {
-        validated.data.activeSourceId = DEFAULT_SOURCE.id;
+        validated.data.activeSourceId = Object.keys(validated.data.installedSources)[0] ?? "";
       }
       // Migration: rename "My Koofr Library" → "K-Cafe" and ensure it is not pinned
       if (validated.data.installedSources["local.koofr"]) {
@@ -710,12 +706,13 @@ export const storeActions = {
   },
 
   uninstallSource(id: string) {
-    if (id === DEFAULT_SOURCE.id) return; // never remove default
     if (!memoryState.installedSources[id]) return;
     const next = { ...memoryState.installedSources };
     delete next[id];
     const newActive =
-      memoryState.activeSourceId === id ? DEFAULT_SOURCE.id : memoryState.activeSourceId;
+      memoryState.activeSourceId === id
+        ? (Object.keys(next)[0] ?? "")
+        : memoryState.activeSourceId;
     saveState({ ...memoryState, installedSources: next, activeSourceId: newActive });
   },
 

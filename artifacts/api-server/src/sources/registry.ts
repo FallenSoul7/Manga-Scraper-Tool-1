@@ -104,7 +104,10 @@ register(createMangaThemesiaSource({
 }));
 
 export function getSource(id: string | undefined | null): MangaSource {
-  const key = id && id.trim() ? id : ComixSource.id;
+  const key = id && id.trim() ? id : "";
+  if (!key) {
+    throw new Error("No source selected. Install a source and try again.");
+  }
   const src = SOURCES_BY_ID.get(key);
   if (!src) {
     throw new Error(
@@ -129,5 +132,3 @@ export function listSupportedIds(): string[] {
 export function getCatalog(): CatalogFile {
   return catalog;
 }
-
-export const DEFAULT_SOURCE_ID = ComixSource.id;

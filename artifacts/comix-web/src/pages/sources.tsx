@@ -18,7 +18,6 @@ import {
   SearchX,
   Settings2,
   Pin,
-  AlertCircle,
 } from "lucide-react";
 import { useStore, storeActions, type InstalledSource } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
@@ -322,7 +321,7 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="font-semibold text-sm text-foreground truncate">{src.name}</p>
-            {(src.id === "en.comix" || src.id === "en.ninehentai") && (
+            {src.id === "en.ninehentai" && (
               <span className="text-[11px] font-semibold text-emerald-500 shrink-0">Working</span>
             )}
           </div>
@@ -339,19 +338,13 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
           >
             <Pin className={`h-4 w-4 ${isPinned ? "fill-current" : ""}`} />
           </button>
-          {src.id !== "en.comix" ? (
-            <button
-              className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-destructive"
-              title="Remove"
-              onClick={() => { storeActions.uninstallSource(src.id); toast({ title: `Removed ${src.name}` }); }}
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          ) : (
-            <button className="h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground opacity-40" disabled title="Info">
-              <AlertCircle className="h-4 w-4" />
-            </button>
-          )}
+          <button
+            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-destructive"
+            title="Remove"
+            onClick={() => { storeActions.uninstallSource(src.id); toast({ title: `Removed ${src.name}` }); }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
         </div>
       </div>
     );
