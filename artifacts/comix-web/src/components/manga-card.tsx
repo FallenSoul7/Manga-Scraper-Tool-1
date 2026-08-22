@@ -64,7 +64,7 @@ export const MangaCard = memo(function MangaCard({
           src={proxyImage(manga.thumbnail, sourceId)}
           alt={manga.title}
           className={[
-            "h-full w-full object-contain bg-black/10 transition-all duration-300",
+            "h-full w-full object-cover bg-black/10 transition-all duration-300",
             isSelected && "opacity-70",
           ].filter(Boolean).join(" ")}
           loading="lazy"
@@ -80,7 +80,7 @@ export const MangaCard = memo(function MangaCard({
             <Film className="h-3.5 w-3.5" />
           </div>
         )}
-        {showSourceBadge && sourceId && sourceId !== "en.comix" && (
+        {showSourceBadge && sourceId && (
           <div className="absolute bottom-1.5 left-1.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold text-white/90 backdrop-blur-sm leading-tight max-w-[85%] truncate">
             {sourceLabel(sourceId)}
           </div>
