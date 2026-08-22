@@ -21,6 +21,8 @@ const HistoryPage          = lazy(() => import("@/pages/history"));
 const StatsPage            = lazy(() => import("@/pages/stats"));
 const SourcesPage          = lazy(() => import("@/pages/sources"));
 const SourceBrowsePage     = lazy(() => import("@/pages/source-browse"));
+const PawchiveCreatorPage  = lazy(() => import("@/pages/pawchive-creator"));
+const PawchivePostPage     = lazy(() => import("@/pages/pawchive-post"));
 const SystemPage           = lazy(() => import("@/pages/system"));
 const CategoriesPage       = lazy(() => import("@/pages/categories"));
 const DownloadsPage        = lazy(() => import("@/pages/downloads"));
@@ -81,6 +83,14 @@ function AppContent() {
         {/* Reader: no header, no nav */}
         <Route path="/reader/:chapterId">
           <Lazy><Reader /></Lazy>
+        </Route>
+
+        {/* Pawchive archive flow: creator/fandom → post gallery → media viewer */}
+        <Route path="/sources/all.pawchive/creator/:creatorId">
+          <Lazy><PawchiveCreatorPage /></Lazy>
+        </Route>
+        <Route path="/sources/all.pawchive/post/:postId">
+          <Lazy><PawchivePostPage /></Lazy>
         </Route>
 
         {/* Manga detail: no global header */}

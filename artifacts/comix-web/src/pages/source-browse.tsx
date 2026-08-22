@@ -809,7 +809,9 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
             key={m.id}
             manga={m as any}
             sourceId={sourceId}
-            href={sourceId ? `/sources/${sourceId}/manga/${m.id}` : undefined}
+            href={sourceId === "all.pawchive"
+              ? `/sources/${sourceId}/creator/${m.id}`
+              : sourceId ? `/sources/${sourceId}/manga/${m.id}` : undefined}
           />
         ))}
       </div>

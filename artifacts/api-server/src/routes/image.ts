@@ -156,7 +156,16 @@ router.get("/", async (req, res) => {
     const contentType =
       (upstream.headers["content-type"] as string | undefined) ?? "image/jpeg";
 
-    if (!contentType.startsWith("image/") && !contentType.startsWith("application/octet-stream")) {
+    // This route is also used by the offline downloader for Pawchive and
+    // other media sources. Keep the existing image behavior but allow media
+    // streams and archives through the same SSRF-safe proxy.
+    if (
+      !contentType.startsWith("image/") &&
+      !contentType.startsWith("video/") &&
+      !contentType.startsWith("audio/") &&
+      !contentType.startsWith("application/octet-stream") &&
+      !contentType.startsWith("application/zip")
+    ) {
       upstream.data?.destroy?.();
       res.status(400).json({ error: "Response is not an image" });
       return;

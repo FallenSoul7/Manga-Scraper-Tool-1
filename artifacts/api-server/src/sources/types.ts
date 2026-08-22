@@ -86,6 +86,10 @@ export interface ChapterSummary {
   isOfficial?: boolean;
   /** BCP-47 language code (e.g. "en", "fr", "ja-ro"). Only set by multi-language sources. */
   lang?: string;
+  /** Optional media metadata for archive-style sources. */
+  thumbnail?: string;
+  mediaType?: "image" | "video" | "mixed";
+  attachmentCount?: number;
 }
 
 export interface ChapterListResponse {

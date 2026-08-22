@@ -204,6 +204,20 @@ export const PawchiveSource: MangaSource = {
         title: String(post.title ?? `Post ${posts.length - index}`),
         scanlator: service,
         date: postDate(post),
+        thumbnail: thumbnailUrl(
+          [post.file, ...(post.attachments ?? [])].find(f =>
+            !!f?.path && IMAGE_EXT.test(f.name ?? f.path ?? ""),
+          ),
+        ),
+        mediaType: (() => {
+          const media = [post.file, ...(post.attachments ?? [])]
+            .filter(f => !!f?.path && MEDIA_EXT.test(f.name ?? f.path ?? ""));
+          const hasImage = media.some(f => IMAGE_EXT.test(f.name ?? f.path ?? ""));
+          const hasVideo = media.some(f => VIDEO_EXT.test(f.name ?? f.path ?? ""));
+          return hasImage && hasVideo ? "mixed" : hasVideo ? "video" : "image";
+        })(),
+        attachmentCount: [post.file, ...(post.attachments ?? [])]
+          .filter(f => !!f?.path && MEDIA_EXT.test(f.name ?? f.path ?? "")).length,
       })),
     };
   },

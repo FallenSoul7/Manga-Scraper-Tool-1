@@ -141,11 +141,12 @@ function sanitize(s: string): string {
 }
 
 function guessExt(url: string, contentType: string | null): string {
-  const fromUrl = url.match(/\.(jpg|jpeg|png|gif|webp|avif)(\?|$)/i)?.[1]?.toLowerCase();
+  const fromUrl = url.match(/\.(jpg|jpeg|png|gif|webp|avif|mp4|webm|mov|mkv|avi|m4v)(\?|$)/i)?.[1]?.toLowerCase();
   if (fromUrl) return fromUrl;
   const mime: Record<string, string> = {
     'image/jpeg': 'jpg', 'image/png': 'png',
     'image/gif': 'gif',  'image/webp': 'webp', 'image/avif': 'avif',
+    'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
   };
   return mime[contentType ?? ''] ?? 'jpg';
 }
