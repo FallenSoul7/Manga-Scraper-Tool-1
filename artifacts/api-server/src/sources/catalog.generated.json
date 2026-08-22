@@ -3,6 +3,18 @@
   "count": 1355,
   "extensions": [
     {
+      "id": "all.pawchive",
+      "slug": "pawchive",
+      "name": "Pawchive",
+      "lang": "all",
+      "isNsfw": false,
+      "versionCode": 1,
+      "extClass": "PawchiveSource",
+      "themePkg": null,
+      "baseUrl": "https://pawchive.pw",
+      "icon": "all.pawchive.svg"
+    },
+    {
       "id": "en.rule34",
       "slug": "rule34",
       "name": "Rule34",
