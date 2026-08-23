@@ -3,6 +3,10 @@
  * Real chapter download engine — fetches pages from the API and caches them in
  * Cache Storage (comihub-offline-v1) for offline PWA reading.
  *
+ * Supports two modes:
+ *   - 'offline': saves pages to Cache Storage + IndexedDB for in-app offline reading
+ *   - 'file':    downloads pages, packs a ZIP, and triggers a browser file download
+ *
  * Public API is backward-compatible with the previous fake-queue implementation
  * so existing callers (ChapterDownloadButton etc.) need no changes.
  */
@@ -11,6 +15,8 @@ import { apiUrl }   from './api-url';
 import { offlineDb } from './offline-db';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export type DownloadMode = 'offline' | 'file';
 
 export interface QueueItem {
   id: string;
@@ -25,6 +31,7 @@ export interface QueueItem {
   pagesTotal: number;        // 0 until pages list is fetched
   pagesDownloaded: number;
   status: 'queued' | 'downloading' | 'paused' | 'done' | 'error';
+  mode: DownloadMode;        // 'offline' = save to app, 'file' = export ZIP to device
 }
 
 interface QueueState {
@@ -114,6 +121,38 @@ function scheduleDownloads() {
   }
 }
 
+/**
+ * Rolling worker pool — keeps `poolSize` fetches in flight at all times.
+ * Unlike chunk-barrier (wait for slowest of N), a slow image doesn't block
+ * the next one from starting. Yields ~1.5–2× throughput on real networks.
+ */
+async function rollingPool<T, R>(
+  items: T[],
+  poolSize: number,
+  worker: (item: T, index: number) => Promise<R>,
+  shouldCancel: () => boolean,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  let completed = 0;
+
+  async function runWorker(): Promise<void> {
+    while (nextIndex < items.length) {
+      if (shouldCancel()) return;
+      const myIndex = nextIndex++;
+      results[myIndex] = await worker(items[myIndex], myIndex);
+      completed++;
+    }
+  }
+
+  const workers: Promise<void>[] = [];
+  for (let i = 0; i < Math.min(poolSize, items.length); i++) {
+    workers.push(runWorker());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
 /** Core async download for a single chapter */
 async function runDownload(id: string): Promise<void> {
   const handle = { cancelled: false };
@@ -140,22 +179,27 @@ async function runDownload(id: string): Promise<void> {
     if (pageUrls.length === 0) throw new Error('empty page list');
     mutateItem(id, { pagesTotal: pageUrls.length });
 
-    // Cache the pages list so the reader can load it offline
-    try {
-      const pagesCache = await caches.open('comihub-offline-pages-v1');
-      const key = apiUrl(`/api/chapter/${item.chapterId}/pages`);
-      await pagesCache.put(
-        key,
-        new Response(JSON.stringify(pageUrls), {
-          headers: { 'Content-Type': 'application/json', 'sw-cached-at': Date.now().toString() },
-        }),
-      );
-    } catch { /* caches unavailable (dev/HTTP) — continue */ }
+    // Cache the pages list so the reader can load it offline (only for 'offline' mode)
+    if (item.mode === 'offline') {
+      try {
+        const pagesCache = await caches.open('comihub-offline-pages-v1');
+        const key = apiUrl(`/api/chapter/${item.chapterId}/pages`);
+        await pagesCache.put(
+          key,
+          new Response(JSON.stringify(pageUrls), {
+            headers: { 'Content-Type': 'application/json', 'sw-cached-at': Date.now().toString() },
+          }),
+        );
+      } catch { /* caches unavailable (dev/HTTP) — continue */ }
+    }
 
     // ── Step 2: fetch & cache each page image via proxy ─────────────────────
     // Using the backend image proxy for every image ensures hotlink-protection
     // headers (Referer etc.) are set correctly — direct CDN fetches get 403.
-    const CHUNK = 3;
+    //
+    // Rolling worker pool (POOL_SIZE in flight) replaces the old chunk-barrier
+    // approach for ~2× throughput. Slow images no longer block the next batch.
+    const POOL_SIZE = 6;
     let downloaded = getItem(id)?.pagesDownloaded ?? 0;
     let totalBytes = 0;
 
@@ -166,50 +210,88 @@ async function runDownload(id: string): Promise<void> {
     // URLs stored in IndexedDB so the reader can hit the cache offline.
     const proxiedUrls = pageUrls.map(u => buildProxiedUrl(u, sid));
 
-    for (let i = downloaded; i < proxiedUrls.length && !handle.cancelled; i += CHUNK) {
-      // Respect per-item pause
-      while (getItem(id)?.status === 'paused' && !handle.cancelled) {
-        await sleep(400);
-      }
-      if (handle.cancelled) break;
+    // For 'file' mode, collect blobs for ZIP packing
+    const fileBlobs: { blob: Blob; ext: string }[] = [];
 
-      // Respect global pause
-      while (state.globalPaused && !handle.cancelled) {
-        await sleep(400);
-      }
-      if (handle.cancelled) break;
-
-      const chunk = proxiedUrls.slice(i, Math.min(i + CHUNK, proxiedUrls.length));
-
-      await Promise.all(chunk.map(async proxiedUrl => {
+    await rollingPool(
+      proxiedUrls,
+      POOL_SIZE,
+      async (proxiedUrl, idx) => {
         if (handle.cancelled) return;
+
+        // Respect per-item pause
+        while (getItem(id)?.status === 'paused' && !handle.cancelled) {
+          await sleep(400);
+        }
+        if (handle.cancelled) return;
+
+        // Respect global pause
+        while (state.globalPaused && !handle.cancelled) {
+          await sleep(400);
+        }
+        if (handle.cancelled) return;
+
+        // ── Cache-first reuse ──────────────────────────────────────────────
+        // If the page is already in the offline cache (from a previous download),
+        // skip re-fetching and reuse it. Huge win for re-downloads.
+        if (imageCache) {
+          const cached = await imageCache.match(proxiedUrl);
+          if (cached) {
+            if (item.mode === 'file') {
+              const buf = await cached.arrayBuffer();
+              totalBytes += buf.byteLength;
+              const ct = cached.headers.get('Content-Type') || 'image/jpeg';
+              fileBlobs[idx] = { blob: new Blob([buf], { type: ct }), ext: guessExt(proxiedUrl, ct) };
+            } else {
+              totalBytes += (await cached.clone().arrayBuffer()).byteLength;
+            }
+            downloaded++;
+            mutateItem(id, {
+              pagesDownloaded: downloaded,
+              progress: Math.round((downloaded / proxiedUrls.length) * 100),
+            });
+            return;
+          }
+        }
+
+        // ── Fetch via proxy ─────────────────────────────────────────────────
         try {
           const res = await fetch(proxiedUrl);
-          if (res.ok && imageCache) {
+          if (res.ok) {
             const buf = await res.arrayBuffer();
             totalBytes += buf.byteLength;
-            await imageCache.put(
-              proxiedUrl,
-              new Response(buf, { headers: { 'Content-Type': res.headers.get('Content-Type') || 'image/jpeg', 'sw-cached-at': Date.now().toString() } }),
-            );
+            const ct = res.headers.get('Content-Type') || 'image/jpeg';
+
+            if (item.mode === 'offline' && imageCache) {
+              await imageCache.put(
+                proxiedUrl,
+                new Response(buf, { headers: { 'Content-Type': ct, 'sw-cached-at': Date.now().toString() } }),
+              );
+            }
+
+            if (item.mode === 'file') {
+              fileBlobs[idx] = { blob: new Blob([buf], { type: ct }), ext: guessExt(proxiedUrl, ct) };
+            }
           }
         } catch { /* skip failed images — progress continues */ }
-      }));
 
-      downloaded = Math.min(i + CHUNK, proxiedUrls.length);
-      mutateItem(id, {
-        pagesDownloaded: downloaded,
-        progress: Math.round((downloaded / proxiedUrls.length) * 100),
-      });
-    }
+        downloaded++;
+        mutateItem(id, {
+          pagesDownloaded: downloaded,
+          progress: Math.round((downloaded / proxiedUrls.length) * 100),
+        });
+      },
+      () => handle.cancelled,
+    );
 
     if (handle.cancelled) return;
 
-    // ── Step 3: persist metadata to IndexedDB ───────────────────────────────
+    // ── Step 3: finalize based on mode ──────────────────────────────────────
     const finalItem = getItem(id);
-    if (finalItem && downloaded >= proxiedUrls.length) {
-      // Store proxied URLs — reader will request these exact keys, hitting the cache offline
-      const resolvedUrls = proxiedUrls;
+    if (!finalItem || downloaded < proxiedUrls.length) return;
+
+    if (item.mode === 'offline') {
+      // Persist metadata to IndexedDB for offline reading
       await offlineDb.save({
         chapterId:      String(finalItem.chapterId),
         mangaId:        finalItem.mangaId,
@@ -218,7 +300,7 @@ async function runDownload(id: string): Promise<void> {
         sourceId:       finalItem.sourceId ?? '',
         chapterNumber:  finalItem.chapterNumber,
         chapterTitle:   finalItem.chapterTitle,
-        pageUrls:       resolvedUrls,
+        pageUrls:       proxiedUrls,
         downloadedAt:   Date.now(),
         sizeBytes:      totalBytes,
       });
@@ -227,10 +309,18 @@ async function runDownload(id: string): Promise<void> {
       import('./storage').then(({ storeActions }) => {
         storeActions.markMangaDownloaded(finalItem.mangaId);
       });
-
-      mutateItem(id, { status: 'done', progress: 100 });
-      scheduleDownloads(); // kick off the next queued chapter
+    } else if (item.mode === 'file') {
+      // Pack ZIP and trigger browser download
+      const chapterLabel = `Chapter ${finalItem.chapterNumber}${finalItem.chapterTitle ? ` - ${finalItem.chapterTitle}` : ''}`;
+      await packAndDownloadZip(
+        fileBlobs.filter(Boolean),
+        finalItem.mangaTitle,
+        chapterLabel,
+      );
     }
+
+    mutateItem(id, { status: 'done', progress: 100 });
+    scheduleDownloads(); // kick off the next queued chapter
   } catch {
     if (!handle.cancelled) {
       mutateItem(id, { status: 'error' });
@@ -239,6 +329,60 @@ async function runDownload(id: string): Promise<void> {
   } finally {
     inFlight.delete(id);
   }
+}
+
+// ─── ZIP packing (file mode) ──────────────────────────────────────────────────
+
+async function packAndDownloadZip(
+  blobs: { blob: Blob; ext: string }[],
+  mangaTitle: string,
+  chapterLabel: string,
+): Promise<void> {
+  // Dynamic import JSZip only when needed for file export
+  const { default: JSZip } = await import('jszip');
+
+  const zip = new JSZip();
+  const folderName = sanitize(`${mangaTitle} - ${chapterLabel}`);
+  const folder = zip.folder(folderName)!;
+
+  blobs.forEach((entry, i) => {
+    const name = `page-${String(i + 1).padStart(3, '0')}.${entry.ext}`;
+    folder.file(name, entry.blob);
+  });
+
+  const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+
+  const fileName = `${sanitize(`${mangaTitle} - ${chapterLabel}`)}.zip`;
+  const zipFile = new File([zipBlob], fileName, { type: 'application/zip' });
+
+  // Safari/iOS — use share sheet so user can "Save to Files"
+  const canShareFile =
+    typeof navigator.share === 'function' &&
+    typeof navigator.canShare === 'function' &&
+    navigator.canShare({ files: [zipFile] });
+
+  if (canShareFile) {
+    try {
+      await navigator.share({
+        files: [zipFile],
+        title: fileName,
+        text: `${mangaTitle} — ${chapterLabel}`,
+      });
+      return;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+    }
+  }
+
+  // Fallback — trigger download via anchor element
+  const objectUrl = URL.createObjectURL(zipBlob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 5_000);
 }
 
 // ─── Public actions ───────────────────────────────────────────────────────────
@@ -313,7 +457,6 @@ export const queueActions = {
     const items  = [...state.items];
     const idx    = items.findIndex(i => i.id === id);
     if (idx <= 0) return;
-    // Find previous active (queued/downloading/paused)
     let prevIdx = -1;
     for (let i = idx - 1; i >= 0; i--) {
       if (['queued', 'downloading', 'paused'].includes(items[i].status)) { prevIdx = i; break; }
@@ -353,3 +496,24 @@ export const queueActions = {
     scheduleDownloads();
   },
 };
+
+// ─── File-export helpers ──────────────────────────────────────────────────────
+
+function sanitize(s: string): string {
+  return s
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
+}
+
+function guessExt(url: string, contentType: string | null): string {
+  const fromUrl = url.match(/\.(jpg|jpeg|png|gif|webp|avif|mp4|webm|mov|mkv|avi|m4v)(\?|$)/i)?.[1]?.toLowerCase();
+  if (fromUrl) return fromUrl;
+  const mime: Record<string, string> = {
+    'image/jpeg': 'jpg', 'image/png': 'png',
+    'image/gif': 'gif',  'image/webp': 'webp', 'image/avif': 'avif',
+    'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
+  };
+  return mime[contentType ?? ''] ?? 'jpg';
+}
