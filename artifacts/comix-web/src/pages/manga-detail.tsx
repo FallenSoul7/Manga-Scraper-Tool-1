@@ -21,7 +21,7 @@ import { format } from "date-fns";
 import { useStore, storeActions, type PendingChapter } from "@/lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queueActions, useDownloadQueue } from "@/lib/download-queue";
-import { saveChapterToFile } from "@/lib/save-to-file";
+import { toast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -178,15 +178,8 @@ export default function MangaDetail() {
   const fromParam = new URLSearchParams(searchString).get("from");
   const catParam  = new URLSearchParams(searchString).get("cat");
 
-  // Builds the correct back destination depending on how the user arrived here:
-  //  • from library/category  → /?cat=<id>  (restores category tab + scroll)
-  //  • from an extension page → /sources/<sourceId>  (restores list + scroll)
-  //  • fallback               → /sources
   const goBack = () => {
     if (fromParam === "library") {
-      // Stamp from=library on the return URL so the library page knows it's a
-      // real back-navigation and not a fresh deep-link — it uses this to decide
-      // whether to restore scroll position.
       setLocation(catParam ? `/?cat=${catParam}&from=library` : "/?from=library");
     } else {
       setLocation(sourceContext ? `/sources/${sourceContext}` : "/sources");
@@ -205,8 +198,6 @@ export default function MangaDetail() {
     sourceId?: string;
     label: string;
   } | null>(null);
-  const [exportingToFile, setExportingToFile] = useState(false);
-  const [exportProgress, setExportProgress] = useState(0);
   const [scanlatorSheetOpen, setScanlatorSheetOpen] = useState(false);
   const [langSheetOpen, setLangSheetOpen] = useState(false);
   const [selectedLang, setSelectedLang] = useState<string | null>(null);
@@ -227,8 +218,6 @@ export default function MangaDetail() {
   const sortAsc = id ? !!chapterSortAsc[id] : false;
 
   const librarySourceId = savedManga?.sourceId ?? null;
-  // The source we'll actually use for this manga — URL param wins, then saved sourceId.
-  // Computed early so it can be included in queryKeys (prevents cross-source cache hits).
   const effectiveSourceForKey = sourceContext ?? librarySourceId;
 
   const needsSourceInit = !!(sourceContext || librarySourceId);
@@ -242,8 +231,6 @@ export default function MangaDetail() {
   const mangaParams = { poster: settings.posterQuality, alt: settings.showAltNames, score: settings.scorePosition };
   const chaptersParams = { dedupe: false };
 
-  // Include the source in the queryKey — without it TanStack Query can serve a cached
-  // result from a *different* extension, returning empty chapters for the wrong source.
   const { data: manga, isLoading: mangaLoading } = useGetMangaDetails(id || "", mangaParams, {
     query: {
       enabled: !!id && sourceReady,
@@ -291,7 +278,6 @@ export default function MangaDetail() {
       .map(([code, count]) => ({ code, count, name: LANG_NAMES[code] ?? code.toUpperCase() }));
   }, [allChapters]);
 
-  // Auto-pick a language when we first get chapters with lang data
   const didAutoLang = useRef(false);
   useEffect(() => {
     if (didAutoLang.current || availableLanguages.length === 0) return;
@@ -300,7 +286,6 @@ export default function MangaDetail() {
     setSelectedLang(hasEn ? "en" : availableLanguages[0]!.code);
   }, [availableLanguages]);
 
-  // Reset auto-pick when manga changes
   useEffect(() => { didAutoLang.current = false; setSelectedLang(null); }, [id]);
 
   const scanlatorGroups = useMemo(() => {
@@ -438,9 +423,6 @@ export default function MangaDetail() {
   };
 
 
-  // Show spinner while source header is being applied (runs in useEffect, so first
-  // render with sourceReady=false has disabled queries → isLoading=false, data=undefined).
-  // Without this guard the page immediately shows "Manga not found."
   const showLoading = !sourceReady || mangaLoading;
   const showFallback = !showLoading && !manga && !!savedManga;
   const showNotFound = !showLoading && !manga && !savedManga;
@@ -448,7 +430,6 @@ export default function MangaDetail() {
   const effectiveSource = sourceContext ?? activeSourceId;
   const sourceName = effectiveSource ? formatSourceId(effectiveSource) : null;
   const isRule34 = effectiveSource === "en.rule34";
-  // Detect Koofr video entries so we can show "Watch" instead of "Read"
   const isKoofrVideo = effectiveSource === 'local.koofr' && !!id && isKoofrVideoId(id);
 
   if (showLoading) {
@@ -986,7 +967,7 @@ export default function MangaDetail() {
       {downloadTarget && (
         <div
           className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={() => { if (!exportingToFile) setDownloadTarget(null); }}
+          onClick={() => setDownloadTarget(null)}
         >
           <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-background px-5 pt-4 pb-6 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted" />
@@ -1009,7 +990,6 @@ export default function MangaDetail() {
               {/* Save to App */}
               <button
                 type="button"
-                disabled={exportingToFile}
                 onClick={() => {
                   queueActions.enqueueMany(
                     downloadTarget.chapters.map(ch => ({
@@ -1020,11 +1000,13 @@ export default function MangaDetail() {
                       chapterId: ch.id,
                       chapterNumber: ch.number,
                       chapterTitle: ch.title,
+                      mode: 'offline' as const,
                     }))
                   );
+                  toast({ title: `${downloadTarget.chapters.length} chapter${downloadTarget.chapters.length !== 1 ? 's' : ''} queued for offline download` });
                   setDownloadTarget(null);
                 }}
-                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border border-border/60 bg-card hover:bg-muted/50 active:scale-[0.98] transition-all text-left disabled:opacity-40"
+                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border border-border/60 bg-card hover:bg-muted/50 active:scale-[0.98] transition-all text-left"
               >
                 <div className="h-9 w-9 rounded-xl bg-primary/12 flex items-center justify-center shrink-0">
                   <ArrowDownToLine className="h-4.5 w-4.5 text-primary" />
@@ -1038,52 +1020,31 @@ export default function MangaDetail() {
               {/* Export to Files */}
               <button
                 type="button"
-                disabled={exportingToFile}
-                onClick={async () => {
+                onClick={() => {
                   if (!downloadTarget.sourceId) return;
-                  setExportingToFile(true);
-                  setExportProgress(0);
-                  try {
-                    for (const ch of downloadTarget.chapters) {
-                      await saveChapterToFile({
-                        chapterId: ch.id,
-                        sourceId: downloadTarget.sourceId,
-                        mangaTitle: downloadTarget.mangaTitle,
-                        chapterLabel: `Chapter ${ch.number}${ch.title ? ` - ${ch.title}` : ''}`,
-                        onProgress: pct => setExportProgress(pct),
-                      });
-                    }
-                  } catch {
-                    /* ignore — browser will show download error */
-                  } finally {
-                    setExportingToFile(false);
-                    setExportProgress(0);
-                    setDownloadTarget(null);
-                  }
+                  queueActions.enqueueMany(
+                    downloadTarget.chapters.map(ch => ({
+                      mangaId: downloadTarget.mangaId,
+                      mangaTitle: downloadTarget.mangaTitle,
+                      mangaThumbnail: downloadTarget.thumbnail,
+                      sourceId: downloadTarget.sourceId,
+                      chapterId: ch.id,
+                      chapterNumber: ch.number,
+                      chapterTitle: ch.title,
+                      mode: 'file' as const,
+                    }))
+                  );
+                  toast({ title: `${downloadTarget.chapters.length} chapter${downloadTarget.chapters.length !== 1 ? 's' : ''} queued for ZIP export` });
+                  setDownloadTarget(null);
                 }}
-                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border border-border/60 bg-card hover:bg-muted/50 active:scale-[0.98] transition-all text-left disabled:opacity-40"
+                className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border border-border/60 bg-card hover:bg-muted/50 active:scale-[0.98] transition-all text-left"
               >
                 <div className="h-9 w-9 rounded-xl bg-primary/12 flex items-center justify-center shrink-0">
-                  {exportingToFile
-                    ? <Loader2 className="h-4.5 w-4.5 text-primary animate-spin" />
-                    : <ArrowDown className="h-4.5 w-4.5 text-primary" />
-                  }
+                  <ArrowDown className="h-4.5 w-4.5 text-primary" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold">Export to Files</div>
-                  <div className="text-xs text-muted-foreground">
-                    {exportingToFile
-                      ? `Packing ZIP… ${exportProgress}%`
-                      : 'Download ZIP to device Files app'}
-                  </div>
-                  {exportingToFile && (
-                    <div className="mt-1.5 h-1 w-full rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all duration-300"
-                        style={{ width: `${exportProgress}%` }}
-                      />
-                    </div>
-                  )}
+                  <div className="text-xs text-muted-foreground">Download ZIP to device Files app</div>
                 </div>
               </button>
             </div>
@@ -1091,9 +1052,8 @@ export default function MangaDetail() {
             {/* Cancel */}
             <button
               type="button"
-              disabled={exportingToFile}
               onClick={() => setDownloadTarget(null)}
-              className="w-full mt-3 h-10 rounded-2xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
+              className="w-full mt-3 h-10 rounded-2xl text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               Cancel
             </button>

@@ -17,7 +17,7 @@ import {
   ArrowLeft, Loader2, Pause, Play, Zap,
   ArrowUp, ArrowDown, X, MoreVertical,
   BookOpen, Trash2, HardDrive, WifiOff,
-  AlertCircle, CheckCircle2,
+  AlertCircle, CheckCircle2, FileArchive,
 } from "lucide-react";
 import { proxyImage, readerUrl } from "@/lib/utils";
 import { format } from "date-fns";
@@ -147,7 +147,14 @@ function DownloadingTab() {
                     Ch.{item.chapterNumber}{item.chapterTitle ? ` · ${item.chapterTitle}` : ''}
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <StatusBadge status={item.status} />
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={item.status} />
+                      {item.mode === 'file' && (
+                        <span className="flex items-center gap-0.5 text-[10px] font-semibold text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded-full">
+                          <FileArchive className="h-2.5 w-2.5" /> ZIP
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[11px] text-muted-foreground tabular-nums">{pages}</span>
                   </div>
                   <ProgressBar value={item.progress} />
@@ -230,7 +237,14 @@ function DownloadingTab() {
                 <div className="font-medium text-sm truncate">{item.mangaTitle}</div>
                 <div className="text-xs text-muted-foreground truncate">Ch.{item.chapterNumber}</div>
               </div>
-              <StatusBadge status={item.status} />
+              <div className="flex items-center gap-2">
+                {item.mode === 'file' && (
+                  <span className="flex items-center gap-0.5 text-[10px] font-semibold text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded-full">
+                    <FileArchive className="h-2.5 w-2.5" /> ZIP
+                  </span>
+                )}
+                <StatusBadge status={item.status} />
+              </div>
             </div>
           ))}
         </div>

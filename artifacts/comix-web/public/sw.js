@@ -6,7 +6,6 @@ const API_PATTERNS = ['/api/popular', '/api/latest', '/api/search', '/api/tags',
 const IMAGE_PATTERNS = ['/api/image'];
 
 self.addEventListener('install', (event) => {
-  // Pre-cache the app shell HTML immediately on install
   event.waitUntil(
     caches.open(STATIC_CACHE).then(cache => cache.add('/')).catch(() => {})
       .then(() => self.skipWaiting())
@@ -60,7 +59,6 @@ async function networkFirst(request, cacheName, maxAgeSecs) {
       const cachedAt = parseInt(cached.headers.get('sw-cached-at') || '0');
       if (!maxAgeSecs || Date.now() - cachedAt < maxAgeSecs * 1000) return cached;
     }
-    // For navigation requests (HTML), fall back to cached '/'
     if (request.mode === 'navigate') {
       const shell = await cache.match('/');
       if (shell) return shell;
@@ -98,30 +96,22 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
 
-  // Auth endpoints — always bypass SW so session cookies work correctly
   if (url.pathname.startsWith('/api/auth')) return;
 
-  // External image CDN — cache 30 days
   if (isImageRequest(url) && url.origin !== self.location.origin) {
     event.respondWith(cacheFirst(event.request, IMAGE_CACHE, 30 * 24 * 3600));
     return;
   }
 
-  // Only handle same-origin beyond this point
   if (url.origin !== self.location.origin) return;
 
   if (isApiRequest(url)) {
-    // API data — network first, 1h offline fallback
     event.respondWith(networkFirst(event.request, API_CACHE, 3600));
   } else if (isHashedAsset(url)) {
-    // Vite-hashed JS/CSS — cache forever (hash changes with content)
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, null));
   } else if (isStaticAsset(url)) {
-    // Fonts, icons, manifest — cache 7 days
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, 7 * 24 * 3600));
   } else if (isHtml(event.request, url)) {
-    // App shell HTML — network first (get latest deploy), fall back to cache
-    // This makes the PWA work offline AND picks up new deploys automatically
     event.respondWith(networkFirst(event.request, STATIC_CACHE, 24 * 3600));
   }
 });
@@ -149,6 +139,68 @@ async function clearAllCaches() {
   const names = await caches.keys();
   await Promise.all(names.map((n) => caches.delete(n)));
 }
+
+
+// ─── Background Fetch API ─────────────────────────────────────────────────────
+// On Chrome/Edge/Android, downloads can continue even when the tab is closed.
+// These handlers cache the downloaded images for offline reading and notify
+// open tabs so the UI can update.
+
+self.addEventListener('backgroundfetchsuccess', async (event) => {
+  const bgFetch = event.registration;
+  try {
+    const cache = await caches.open('comihub-offline-v1');
+    const responses = await bgFetch.matchAll();
+    for (const response of responses) {
+      const url = response.url;
+      if (!url) continue;
+      const ct = response.headers.get('Content-Type') || '';
+      if (ct.startsWith('image/') || ct.startsWith('application/octet-stream')) {
+        await cache.put(url, response.clone());
+      }
+    }
+  } catch (e) {
+    // Caching may fail if storage quota is exceeded — downloads still completed
+  }
+
+  const clients = await self.clients.matchAll();
+  for (const client of clients) {
+    client.postMessage({ type: 'BG_FETCH_SUCCESS', id: bgFetch.id });
+  }
+
+  event.waitUntil(Promise.resolve());
+});
+
+self.addEventListener('backgroundfetchfail', async (event) => {
+  const bgFetch = event.registration;
+  const clients = await self.clients.matchAll();
+  for (const client of clients) {
+    client.postMessage({ type: 'BG_FETCH_FAIL', id: bgFetch.id });
+  }
+  event.waitUntil(Promise.resolve());
+});
+
+self.addEventListener('backgroundfetchabort', async (event) => {
+  const bgFetch = event.registration;
+  const clients = await self.clients.matchAll();
+  for (const client of clients) {
+    client.postMessage({ type: 'BG_FETCH_ABORT', id: bgFetch.id });
+  }
+  event.waitUntil(Promise.resolve());
+});
+
+self.addEventListener('backgroundfetchclick', (event) => {
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window' }).then((clients) => {
+      if (clients.length > 0) {
+        clients[0].focus();
+      } else {
+        self.clients.openWindow('/');
+      }
+    })
+  );
+});
+
 
 self.addEventListener('message', async (event) => {
   if (event.data === 'GET_CACHE_SIZES') {
