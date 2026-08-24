@@ -1,0 +1,15 @@
+# Scrapling bypass server dependencies
+# Python 3.10+ required
+#
+# Scrapling provides adaptive web scraping with Cloudflare bypass:
+#   - StealthyFetcher: headless Chrome with anti-bot evasion
+#   - solve_cloudflare: automatically solves Cloudflare Turnstile/Interstitial
+#   - adaptive parsing: relocates elements when site structure changes
+#
+# Install with: pip install -r requirements.txt
+# Then install Playwright browsers: python -m playwright install chromium
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+scrapling>=0.3.0
+playwright>=1.40.0
