@@ -10,7 +10,7 @@ import type {
   MangaSummary,
   SourceTag,
 } from "./types";
-import { makeHttp } from "./scraper-utils";
+import { makeHttp, fetchHtmlWithBypass, fetchImagesViaBypass, isBypassAvailable } from "./scraper-utils";
 
 const BASE = "https://comickfan.com";
 
@@ -28,9 +28,9 @@ function checkNsfw(genres: string[]): boolean {
 function sanitizeImageUrl(url: string): string {
   if (!url) return "";
   let cleanUrl = url.replace(/\\/g, "").trim();
-  
+
   if (cleanUrl.startsWith("data:")) return cleanUrl;
-  
+
   if (cleanUrl.startsWith("//")) {
     cleanUrl = "https:" + cleanUrl;
   } else if (cleanUrl.startsWith("/")) {
@@ -38,7 +38,7 @@ function sanitizeImageUrl(url: string): string {
   } else if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
     cleanUrl = "https://" + cleanUrl;
   }
-  
+
   if (cleanUrl.startsWith("http://")) {
     cleanUrl = cleanUrl.replace("http://", "https://");
   }
@@ -85,7 +85,7 @@ function getValue($: ReturnType<typeof cheerio.load>, label: string): string | n
     if (labelText === label) {
       const val = cells.eq(1).text().trim();
       if (val && val !== "-" && val !== "_") result = val;
-      return false; 
+      return false;
     }
   });
   return result;
@@ -139,9 +139,7 @@ export const ComickFanSource: MangaSource = {
       sort: opts.sort ?? "rating",
       genres: included.join("_")
     };
-    const res = await html.get("/advanced-search", { params });
-    if (res.status >= 400) throw new Error(`ComicKFan popular error ${res.status}`);
-    const $ = cheerio.load(res.data as string);
+    const { $ } = await fetchHtmlWithBypass(html, "/advanced-search", { params });
     return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
   },
 
@@ -152,9 +150,7 @@ export const ComickFanSource: MangaSource = {
       sort: "latest",
       genres: included.join("_")
     };
-    const res = await html.get("/advanced-search", { params });
-    if (res.status >= 400) throw new Error(`ComicKFan latest error ${res.status}`);
-    const $ = cheerio.load(res.data as string);
+    const { $ } = await fetchHtmlWithBypass(html, "/advanced-search", { params });
     return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
   },
 
@@ -164,17 +160,13 @@ export const ComickFanSource: MangaSource = {
     if (query)    params.name = query;
     if (opts.sort) params.sort = opts.sort;
     if (included.length > 0) params.genres = included.join("_");
-    
-    const res = await html.get("/advanced-search", { params });
-    if (res.status >= 400) throw new Error(`ComicKFan search error ${res.status}`);
-    const $ = cheerio.load(res.data as string);
+
+    const { $ } = await fetchHtmlWithBypass(html, "/advanced-search", { params });
     return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
   },
 
   async details(slug: string, opts: DetailOptions): Promise<MangaDetail> {
-    const res = await html.get(`/manga/${slug}`);
-    if (res.status >= 400) throw new Error(`ComicKFan detail error ${res.status} for ${slug}`);
-    const $ = cheerio.load(res.data as string);
+    const { $ } = await fetchHtmlWithBypass(html, `/manga/${slug}`);
 
     const title = $("h1").first().text().trim() || slug;
     const description = $("div.comic-content.desk").first().text().trim();
@@ -272,125 +264,179 @@ export const ComickFanSource: MangaSource = {
     if (!decoded) throw new Error(`ComicKFan: invalid chapter ID "${chapterId}"`);
     const { slug, chapter, hashId } = decoded;
 
-    const readingUrl = `/manga/${slug}/chapter-${chapter}-${hashId}`;
-    const res = await html.get(readingUrl, {
-      headers: { Referer: `${BASE}/manga/${slug}` },
-    });
-    if (res.status >= 400) throw new Error(`ComicKFan pages error ${res.status} for ${readingUrl}`);
+    const readingUrl = `${BASE}/manga/${slug}/chapter-${chapter}-${hashId}`;
 
-    const $ = cheerio.load(res.data as string);
-    const pageUrls: string[] = [];
+    // ComickFan chapter pages are fully JavaScript-rendered (no images in
+    // the HTML shell) and the site is behind Cloudflare. We use the
+    // Scrapling bypass server (headless Chromium with Cloudflare solving)
+    // to load the page, render the JS, and extract the image URLs.
 
-    const nextDataScript = $("#__NEXT_DATA__").html();
-    if (nextDataScript) {
+    // Strategy 1: Try the bypass server to extract images from the rendered page
+    const bypassAvailable = await isBypassAvailable();
+    if (bypassAvailable) {
       try {
-        const parsedJson = JSON.parse(nextDataScript);
-        const pageProps = parsedJson.props?.pageProps;
-        if (pageProps) {
-          const targetNode = pageProps.chapter ?? pageProps.data;
-          const rawImages = targetNode?.images ?? pageProps.images ?? targetNode?.body?.images;
-          
-          if (Array.isArray(rawImages)) {
-            for (const img of rawImages) {
-              const path = typeof img === "string" ? img : (img.url ?? img.path ?? img.src);
-              const formatted = sanitizeImageUrl(path);
-              if (formatted && !formatted.startsWith("data:") && !pageUrls.includes(formatted)) {
-                pageUrls.push(formatted);
-              }
-            }
-          }
+        const images = await fetchImagesViaBypass(readingUrl, {
+          referer: `${BASE}/manga/${slug}`,
+          waitFor: "network_idle",
+          timeout: 45,
+        });
+
+        // Filter out non-page images (logos, avatars, loading placeholders)
+        const pageUrls = images
+          .map(sanitizeImageUrl)
+          .filter(url =>
+            url &&
+            !url.startsWith("data:") &&
+            !url.includes("logo.png") &&
+            !url.includes("avatar") &&
+            !url.includes("thumb-default") &&
+            !url.includes("thumb-loading") &&
+            !url.includes("favicon")
+          );
+
+        // Deduplicate while preserving order
+        const seen = new Set<string>();
+        const uniqueUrls = pageUrls.filter(url => {
+          if (seen.has(url)) return false;
+          seen.add(url);
+          return true;
+        });
+
+        if (uniqueUrls.length > 0) {
+          return {
+            chapterId,
+            pages: uniqueUrls.map((url, i) => ({
+              index: i,
+              url: `/api/image-proxy?url=${encodeURIComponent(url)}&referer=${encodeURIComponent("https://comickfan.com/")}`,
+            })),
+          };
         }
       } catch {
-        // Fallback context execution
+        // Bypass fetch failed — fall through to HTML parsing
       }
     }
 
-    if (pageUrls.length === 0) {
-      $("div.w-full img, main img, article img").each((_i, el) => {
-        const targetAttr = $(el).attr("data-src") ?? $(el).attr("src") ?? $(el).attr("srcset") ?? "";
-        if (!targetAttr) return;
+    // Strategy 2: Try normal HTTP + cheerio parsing (works if not Cloudflare-blocked)
+    try {
+      const { $ } = await fetchHtmlWithBypass(
+        html,
+        `/manga/${slug}/chapter-${chapter}-${hashId}`,
+        { headers: { Referer: `${BASE}/manga/${slug}` } },
+        { referer: `${BASE}/manga/${slug}` },
+      );
 
-        let selectedUrl = targetAttr;
-        if (selectedUrl.includes(" ")) {
-          const segments = selectedUrl.split(",");
-          const ultimateSegment = segments[segments.length - 1].trim();
-          selectedUrl = ultimateSegment.split(" ")[0];
-        }
+      const pageUrls: string[] = [];
 
-        const formattedUrl = sanitizeImageUrl(selectedUrl);
-        if (
-          formattedUrl && 
-          !formattedUrl.startsWith("data:") && 
-          !formattedUrl.includes("logo.png") && 
-          !formattedUrl.includes("avatar") &&
-          !pageUrls.includes(formattedUrl)
-        ) {
-          pageUrls.push(formattedUrl);
+      // Check for __NEXT_DATA__ (legacy Next.js structure)
+      const nextDataScript = $("#__NEXT_DATA__").html();
+      if (nextDataScript) {
+        try {
+          const parsedJson = JSON.parse(nextDataScript);
+          const pageProps = parsedJson.props?.pageProps;
+          if (pageProps) {
+            const targetNode = pageProps.chapter ?? pageProps.data;
+            const rawImages = targetNode?.images ?? pageProps.images ?? targetNode?.body?.images;
+
+            if (Array.isArray(rawImages)) {
+              for (const img of rawImages) {
+                const path = typeof img === "string" ? img : (img.url ?? img.path ?? img.src);
+                const formatted = sanitizeImageUrl(path);
+                if (formatted && !formatted.startsWith("data:") && !pageUrls.includes(formatted)) {
+                  pageUrls.push(formatted);
+                }
+              }
+            }
+          }
+        } catch {
+          // JSON parse failed — fall through
         }
-      });
+      }
+
+      // Fallback: scrape img tags from the rendered HTML
+      if (pageUrls.length === 0) {
+        $("div.w-full img, main img, article img, picture img").each((_i, el) => {
+          const targetAttr = $(el).attr("data-src") ?? $(el).attr("src") ?? $(el).attr("srcset") ?? "";
+          if (!targetAttr) return;
+
+          let selectedUrl = targetAttr;
+          if (selectedUrl.includes(" ")) {
+            const segments = selectedAttr.split(",");
+            const ultimateSegment = segments[segments.length - 1].trim();
+            selectedUrl = ultimateSegment.split(" ")[0];
+          }
+
+          const formattedUrl = sanitizeImageUrl(selectedUrl);
+          if (
+            formattedUrl &&
+            !formattedUrl.startsWith("data:") &&
+            !formattedUrl.includes("logo.png") &&
+            !formattedUrl.includes("avatar") &&
+            !formattedUrl.includes("thumb-default") &&
+            !formattedUrl.includes("thumb-loading") &&
+            !pageUrls.includes(formattedUrl)
+          ) {
+            pageUrls.push(formattedUrl);
+          }
+        });
+      }
+
+      if (pageUrls.length > 0) {
+        return {
+          chapterId,
+          pages: pageUrls.map((url, i) => ({
+            index: i,
+            url: `/api/image-proxy?url=${encodeURIComponent(url)}&referer=${encodeURIComponent("https://comickfan.com/")}`,
+          })),
+        };
+      }
+    } catch {
+      // Normal fetch also failed
     }
 
-    if (pageUrls.length > 0) {
-      return {
-        chapterId,
-        // 🚀 THE PERMANENT LOOP BREAK: Wrap every image path into your Express routing endpoint safely
-        pages: pageUrls.map((url, i) => ({
-          index: i,
-          url: `/api/image-proxy?url=${encodeURIComponent(url)}&referer=${encodeURIComponent("https://comickfan.com/")}`
-        })),
-      };
-    }
-
-    // ComickFan chapter pages are fully JS-rendered (no images in the HTML shell) and
-    // the ComicK backend API (api.comick.fun) is protected by Cloudflare bot-detection
-    // which blocks server-side requests. Chapter reading is not available for this source
-    // in the web reader — please use the Tachiyomi / Mihon app with the ComickFan extension.
     throw new Error(
-      "ComickFan chapter pages cannot be loaded: the site is fully client-side rendered and the backend API " +
-      "(api.comick.fun) blocks server-side requests via Cloudflare. Use the Mihon/Tachiyomi app instead."
+      "ComickFan chapter pages could not be loaded. The site is fully client-side rendered " +
+      "and protected by Cloudflare. Make sure the bypass server is running " +
+      "(cd artifacts/bypass-server && python main.py) and try again."
     );
   },
 
   async tags(): Promise<SourceTag[]> {
     if (cachedTags) return cachedTags;
-    
+
     const tags: SourceTag[] = [];
     const seen = new Set<string>();
 
     try {
-      const res = await html.get("/advanced-search");
-      if (res.status < 400) {
-        const $ = cheerio.load(res.data as string);
-        
-        $("a[href*='/manga-list/'], form input[type='checkbox']").each((_i, el) => {
-          let id = "";
-          let name = "";
-          
-          if ($(el).is("input")) {
-            id = $(el).attr("value") ?? "";
-            name = $(el).attr("id") ?? $(el).parent().text().trim();
-          } else {
-            const href = $(el).attr("href") ?? "";
-            id = (href.split("/manga-list/")[1] ?? "").replace(/[/?#].*$/, "").trim();
-            name = $(el).text().trim();
+      const { $ } = await fetchHtmlWithBypass(html, "/advanced-search");
+
+      $("a[href*='/manga-list/'], form input[type='checkbox']").each((_i, el) => {
+        let id = "";
+        let name = "";
+
+        if ($(el).is("input")) {
+          id = $(el).attr("value") ?? "";
+          name = $(el).attr("id") ?? $(el).parent().text().trim();
+        } else {
+          const href = $(el).attr("href") ?? "";
+          id = (href.split("/manga-list/")[1] ?? "").replace(/[/?#].*$/, "").trim();
+          name = $(el).text().trim();
+        }
+
+        if (name && id && !seen.has(id) && id !== "all" && id !== "list" && id.length > 1) {
+          seen.add(id);
+
+          let group = "Genre";
+          if (["long-strip", "full-color", "official-colored", "fan-colored", "oneshot", "doujinshi", "4-koma", "adaptation", "anthology", "user-created", "web-comic"].includes(id)) {
+            group = "Format";
+          } else if (["gore", "sexual-violence", "smut", "ecchi"].includes(id)) {
+            group = "Content";
+          } else if (["ninja", "magic", "vampires", "school-life", "military", "reincarnation", "time-travel", "mafia", "zombies", "harem", "reverse-harem", "crossdressing", "martial-arts"].includes(id)) {
+            group = "Theme";
           }
-          
-          if (name && id && !seen.has(id) && id !== "all" && id !== "list" && id.length > 1) {
-            seen.add(id);
-            
-            let group = "Genre";
-            if (["long-strip", "full-color", "official-colored", "fan-colored", "oneshot", "doujinshi", "4-koma", "adaptation", "anthology", "user-created", "web-comic"].includes(id)) {
-              group = "Format";
-            } else if (["gore", "sexual-violence", "smut", "ecchi"].includes(id)) {
-              group = "Content";
-            } else if (["ninja", "magic", "vampires", "school-life", "military", "reincarnation", "time-travel", "mafia", "zombies", "harem", "reverse-harem", "crossdressing", "martial-arts"].includes(id)) {
-              group = "Theme";
-            }
-            
-            tags.push({ id, name, group });
-          }
-        });
-      }
+
+          tags.push({ id, name, group });
+        }
+      });
     } catch {
       // Fallback structural recovery block
     }
