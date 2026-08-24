@@ -306,11 +306,14 @@ export default function Reader() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [effectiveDirection]);
 
-  // Detect if a page URL is a video file.
-  // Matches /api/koofr/proxy?path=...video.mp4 as well as plain .mp4 URLs.
+  // Detect if a page URL is a video file or a video proxy endpoint.
+  // Matches file extensions (.mp4, .webm, etc.) as well as AllManga's
+  // /api/allmanga/video?url=... proxy path which has no file extension.
   const isVideoUrl = (url: string) =>
     /\.(mp4|webm|ogg|mov|mkv|avi)(\?|$|&)/i.test(url) ||
-    /\.(mp4|webm|mov|mkv|avi)$/i.test(decodeURIComponent(url));
+    /\.(mp4|webm|mov|mkv|avi)$/i.test(decodeURIComponent(url)) ||
+    /\/api\/allmanga\/video(\?|$)/i.test(url) ||
+    /\/api\/koofr\/proxy\?.*video/i.test(decodeURIComponent(url));
 
   if (effectiveLoading) {
     return (
@@ -325,7 +328,7 @@ export default function Reader() {
     return (
       <div className="min-h-screen bg-[#1a1a1a] flex flex-col items-center justify-center gap-4 px-6 text-center">
         <div className="text-4xl">⚠️</div>
-        <h2 className="text-white text-lg font-bold">Couldn’t load this chapter</h2>
+        <h2 className="text-white text-lg font-bold">Couldn't load this chapter</h2>
         <p className="text-white/60 text-sm max-w-md">
           {effectiveError instanceof Error ? effectiveError.message : "The source returned an error while loading the chapter pages."}
         </p>
@@ -352,8 +355,8 @@ export default function Reader() {
   }
 
   // ── Video content → render dedicated cinematic player ─────────────────────
-  // When ALL pages are video URLs (Koofr video files), bypass the manga strip
-  // entirely and show the full-screen TV-style video player.
+  // When ALL pages are video URLs (Koofr video files, AllManga anime episodes),
+  // bypass the manga strip entirely and show the full-screen video player.
   if (effectivePages.length > 0 && effectivePages.every(p => isVideoUrl(p.url))) {
     const videoUrl = effectivePages[0].url;
     const mangaTitle = mangaData?.title ?? "Video";
@@ -525,7 +528,7 @@ export default function Reader() {
             ? (idx < 3 ? 'eager' : 'lazy')
             : (distToPage <= 5 ? 'eager' : 'lazy');
 
-          // ── Video page (MP4 / WebM) ─────────────────────────────────────────
+          // ── Video page (MP4 / WebM / AllManga proxy) ───────────────────────
           if (isVideoUrl(page.url)) {
             return (
               <div
