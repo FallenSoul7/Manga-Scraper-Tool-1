@@ -1,6 +1,14 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from "axios";
 import * as cheerio from "cheerio";
-import { fetchHtmlViaBypass, isBypassAvailable } from "../lib/bypass-client";
+import {
+  fetchHtmlViaBypass,
+  fetchImagesViaBypass,
+  isBypassAvailable,
+} from "../lib/bypass-client";
+
+// Re-export bypass functions so source extensions can import them
+// from scraper-utils without reaching into the lib layer directly.
+export { fetchImagesViaBypass, isBypassAvailable };
 
 const DEFAULT_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -62,8 +70,8 @@ function isCloudflareChallenge(html: string): boolean {
     lower.includes("cf-turnstile") ||
     lower.includes("just a moment") ||
     lower.includes("cf-browser-verification") ||
-    lower.includes("cloudflare") && lower.includes("challenge") ||
-    lower.includes("ray id") && lower.includes("cloudflare") && html.length < 5000
+    (lower.includes("cloudflare") && lower.includes("challenge")) ||
+    (lower.includes("ray id") && lower.includes("cloudflare") && html.length < 5000)
   );
 }
 
