@@ -10,9 +10,11 @@ import type {
   PageListResponse,
   SourceTag,
 } from "./types";
+import { buildAaReq, getQueryHash, decodeTobeparsed, resetKeygenCache } from "../lib/allanime-crypto.js";
 
 const API_URL = "https://api.allanime.day/api";
-const SITE_URL = "https://allmanga.to";
+const NEW_API_URL = "https://api.mkissa.net/api";
+const SITE_URL = "https://mkissa.to";
 const THUMBNAIL_CDN = "https://wp.youtube-anime.com/aln.youtube-anime.com/";
 const VIDEO_HOSTS = [
   "https://aln.youtube-anime.com",
@@ -20,6 +22,10 @@ const VIDEO_HOSTS = [
   "https://aimgf.youtube-anime.com",
 ];
 const PAGE_SIZE = 20;
+
+// Persisted query hashes for the new API (from keygen, with hardcoded fallback).
+const CHAPTER_PAGES_LANE = "k9";
+const EPISODE_LANE = "k7";
 
 type GraphQlResponse<T> = { data?: T; errors?: Array<{ message?: string }> };
 
@@ -40,6 +46,62 @@ async function graphQl<T>(query: string, variables: Record<string, unknown>): Pr
   }
   if (!payload.data) throw new Error("AllManga API returned no data");
   return payload.data;
+}
+
+/**
+ * Send a persisted GraphQL query via GET with an aaReq crypto token.
+ * This is required by the new api.mkissa.net endpoint for chapter pages
+ * and episode source URLs. Without the token the API returns
+ * AA_CRYPTO_MISSING and the response contains broken/placeholder data.
+ */
+async function graphQlWithToken<T>(
+  queryName: "search" | "manga" | "chapter",
+  lane: string,
+  variables: Record<string, unknown>,
+): Promise<T> {
+  const queryHash = await getQueryHash(queryName);
+  const { token, buildId } = await buildAaReq(queryHash, lane);
+
+  const params = new URLSearchParams();
+  params.set("variables", JSON.stringify(variables));
+  params.set("extensions", JSON.stringify({
+    persistedQuery: { version: 1, sha256Hash: queryHash },
+    aaReq: token,
+    k: lane,
+  }));
+
+  const response = await fetch(`${NEW_API_URL}?${params.toString()}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      Referer: SITE_URL,
+      Origin: SITE_URL,
+      "x-build-id": buildId,
+    },
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as GraphQlResponse<T> & { data?: { tobeparsed?: string } };
+
+  if (payload.errors?.length) {
+    const msg = payload.errors[0]?.message ?? "request failed";
+    if (msg.includes("CRYPTO") || msg.includes("STALE") || msg.includes("PersistedQueryNotFound")) {
+      resetKeygenCache();
+      throw new Error(`AllManga API crypto error: ${msg}`);
+    }
+    throw new Error(`AllManga API: ${msg}`);
+  }
+
+  // Handle encrypted tobeparsed response
+  if (payload.data?.tobeparsed) {
+    const decoded = await decodeTobeparsed(payload.data.tobeparsed, lane);
+    if (decoded) return decoded as T;
+    resetKeygenCache();
+    throw new Error("AllManga API: failed to decode tobeparsed response");
+  }
+
+  if (!payload.data) throw new Error("AllManga API returned no data");
+  return payload.data as T;
 }
 
 function thumbnailUrl(value: string | null | undefined): string {
@@ -120,30 +182,29 @@ const MANGA_DETAILS_QUERY = `
       _id name thumbnail description authors genres tags status altNames
       englishName availableChaptersDetail
     }
-    episodeInfos(showId: $showId, episodeNumStart: 0, episodeNumEnd: 9999) {
-      episodeIdNum notes uploadDates
-    }
   }
 `;
 
 const SHOW_DETAILS_QUERY = `
   query ($id: String!) {
     show(_id: $id) {
-      _id name thumbnail description genres tags status altNames englishName
+      _id name thumbnail description genres tags status altNames
+      englishName
     }
-    episodeInfos(showId: $id, episodeNumStart: 0, episodeNumEnd: 9999) {
+    episodeInfos {
       episodeIdNum notes uploadDates
-      vidInforssub vidInforsdub vidInforsraw thumbnails
+      vidInforssub { vidPath vidResolution vidDuration }
+      vidInforsdub { vidPath vidResolution vidDuration }
+      vidInforsraw { vidPath vidResolution vidDuration }
+      thumbnails
     }
   }
 `;
 
 const PAGE_QUERY = `
-  query ($mangaId: String!, $chapterString: String!,
-         $translationType: VaildTranslationTypeMangaEnumType!) {
-    chapterPages(mangaId: $mangaId, chapterString: $chapterString,
-                 translationType: $translationType) {
-      edges { pictureUrlHead pictureUrls }
+  query ($mangaId: String!, $chapterString: String!, $translationType: VaildTranslationTypeMangaEnumType!) {
+    chapterPages(mangaId: $mangaId, chapterString: $chapterString, translationType: $translationType) {
+      edges { pictureUrlHead pictureUrls { url } }
     }
   }
 `;
@@ -160,13 +221,8 @@ interface MangaData {
     status?: string | null;
     altNames?: string[] | null;
     englishName?: string | null;
-    availableChaptersDetail?: { sub?: string[] | null } | null;
+    availableChaptersDetail?: { sub?: number[]; dub?: number[] } | null;
   } | null;
-  episodeInfos: Array<{
-    episodeIdNum: number | string;
-    notes?: string | null;
-    uploadDates?: { sub?: string | null } | null;
-  }>;
 }
 
 interface ShowData {
@@ -233,127 +289,108 @@ function toDetail(id: string, item: ShowData["show"] | MangaData["manga"], kind:
   };
 }
 
+function videoUrl(info?: VideoInfo | null): string | null {
+  if (!info?.vidPath) return null;
+  const path = info.vidPath;
+  for (const host of VIDEO_HOSTS) {
+    if (path.startsWith(host)) return path;
+  }
+  if (/^https?:\/\//i.test(path)) return path;
+  return `https://aln.youtube-anime.com${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
 async function listKind(query: string, opts: ListOptions, kind: "manga" | "anime"): Promise<{ items: MangaSummary[]; hasNextPage: boolean }> {
   const variables = {
-    search: { query: query.trim() || null, allowAdult: true, allowUnknown: false },
+    search: { query: query.trim() || null, allowAdult: true, allowUnknown: true, sortBy: opts.sort === "latest" ? "Latest" : "Name_ASC" },
     size: PAGE_SIZE,
-    page: opts.page,
+    page: opts.page ?? 1,
     translationType: "sub",
     countryOrigin: "ALL",
   };
-  if (kind === "manga") {
-    const data = await graphQl<MangaSearchData>(MANGA_SEARCH_QUERY, variables);
-    const items = data.mangas.edges.map(item => toSummary(item, kind));
-    return { items, hasNextPage: items.length === PAGE_SIZE };
-  }
-  const data = await graphQl<ShowSearchData>(SHOW_SEARCH_QUERY, variables);
-  const items = data.shows.edges.map(item => toSummary(item, kind));
+  const data = kind === "manga"
+    ? await graphQl<MangaSearchData>(MANGA_SEARCH_QUERY, variables)
+    : await graphQl<ShowSearchData>(SHOW_SEARCH_QUERY, variables);
+  const edges = kind === "manga" ? (data as MangaSearchData).mangas?.edges : (data as ShowSearchData).shows?.edges;
+  const items = (edges ?? []).map(item => toSummary(item, kind));
   return { items, hasNextPage: items.length === PAGE_SIZE };
 }
 
-async function listCombined(query: string, opts: ListOptions): Promise<MangaListResponse> {
-  const [manga, anime] = await Promise.all([
-    listKind(query, opts, "manga"),
-    listKind(query, opts, "anime"),
-  ]);
-  const items = [...manga.items, ...anime.items];
-  return { items, page: opts.page, hasNextPage: manga.hasNextPage || anime.hasNextPage };
-}
-
-function videoUrl(info: VideoInfo | null | undefined): string | null {
-  const path = info?.vidPath?.trim();
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  const cleanPath = `/${path.replace(/^\/+/, "")}`;
-  const direct = `${VIDEO_HOSTS[0]}${cleanPath}`;
-  return `/api/allmanga/video?url=${encodeURIComponent(direct)}`;
-}
-
-function chapterDate(detail: { uploadDates?: { sub?: string; dub?: string } | null } | undefined): number {
-  return parseDate(detail?.uploadDates?.sub ?? detail?.uploadDates?.dub);
-}
-
 const source: MangaSource = {
-  id: "en.allanime",
+  id: "en.allmanga",
   name: "AllManga",
-  lang: "en",
+  tags: ["Manga", "Anime", "Video"] as SourceTag[],
   isNsfw: true,
-  imageReferer: `${SITE_URL}/`,
 
-  async popular(opts): Promise<MangaListResponse> {
-    // AllAnime's popular enum has changed over time. Its stable search
-    // connections are more reliable, so popular intentionally uses the
-    // current catalog ordering while preserving the source's page contract.
-    return this.search("", opts);
+  async list(opts: ListOptions): Promise<MangaListResponse> {
+    const media = mediaFilter(opts);
+    const query = opts.query ?? "";
+    if (media === "manga") {
+      const { items, hasNextPage } = await listKind(query, opts, "manga");
+      return { items, hasNextPage };
+    }
+    if (media === "anime") {
+      const { items, hasNextPage } = await listKind(query, opts, "anime");
+      return { items, hasNextPage };
+    }
+    const [manga, anime] = await Promise.all([
+      listKind(query, opts, "manga").catch(() => ({ items: [], hasNextPage: false })),
+      listKind(query, opts, "anime").catch(() => ({ items: [], hasNextPage: false })),
+    ]);
+    const items = [...manga.items, ...anime.items];
+    return { items, hasNextPage: manga.hasNextPage || anime.hasNextPage };
   },
 
-  async latest(opts): Promise<MangaListResponse> {
-    return this.search("", opts);
+  async search(query: string, opts?: ListOptions): Promise<MangaSummary[]> {
+    const { items } = await this.list({ ...opts, query, page: 1 });
+    return items;
   },
 
-  async search(query, opts): Promise<MangaListResponse> {
-    const kind = mediaFilter(opts);
-    const result = kind === "all"
-      ? await listCombined(query, opts)
-      : { ...(await listKind(query, opts, kind)), page: opts.page };
-    return result;
+  async getDetail(id: string, _opts?: DetailOptions): Promise<MangaDetail> {
+    const { kind, id: rawId } = parseMediaId(id);
+    if (kind === "anime") {
+      const data = await graphQl<ShowData>(SHOW_DETAILS_QUERY, { id: rawId });
+      return toDetail(id, data.show, "anime");
+    }
+    const data = await graphQl<MangaData>(MANGA_DETAILS_QUERY, { id: rawId, showId: rawId });
+    return toDetail(id, data.manga, "manga");
   },
 
-  async tags(): Promise<SourceTag[]> {
-    return [];
-  },
-
-  async details(rawId, _opts): Promise<MangaDetail> {
-    const { kind, id } = parseMediaId(rawId);
+  async getChapters(mangaId: string): Promise<ChapterListResponse> {
+    const { kind, id } = parseMediaId(mangaId);
     if (kind === "anime") {
       const data = await graphQl<ShowData>(SHOW_DETAILS_QUERY, { id });
-      return toDetail(rawId, data.show, kind);
+      const episodes = data.episodeInfos ?? [];
+      const items: ChapterSummary[] = episodes
+        .filter(ep => ep.vidInforssub || ep.vidInforsdub || ep.vidInforsraw)
+        .map(ep => ({
+          id: `${mangaId}:${ep.episodeIdNum}`,
+          number: Number(ep.episodeIdNum) || 0,
+          title: ep.notes || `Episode ${ep.episodeIdNum}`,
+          createdAt: parseDate(ep.uploadDates?.sub),
+          scanlator: "",
+          isOfficial: true,
+          votes: 0,
+        }))
+        .sort((a, b) => b.number - a.number);
+      return { items };
     }
-    const data = await graphQl<MangaData>(MANGA_DETAILS_QUERY, {
-      id,
-      showId: `manga@${id}`,
-    });
-    return toDetail(rawId, data.manga, kind);
+    const data = await graphQl<MangaData>(MANGA_DETAILS_QUERY, { id, showId: id });
+    const chapters = data.manga?.availableChaptersDetail?.sub ?? [];
+    const items: ChapterSummary[] = chapters
+      .map(ch => ({
+        id: `${mangaId}:${ch}`,
+        number: ch,
+        title: `Chapter ${ch}`,
+        createdAt: 0,
+        scanlator: "",
+        isOfficial: true,
+        votes: 0,
+      }))
+      .sort((a, b) => b.number - a.number);
+    return { items };
   },
 
-  async chapters(rawId): Promise<ChapterListResponse> {
-    const { kind, id } = parseMediaId(rawId);
-    if (kind === "anime") {
-      const data = await graphQl<ShowData>(SHOW_DETAILS_QUERY, { id });
-      if (!data.show) throw new Error("AllManga anime was not found");
-      return {
-        items: data.episodeInfos
-          .filter(item => item.episodeIdNum !== null && item.episodeIdNum !== undefined)
-          .map((item, index): ChapterSummary => ({
-            id: `${encodedId("anime", id)}:${item.episodeIdNum}`,
-            number: Number(item.episodeIdNum) || index + 1,
-            title: item.notes ? `Episode ${item.episodeIdNum}: ${item.notes}` : `Episode ${item.episodeIdNum}`,
-            scanlator: "AllManga",
-            date: chapterDate(item),
-          }))
-          .sort((a, b) => b.number - a.number),
-      };
-    }
-
-    const data = await graphQl<MangaData>(MANGA_DETAILS_QUERY, { id, showId: `manga@${id}` });
-    if (!data.manga) throw new Error("AllManga manga was not found");
-    const byNumber = new Map(data.episodeInfos.map(item => [String(item.episodeIdNum), item]));
-    const available = data.manga.availableChaptersDetail?.sub ?? [];
-    return {
-      items: available.map((number, index) => {
-        const detail = byNumber.get(String(number));
-        return {
-          id: `${encodedId("manga", id)}:${number}`,
-          number: Number(number) || index + 1,
-          title: detail?.notes ? `Chapter ${number}: ${detail.notes}` : `Chapter ${number}`,
-          scanlator: "AllManga",
-          date: parseDate(detail?.uploadDates?.sub),
-        };
-      }),
-    };
-  },
-
-  async pages(rawChapterId): Promise<PageListResponse> {
+  async getPages(rawChapterId: string): Promise<PageListResponse> {
     const decoded = decodeURIComponent(rawChapterId);
     const separator = decoded.lastIndexOf(":");
     if (separator <= 0) throw new Error("Invalid AllManga chapter ID");
@@ -365,18 +402,38 @@ const source: MangaSource = {
       const data = await graphQl<ShowData>(SHOW_DETAILS_QUERY, { id });
       const episode = data.episodeInfos.find(item => String(item.episodeIdNum) === chapterString);
       if (!episode) throw new Error(`AllManga episode ${chapterString} was not found`);
-      // Prefer English-subbed HD, then dub, then raw. The player can stream
-      // the CDN path directly and supports range requests natively.
       const url = videoUrl(episode.vidInforssub) ?? videoUrl(episode.vidInforsdub) ?? videoUrl(episode.vidInforsraw);
       if (!url) throw new Error(`AllManga episode ${chapterString} has no playable video`);
       return { chapterId: rawChapterId, pages: [{ index: 0, url }] };
     }
 
-    const data = await graphQl<PageData>(PAGE_QUERY, {
+    // Chapter pages: use GET + aaReq crypto token (required by the new API).
+    // The old POST approach without a token returns AA_CRYPTO_MISSING and
+    // the response contains broken/placeholder image URLs (the "symbol images" bug).
+    const variables = {
       mangaId: id,
       chapterString,
       translationType: "sub",
-    });
+      limit: 10,
+      offset: 0,
+    };
+
+    let data: PageData;
+    try {
+      data = await graphQlWithToken<PageData>("chapter", CHAPTER_PAGES_LANE, variables);
+    } catch (tokenErr) {
+      // Fallback: try the old POST approach (works if the old API is still up
+      // and doesn't require the token for this particular query).
+      try {
+        data = await graphQl<PageData>(PAGE_QUERY, variables);
+      } catch (postErr) {
+        throw new Error(
+          `AllManga chapter pages failed: token query error (${tokenErr instanceof Error ? tokenErr.message : tokenErr}), ` +
+          `fallback query error (${postErr instanceof Error ? postErr.message : postErr})`,
+        );
+      }
+    }
+
     if (!data.chapterPages) throw new Error("AllManga returned no page data for this chapter");
     const edge = data.chapterPages.edges.find(item => item.pictureUrls?.length) ?? data.chapterPages.edges[0];
     if (!edge) throw new Error("AllManga returned no pages for this chapter");
