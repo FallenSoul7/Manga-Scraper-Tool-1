@@ -319,37 +319,47 @@ async function listKind(query: string, opts: ListOptions, kind: "manga" | "anime
   return { items, hasNextPage: items.length === PAGE_SIZE };
 }
 
+async function listAll(query: string, opts: ListOptions): Promise<MangaListResponse> {
+  const media = mediaFilter(opts);
+  if (media === "manga" || media === "anime") {
+    const { items, hasNextPage } = await listKind(query, opts, media);
+    return { items, page: opts.page, hasNextPage };
+  }
+
+  const [manga, anime] = await Promise.all([
+    listKind(query, opts, "manga").catch(() => ({ items: [], hasNextPage: false })),
+    listKind(query, opts, "anime").catch(() => ({ items: [], hasNextPage: false })),
+  ]);
+  return {
+    items: [...manga.items, ...anime.items],
+    page: opts.page,
+    hasNextPage: manga.hasNextPage || anime.hasNextPage,
+  };
+}
+
 const source: MangaSource = {
   id: "en.allmanga",
   name: "AllManga",
-  tags: ["Manga", "Anime", "Video"] as SourceTag[],
+  tags: [
+    { id: "manga", name: "Manga", group: "Media" },
+    { id: "anime", name: "Anime", group: "Media" },
+    { id: "video", name: "Video", group: "Media" },
+  ],
   isNsfw: true,
 
-  async list(opts: ListOptions): Promise<MangaListResponse> {
-    const media = mediaFilter(opts);
-    const query = opts.query ?? "";
-    if (media === "manga") {
-      const { items, hasNextPage } = await listKind(query, opts, "manga");
-      return { items, hasNextPage };
-    }
-    if (media === "anime") {
-      const { items, hasNextPage } = await listKind(query, opts, "anime");
-      return { items, hasNextPage };
-    }
-    const [manga, anime] = await Promise.all([
-      listKind(query, opts, "manga").catch(() => ({ items: [], hasNextPage: false })),
-      listKind(query, opts, "anime").catch(() => ({ items: [], hasNextPage: false })),
-    ]);
-    const items = [...manga.items, ...anime.items];
-    return { items, hasNextPage: manga.hasNextPage || anime.hasNextPage };
+  async popular(opts: ListOptions): Promise<MangaListResponse> {
+    return listAll("", opts);
   },
 
-  async search(query: string, opts?: ListOptions): Promise<MangaSummary[]> {
-    const { items } = await this.list({ ...opts, query, page: 1 });
-    return items;
+  async latest(opts: ListOptions): Promise<MangaListResponse> {
+    return this.popular({ ...opts, sort: "latest" });
   },
 
-  async getDetail(id: string, _opts?: DetailOptions): Promise<MangaDetail> {
+  async search(query: string, opts: ListOptions): Promise<MangaListResponse> {
+    return listAll(query, { ...opts, page: 1 });
+  },
+
+  async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
     const { kind, id: rawId } = parseMediaId(id);
     if (kind === "anime") {
       const data = await graphQl<ShowData>(SHOW_DETAILS_QUERY, { id: rawId });
@@ -359,7 +369,7 @@ const source: MangaSource = {
     return toDetail(id, data.manga, "manga");
   },
 
-  async getChapters(mangaId: string): Promise<ChapterListResponse> {
+  async chapters(mangaId: string, _dedupe: boolean): Promise<ChapterListResponse> {
     const { kind, id } = parseMediaId(mangaId);
     if (kind === "anime") {
       const data = await graphQl<ShowData>(SHOW_DETAILS_QUERY, { id });
@@ -370,7 +380,7 @@ const source: MangaSource = {
           id: `${mangaId}:${ep.episodeIdNum}`,
           number: Number(ep.episodeIdNum) || 0,
           title: ep.notes || `Episode ${ep.episodeIdNum}`,
-          createdAt: parseDate(ep.uploadDates?.sub),
+          date: parseDate(ep.uploadDates?.sub),
           scanlator: "",
           isOfficial: true,
           votes: 0,
@@ -385,7 +395,7 @@ const source: MangaSource = {
         id: `${mangaId}:${ch}`,
         number: ch,
         title: `Chapter ${ch}`,
-        createdAt: 0,
+         date: 0,
         scanlator: "",
         isOfficial: true,
         votes: 0,
@@ -394,7 +404,7 @@ const source: MangaSource = {
     return { items };
   },
 
-  async getPages(rawChapterId: string): Promise<PageListResponse> {
+  async pages(rawChapterId: string): Promise<PageListResponse> {
     const decoded = decodeURIComponent(rawChapterId);
     const separator = decoded.lastIndexOf(":");
     if (separator <= 0) throw new Error("Invalid AllManga chapter ID");
