@@ -659,20 +659,22 @@ export default function SourceBrowsePage() {
               </>
             ) : (
               /* Non-AllManga sources: just Popular + Latest */
-              {(["popular", "latest"] as const).map(v => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => handleBrowseTab(v)}
-                  className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap capitalize ${
-                    activeTabValue === v
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
-                >
-                  {v === "popular" ? "Popular" : "Latest"}
-                </button>
-              ))
+              <>
+                {(["popular", "latest"] as const).map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => handleBrowseTab(v)}
+                    className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap capitalize ${
+                      activeTabValue === v
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {v === "popular" ? "Popular" : "Latest"}
+                  </button>
+                ))}
+              </>
             )}
 
             {availableTags.length > 0 && (
