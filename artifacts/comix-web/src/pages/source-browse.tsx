@@ -592,37 +592,88 @@ export default function SourceBrowsePage() {
         {/* Tab bar */}
         {!inSearchMode && (
           <div className="flex flex-col gap-1.5 px-4 pb-3">
-            {isAllManga && (
-              <div className="flex items-center gap-1 rounded-full bg-muted/50 p-1 w-fit">
-                {(["all", "manga", "anime"] as const).map(kind => (
-                  <button
-                    key={kind}
-                    type="button"
-                    onClick={() => handleMediaType(kind)}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
-                      mediaType === kind ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {kind === "all" ? "All" : kind === "manga" ? "Manga" : "Anime"}
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar">
+            {/* AllManga: single row — All, Popular, Latest, Manga, Anime */}
+            {isAllManga ? (
+              <>
+                {/* All — default view: both manga + anime, popular sort */}
+                <button
+                  type="button"
+                  onClick={() => { handleMediaType("all"); handleBrowseTab("popular"); }}
+                  className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap ${
+                    mediaType === "all" && (activeTabValue === "popular" || activeTabValue === "filter")
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  All
+                </button>
+                {/* Popular — sort tab (active when on popular and a media filter is set) */}
+                <button
+                  type="button"
+                  onClick={() => handleBrowseTab("popular")}
+                  className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap ${
+                    activeTabValue === "popular" && mediaType !== "all"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  Popular
+                </button>
+                {/* Latest — sort tab */}
+                <button
+                  type="button"
+                  onClick={() => handleBrowseTab("latest")}
+                  className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap ${
+                    activeTabValue === "latest"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  Latest
+                </button>
+                {/* Manga — filter to manga only */}
+                <button
+                  type="button"
+                  onClick={() => { handleMediaType("manga"); handleBrowseTab("popular"); }}
+                  className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap ${
+                    mediaType === "manga"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  Manga
+                </button>
+                {/* Anime — filter to anime only */}
+                <button
+                  type="button"
+                  onClick={() => { handleMediaType("anime"); handleBrowseTab("popular"); }}
+                  className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap ${
+                    mediaType === "anime"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  Anime
+                </button>
+              </>
+            ) : (
+              /* Non-AllManga sources: just Popular + Latest */
+              {(["popular", "latest"] as const).map(v => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => handleBrowseTab(v)}
+                  className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap capitalize ${
+                    activeTabValue === v
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  {v === "popular" ? "Popular" : "Latest"}
+                </button>
+              ))
             )}
-            <div className="flex items-center gap-1">
-            {(["popular", "latest"] as const).map(v => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => handleBrowseTab(v)}
-                className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap capitalize ${
-                  activeTabValue === v
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`}
-              >
-                {v === "popular" ? "Popular" : "Latest"}
-              </button>
-            ))}
 
             {availableTags.length > 0 && (
               <Popover open={filterPopoverOpen} onOpenChange={setFilterPopoverOpen}>
