@@ -360,7 +360,7 @@ export const ComickFanSource: MangaSource = {
 
           let selectedUrl = targetAttr;
           if (selectedUrl.includes(" ")) {
-            const segments = selectedAttr.split(",");
+            const segments = targetAttr.split(",");
             const ultimateSegment = segments[segments.length - 1].trim();
             selectedUrl = ultimateSegment.split(" ")[0];
           }

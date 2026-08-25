@@ -413,7 +413,15 @@ export const ComixSource: MangaSource = {
     };
   },
   async pages(chapterId): Promise<PageListResponse> {
-    const res = await client.get<ChapterPagesResponse>(`/chapters/${chapterId}`);
+    const path = `/chapters/${chapterId}`;
+    const time = 1;
+    const hashToken = generateHash(path, 0, time);
+    const res = await client.get<ChapterPagesResponse>(path, {
+      params: {
+        time: String(time),
+        _: hashToken,
+      },
+    });
     if (res.status >= 400 || !res.data?.result) {
       throw new Error(`Chapter not found`);
     }
