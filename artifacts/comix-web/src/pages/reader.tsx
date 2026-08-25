@@ -355,9 +355,9 @@ export default function Reader() {
   }
 
   // ── Video content → render dedicated cinematic player ─────────────────────
-  // When ALL pages are video URLs (Koofr video files, AllManga anime episodes),
+  // When ANY page is a video URL (Koofr video files, AllManga anime episodes),
   // bypass the manga strip entirely and show the full-screen video player.
-  if (effectivePages.length > 0 && effectivePages.every(p => isVideoUrl(p.url))) {
+  if (effectivePages.length > 0 && effectivePages.some(p => isVideoUrl(p.url))) {
     const videoUrl = effectivePages[0].url;
     const mangaTitle = mangaData?.title ?? "Video";
     const chObj = chaptersData?.items.find(c => String(c.id) === chapterId);
@@ -492,8 +492,7 @@ export default function Reader() {
           effectiveDirection === 'ltr' || effectiveDirection === 'rtl'
           ? 'h-[100dvh] flex overflow-x-auto snap-x snap-mandatory hide-scrollbar flex-row'
           : 'flex flex-col items-center max-w-3xl mx-auto'
-        } ${effectiveDirection === 'rtl' ? 'flex-row-reverse' : ''}`}
-      >
+        } ${effectiveDirection === 'rtl' ? 'flex-row-reverse' : ''}`}>
         {effectivePages.map((page, idx) => {
           const isVerticalLike = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical';
           const isLoaded = !!loadedImgs[idx];
@@ -528,35 +527,6 @@ export default function Reader() {
             ? (idx < 3 ? 'eager' : 'lazy')
             : (distToPage <= 5 ? 'eager' : 'lazy');
 
-          // ── Video page (MP4 / WebM / AllManga proxy) ───────────────────────
-          if (isVideoUrl(page.url)) {
-            return (
-              <div
-                key={page.index}
-                id={`page-${idx}`}
-                className="reader-page relative flex-shrink-0 flex items-center justify-center bg-black w-full min-h-[100dvh]"
-                onClick={e => e.stopPropagation()}
-              >
-                <video
-                  src={apiUrl(page.url)}
-                  controls
-                  controlsList="nodownload"
-                  playsInline
-                  autoPlay
-                  className="max-w-full max-h-[100dvh] w-full"
-                  style={{ outline: 'none' }}
-                  onPlay={() => setLoadedImgs(p => ({ ...p, [idx]: true }))}
-                  onCanPlay={() => setLoadedImgs(p => ({ ...p, [idx]: true }))}
-                />
-                {!isLoaded && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black text-white/40 pointer-events-none">
-                    <Loader2 className="h-10 w-10 animate-spin" />
-                    <p className="mt-3 text-sm">Loading video…</p>
-                  </div>
-                )}
-              </div>
-            );
-          }
 
           return (
             <div
@@ -568,8 +538,7 @@ export default function Reader() {
                   ? 'flex items-center justify-center bg-black w-auto min-w-[100vw] h-[100dvh] snap-center snap-always'
                   : 'flex items-center justify-center bg-black w-[100vw] h-[100dvh] snap-center snap-always'
                 : isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full'
-              } ${effectiveDirection === 'vertical' ? 'mb-8' : ''}`}
-            >
+              } ${effectiveDirection === 'vertical' ? 'mb-8' : ''}`}>
               {effectiveDirection === 'vertical' && (
                 <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
               )}
@@ -669,8 +638,7 @@ export default function Reader() {
                   key={page.index}
                   className={`reader-page relative flex-shrink-0 ${
                     isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full mb-8'
-                  }`}
-                >
+                  }`}>
                   <img
                     src={getProxiedImageUrl(page.url, sourceId ?? "")}
                     alt={`Ch${ch.number} Page ${page.index}`}
