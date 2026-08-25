@@ -299,6 +299,10 @@ function videoUrl(info?: VideoInfo | null): string | null {
   return `https://aln.youtube-anime.com${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
+function videoProxyUrl(url: string): string {
+  return `/api/allmanga/video?url=${encodeURIComponent(url)}`;
+}
+
 async function listKind(query: string, opts: ListOptions, kind: "manga" | "anime"): Promise<{ items: MangaSummary[]; hasNextPage: boolean }> {
   const variables = {
     search: { query: query.trim() || null, allowAdult: true, allowUnknown: true, sortBy: opts.sort === "latest" ? "Latest" : "Name_ASC" },
@@ -404,7 +408,10 @@ const source: MangaSource = {
       if (!episode) throw new Error(`AllManga episode ${chapterString} was not found`);
       const url = videoUrl(episode.vidInforssub) ?? videoUrl(episode.vidInforsdub) ?? videoUrl(episode.vidInforsraw);
       if (!url) throw new Error(`AllManga episode ${chapterString} has no playable video`);
-      return { chapterId: rawChapterId, pages: [{ index: 0, url }] };
+       // Keep the CDN URL behind the API proxy. Apart from preserving the
+       // AllManga referer, this gives the browser a same-origin stream with
+       // range support for seeking.
+       return { chapterId: rawChapterId, pages: [{ index: 0, url: videoProxyUrl(url) }] };
     }
 
     // Chapter pages: use GET + aaReq crypto token (required by the new API).

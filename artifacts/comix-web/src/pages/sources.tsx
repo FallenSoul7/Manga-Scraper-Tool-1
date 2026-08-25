@@ -47,7 +47,11 @@ const LANG_LABELS: Record<string, string> = {
   tr: "Türkçe", uk: "Українська", vi: "Tiếng Việt", zh: "中文",
 };
 const langLabel = (code: string) => LANG_LABELS[code] ?? code.toUpperCase();
-const ALLMANGA_SOURCE_ID = "en.allanime";
+// The catalog uses the upstream extension id, while the API registry uses
+// the implemented source id. Keep the alias in one place so AllManga is not
+// accidentally shown as an unsupported "Coming soon" extension.
+const ALLMANGA_SOURCE_ID = "en.allmanga";
+const ALLMANGA_CATALOG_ID = "en.allanime";
 const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga", ALLMANGA_SOURCE_ID]);
 
 // Implemented (supported) sources that are intentionally hidden from the
@@ -448,7 +452,7 @@ function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; active
     );
   }
 
-  const allMangaCatalogEntry = catalog?.extensions.find(e => e.id === ALLMANGA_SOURCE_ID);
+  const allMangaCatalogEntry = catalog?.extensions.find(e => e.id === ALLMANGA_CATALOG_ID);
 
   // Hardcoded discoverable anime extensions (always visible for install)
   const ANIME_EXTENSIONS = [
@@ -468,7 +472,7 @@ function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; active
       isNsfw: allMangaCatalogEntry?.isNsfw ?? true,
       description: "Manga and anime catalog",
       iconUrl: allMangaCatalogEntry?.iconUrl ?? null,
-      supported: allMangaCatalogEntry?.supported ?? false,
+      supported: true,
     },
   ];
 
@@ -602,7 +606,9 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
 
       <div className="divide-y divide-border/40">
         {visible.map(ext => {
-          const isInstalled = !!installedMap[ext.id];
+          const canonicalId = ext.id === ALLMANGA_CATALOG_ID ? ALLMANGA_SOURCE_ID : ext.id;
+          const isSupported = ext.supported || ext.id === ALLMANGA_CATALOG_ID;
+          const isInstalled = !!installedMap[canonicalId];
           return (
             <div key={ext.id} className="flex items-center gap-3 px-4 py-3">
               <SourceAvatar src={ext} size={44} />
@@ -610,7 +616,7 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-semibold text-sm truncate">{ext.name}</span>
                   {ext.isNsfw && <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">18+</span>}
-                  {!ext.supported && <span className="text-[10px] px-1.5 py-0 rounded bg-muted text-muted-foreground">Coming soon</span>}
+                  {!isSupported && <span className="text-[10px] px-1.5 py-0 rounded bg-muted text-muted-foreground">Coming soon</span>}
                 </div>
                 <p className="text-xs text-muted-foreground">{langLabel(ext.lang)}</p>
               </div>
@@ -620,10 +626,10 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
                 </span>
               ) : (
                 <Button
-                  size="sm" variant={ext.supported ? "default" : "outline"}
-                  disabled={!ext.supported} className="h-8 text-xs px-3 shrink-0"
+                  size="sm" variant={isSupported ? "default" : "outline"}
+                  disabled={!isSupported} className="h-8 text-xs px-3 shrink-0"
                   onClick={() => {
-                    storeActions.installSource({ id: ext.id, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl, isPinned: false });
+                    storeActions.installSource({ id: canonicalId, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl, isPinned: false });
                     toast({ title: `Added ${ext.name}`, description: "Open the Sources tab to browse it." });
                   }}
                 >
