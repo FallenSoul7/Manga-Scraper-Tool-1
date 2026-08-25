@@ -60,6 +60,10 @@ register(KoofrSource);
 register(Rule34Source);
 register(PawchiveSource);
 register(AllMangaSource);
+// The upstream catalog historically called this extension "en.allanime",
+// while the implemented source uses "en.allmanga". Keep both IDs valid so
+// existing installed sources and saved library entries do not break.
+SOURCES_BY_ID.set("en.allanime", AllMangaSource);
 
 // Madara-themed sources
 register(createMadaraSource({

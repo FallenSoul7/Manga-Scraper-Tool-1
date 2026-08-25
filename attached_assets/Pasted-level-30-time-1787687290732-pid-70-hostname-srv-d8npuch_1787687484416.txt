@@ -1,0 +1,15 @@
+level":30,"time":1787687290732,"pid":70,"hostname":"srv-d8npuchkh4rs73ff8es0-hibernate-7f8855b585-xz5bv","req":{"id":1,"method":"HEAD","url":"/"},"res":{"statusCode":404},"responseTime":6,"msg":"request completed"}
+{"level":50,"time":1787687293482,"pid":70,"hostname":"srv-d8npuchkh4rs73ff8es0-hibernate-7f8855b585-xz5bv","err":{"type":"PostgresError","message":"(ENOTFOUND) tenant/user postgres.baxcbdiposdiithinkew not found","stack":"PostgresError: (ENOTFOUND) tenant/user postgres.baxcbdiposdiithinkew not found\n    at ErrorResponse (file:///opt/render/project/src/node_modules/.pnpm/postgres@3.4.9/node_modules/postgres/src/connection.js:817:22)\n    at handle (file:///opt/render/project/src/node_modules/.pnpm/postgres@3.4.9/node_modules/postgres/src/connection.js:489:6)\n    at TLSSocket.data (file:///opt/render/project/src/node_modules/.pnpm/postgres@3.4.9/node_modules/postgres/src/connection.js:324:9)\n    at TLSSocket.emit (node:events:508:28)\n    at addChunk (node:internal/streams/readable:563:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)\n    at Readable.push (node:internal/streams/readable:394:5)\n    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23)","name":"PostgresError","code":"XX000","severity_local":"FATAL"},"msg":"DB migrations failed — tables may not exist"}
+==> Your service is live 🎉
+{"level":30,"time":1787687299980,"pid":70,"hostname":"srv-d8npuchkh4rs73ff8es0-hibernate-7f8855b585-xz5bv","req":{"id":2,"method":"GET","url":"/"},"res":{"statusCode":404},"responseTime":2,"msg":"request completed"}
+==> 
+==> ///////////////////////////////////////////////////////////
+==> 
+==> Available at your primary URL https://comihub-backend.onrender.com
+==> 
+==> ///////////////////////////////////////////////////////////
+{"level":30,"time":1787687339642,"pid":70,"hostname":"srv-d8npuchkh4rs73ff8es0-hibernate-7f8855b585-xz5bv","req":{"id":3,"method":"GET","url":"/api/healthz"},"res":{"statusCode":200},"responseTime":4,"msg":"request completed"}
+{"level":30,"time":1787687339693,"pid":70,"hostname":"srv-d8npuchkh4rs73ff8es0-hibernate-7f8855b585-xz5bv","req":{"id":4,"method":"GET","url":"/api/healthz"},"res":{"statusCode":200},"responseTime":1,"msg":"request completed"}
+{"level":30,"time":1787687339884,"pid":70,"hostname":"srv-d8npuchkh4rs73ff8es0-hibernate-7f8855b585-xz5bv","req":{"id":5,"method":"GET","url":"/api/auth/me"},"res":{"statusCode":200},"responseTime":2,"msg":"request completed"}
+{"level":30,"time":1787687339891,"pid":70,"hostname":"srv-d8npuchkh4rs73ff8es0-hibernate-7f8855b585-xz5bv","req":{"id":6,"method":"GET","url":"/api/healthz"},"res":{"statusCode":200},"responseTime":1,"msg":"request completed"}
+{"level":30,"time":1787687339906,"pid":70,"hostname":"srv-d8npuchkh4rs73ff8es0
