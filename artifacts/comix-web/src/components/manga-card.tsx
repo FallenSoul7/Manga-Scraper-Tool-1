@@ -64,21 +64,12 @@ export const MangaCard = memo(function MangaCard({
           src={proxyImage(manga.thumbnail, sourceId)}
           alt={manga.title}
           className={[
-            "h-full w-full object-cover object-[center_18%] bg-black/10 transition-all duration-300",
+            "h-full w-full object-contain bg-black/10 transition-all duration-300",
             isSelected && "opacity-70",
           ].filter(Boolean).join(" ")}
           loading="lazy"
           draggable={false}
         />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/90 via-black/55 to-transparent" />
-        <h3
-          className={[
-            "pointer-events-none absolute inset-x-2 bottom-2 line-clamp-2 text-xs font-semibold leading-snug text-white drop-shadow-md sm:text-sm",
-            !isSelecting && "group-hover:text-white",
-          ].filter(Boolean).join(" ")}
-        >
-          {manga.title}
-        </h3>
         {manga.isNsfw && settings.showNsfwBadge && (
           <div className="absolute top-2 right-2 rounded-md bg-destructive/90 px-1.5 py-0.5 text-[10px] font-semibold text-destructive-foreground backdrop-blur-sm">
             18+
@@ -107,6 +98,14 @@ export const MangaCard = memo(function MangaCard({
           </div>
         )}
       </div>
+      <h3
+        className={[
+          "mt-2 px-0.5 text-xs font-semibold leading-snug text-foreground line-clamp-2 sm:text-sm",
+          !isSelecting && "transition-colors group-hover:text-primary",
+        ].filter(Boolean).join(" ")}
+      >
+        {manga.title}
+      </h3>
     </div>
   );
 
