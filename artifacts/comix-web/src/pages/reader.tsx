@@ -566,7 +566,7 @@ export default function Reader() {
                   : 'flex items-center justify-center bg-black w-[100vw] h-[100dvh] snap-center snap-always'
                 : isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full'
               } ${effectiveDirection === 'vertical' ? 'mb-8' : ''}`}
-              style={!isPaged ? {
+              style={!isPaged && (!isLoaded || !!failedImgs[idx]) ? {
                 minHeight: pageHeightsRef.current[idx] ?? 'min(145vw, 1100px)',
                 overflowAnchor: 'auto',
               } : undefined}>
@@ -579,7 +579,9 @@ export default function Reader() {
                 <div
                   className="relative w-full"
                   style={{
-                    minHeight: pageHeightsRef.current[idx] ?? 'min(145vw, 1100px)',
+                    minHeight: !isLoaded || failedImgs[idx]
+                      ? (pageHeightsRef.current[idx] ?? 'min(145vw, 1100px)')
+                      : undefined,
                     overflowAnchor: 'auto',
                   }}
                 >
@@ -652,9 +654,10 @@ export default function Reader() {
                       }}
                        style={{
                          display: 'block',
-                         maxWidth: isRule34 ? '100vw' : '100%',
-                         maxHeight: isRule34 ? 'calc(100dvh - 3.5rem)' : undefined,
-                         width: isRule34 ? 'auto' : undefined,
+                         maxWidth: isPaged ? '100vw' : '100%',
+                         maxHeight: isPaged ? 'calc(100dvh - 3.5rem)' : undefined,
+                         width: isPaged ? 'auto' : undefined,
+                         height: isPaged ? 'auto' : undefined,
                          objectFit: 'contain',
                        }}
                     />
