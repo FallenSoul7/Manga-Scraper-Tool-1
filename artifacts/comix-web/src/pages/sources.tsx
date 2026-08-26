@@ -75,8 +75,8 @@ function SourceAvatar({ src, size = 44 }: { src: { name: string; iconUrl: string
       <img
         src={resolvedIcon} alt="" width={size} height={size} loading="lazy"
         onError={() => setErrored(true)}
-        className="rounded-xl bg-muted shrink-0 object-cover"
-        style={{ width: size, height: size }}
+        className="rounded-xl bg-muted shrink-0 object-contain p-1"
+        style={{ width: size, height: size, aspectRatio: "1 / 1" }}
       />
     );
   }
@@ -129,7 +129,7 @@ function GlobalSearchResults({ query, results, isSearching, onClear }: {
           <div key={source.id}>
             <div className="flex items-center gap-2 mb-3">
               {resolveIconUrl(source.iconUrl)
-                ? <img src={resolveIconUrl(source.iconUrl)!} alt="" className="w-5 h-5 rounded object-cover shrink-0" />
+                ? <img src={resolveIconUrl(source.iconUrl)!} alt="" className="w-5 h-5 rounded bg-muted object-contain p-0.5 shrink-0 aspect-square" />
                 : <div className="w-5 h-5 rounded bg-muted shrink-0" />}
               <span className="font-semibold text-sm">{source.name}</span>
               {source.isNsfw && <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">18+</span>}

@@ -13,7 +13,7 @@ import { apiUrl } from "@/lib/api-url";
 // ── Keep this import ─────────────────────────────────────────────────────
 import { getProxiedImageUrl } from "@/lib/vpn";
 import VideoPlayer from "@/pages/video-player";
-import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu } from "lucide-react";
+import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
 import { offlineDb } from "@/lib/offline-db";
@@ -80,6 +80,7 @@ export default function Reader() {
   const [currentPage, setCurrentPage] = useState(currentProgress?.lastPageRead || 0);
   const [loadedImgs, setLoadedImgs] = useState<Record<number, boolean>>({});
   const [failedImgs, setFailedImgs] = useState<Record<number, boolean>>({});
+  const [retryCounts, setRetryCounts] = useState<Record<number, number>>({});
 
   type AppendedChapter = { id: string; number: number; title: string; pages: { index: number; url: string }[] };
   const [appendedChapters, setAppendedChapters] = useState<AppendedChapter[]>([]);
@@ -91,6 +92,32 @@ export default function Reader() {
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   // Stores measured heights of rendered pages so off-screen placeholders keep correct scroll position
   const pageHeightsRef = useRef<Record<number, number>>({});
+
+  const retryPage = (idx: number) => {
+    setFailedImgs(prev => ({ ...prev, [idx]: false }));
+    setLoadedImgs(prev => ({ ...prev, [idx]: false }));
+    setRetryCounts(prev => ({ ...prev, [idx]: (prev[idx] ?? 0) + 1 }));
+  };
+
+  const imageUrlWithRetry = (url: string, idx: number) => {
+    const retry = retryCounts[idx] ?? 0;
+    if (!retry) return url;
+    return `${url}${url.includes("?") ? "&" : "?"}retry=${retry}`;
+  };
+
+  const handlePageImageLoad = (idx: number, event: React.SyntheticEvent<HTMLImageElement>) => {
+    const image = event.currentTarget;
+    const page = image.closest(".reader-page") as HTMLElement | null;
+    const previousHeight = pageHeightsRef.current[idx];
+    const height = Math.round(image.getBoundingClientRect().height);
+    if (height > 0) {
+      pageHeightsRef.current[idx] = height;
+      if (page && previousHeight && previousHeight !== height && page.getBoundingClientRect().top < 0) {
+        window.scrollBy(0, height - previousHeight);
+      }
+    }
+    setLoadedImgs(prev => (prev[idx] ? prev : { ...prev, [idx]: true }));
+  };
 
   const { data: pagesData, isLoading: pagesLoading, error: pagesError } = useGetChapterPages(chapterId, {
     query: {
@@ -516,7 +543,7 @@ export default function Reader() {
                 key={page.index}
                 id={`page-${idx}`}
                 className={`reader-page w-full flex-shrink-0 ${isVerticalLike && !isWebtoon ? 'mb-8' : ''}`}
-                style={{ height: estH, minHeight: estH, background: 'transparent' }}
+                style={{ height: estH, minHeight: estH, background: 'transparent', overflowAnchor: 'auto' }}
               />
             );
           }
@@ -538,30 +565,44 @@ export default function Reader() {
                   ? 'flex items-center justify-center bg-black w-auto min-w-[100vw] h-[100dvh] snap-center snap-always'
                   : 'flex items-center justify-center bg-black w-[100vw] h-[100dvh] snap-center snap-always'
                 : isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full'
-              } ${effectiveDirection === 'vertical' ? 'mb-8' : ''}`}>
+              } ${effectiveDirection === 'vertical' ? 'mb-8' : ''}`}
+              style={!isPaged ? {
+                minHeight: pageHeightsRef.current[idx] ?? 'min(145vw, 1100px)',
+                overflowAnchor: 'auto',
+              } : undefined}>
               {effectiveDirection === 'vertical' && (
                 <div className="absolute -bottom-6 text-xs text-muted-foreground">{idx + 1}</div>
               )}
               {/* Webtoon / vertical: keep image in normal flow to avoid layout shift.
                   Loader overlays the image while it loads — no opacity-0+absolute swap. */}
               {isWebtoon ? (
-                <div className="relative w-full" style={{ minHeight: isLoaded ? undefined : '40vw' }}>
+                <div
+                  className="relative w-full"
+                  style={{
+                    minHeight: pageHeightsRef.current[idx] ?? 'min(145vw, 1100px)',
+                    overflowAnchor: 'auto',
+                  }}
+                >
                   {failedImgs[idx] ? (
-                    <div className="min-h-[40vw] flex flex-col items-center justify-center gap-2 bg-black text-white/60 text-sm px-4 text-center">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black text-white/60 text-sm px-4 text-center">
                       <span className="text-2xl">⚠️</span>
                       <span>Page {idx + 1} could not be loaded</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-white/30 text-white hover:bg-white/10"
+                        onClick={(event) => { event.stopPropagation(); retryPage(idx); }}
+                      >
+                        <RefreshCw className="mr-2 h-3.5 w-3.5" /> Retry page
+                      </Button>
                     </div>
                   ) : (
                     <img
-                      src={getProxiedImageUrl(page.url, sourceId ?? "")}
+                      src={getProxiedImageUrl(imageUrlWithRetry(page.url, idx), sourceId ?? "")}
                       alt={`Page ${page.index}`}
                       loading={loadStrategy}
                       decoding="async"
-                      onLoad={(e) => {
-                        const el = (e.target as HTMLImageElement).parentElement;
-                        if (el) pageHeightsRef.current[idx] = el.offsetHeight;
-                        setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
-                      }}
+                      onLoad={(e) => handlePageImageLoad(idx, e)}
                       onError={() => {
                         setFailedImgs((p) => ({ ...p, [idx]: true }));
                         setLoadedImgs((p) => ({ ...p, [idx]: true }));
@@ -570,7 +611,7 @@ export default function Reader() {
                     />
                   )}
                   {!isLoaded && !failedImgs[idx] && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center min-h-[40vw] bg-black text-white/40 pointer-events-none">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black text-white/40 pointer-events-none">
                       <Loader2 className="h-10 w-10 animate-spin" />
                       <div className="mt-3 text-xs tabular-nums">{idx + 1} / {effectivePages.length}</div>
                     </div>
@@ -585,22 +626,26 @@ export default function Reader() {
                     </div>
                   )}
                   {failedImgs[idx] ? (
-                    <div className="flex flex-col items-center justify-center gap-2 min-h-[40vw] w-full bg-black text-white/60 text-sm px-4 text-center">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 w-full bg-black text-white/60 text-sm px-4 text-center">
                       <span className="text-2xl">⚠️</span>
                       <span>Page {idx + 1} could not be loaded</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-white/30 text-white hover:bg-white/10"
+                        onClick={(event) => { event.stopPropagation(); retryPage(idx); }}
+                      >
+                        <RefreshCw className="mr-2 h-3.5 w-3.5" /> Retry page
+                      </Button>
                     </div>
                   ) : (
                     <img
-                      src={getProxiedImageUrl(page.url, sourceId ?? "")}
+                      src={getProxiedImageUrl(imageUrlWithRetry(page.url, idx), sourceId ?? "")}
                       alt={`Page ${page.index}`}
                       className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
                       loading={loadStrategy}
                       decoding="async"
-                      onLoad={(e) => {
-                        const el = (e.target as HTMLImageElement).parentElement;
-                        if (el) pageHeightsRef.current[idx] = el.offsetHeight;
-                        setLoadedImgs((p) => (p[idx] ? p : { ...p, [idx]: true }));
-                      }}
+                      onLoad={(e) => handlePageImageLoad(idx, e)}
                       onError={() => {
                         setFailedImgs((p) => ({ ...p, [idx]: true }));
                         setLoadedImgs((p) => ({ ...p, [idx]: true }));
