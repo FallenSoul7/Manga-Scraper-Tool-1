@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import {
   Settings, Download, BarChart3, Info, FolderOpen, Sparkles,
-  Shield, Trash2, AppWindow, LogIn, Wand2,
+  Shield, Trash2, AppWindow, LogIn, Wand2, Lock,
 } from "lucide-react";
 
 interface SystemBlock {
@@ -117,6 +117,12 @@ const blocks: SystemBlock[] = [
     label: "Account",
     description: "Sign in with Google to sync your library across devices.",
     icon: LogIn,
+  },
+  {
+    href: "/lock",
+    label: "Lock",
+    description: "Set a 6-digit PIN to protect your library.",
+    icon: Lock,
   },
   {
     label: "About",

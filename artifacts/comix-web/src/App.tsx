@@ -1,14 +1,16 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, lazy, Suspense, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PwaProvider } from "@/lib/pwa-context";
 import { Header } from "@/components/header";
 import { InstallBanner } from "@/components/install-banner";
 import { WelcomeOverlay } from "@/components/welcome-overlay";
+import { LockScreen } from "@/components/lock-screen";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Loader2 } from "lucide-react";
+import { hasAnyPin, isUnlockedThisSession, setUnlocked, refreshServerLock } from "@/lib/lock";
 import NotFound from "@/pages/not-found";
 
 const SearchPage           = lazy(() => import("@/pages/search"));
@@ -34,6 +36,7 @@ const InstallPage          = lazy(() => import("@/pages/install"));
 const LoginPage            = lazy(() => import("@/pages/login"));
 const ProfilePage          = lazy(() => import("@/pages/profile"));
 const GenerationPage       = lazy(() => import("@/pages/generation"));
+const LockPage             = lazy(() => import("@/pages/lock"));
 
 import { useActiveSourceId, applyActiveSource, registerQueryClient } from "@/lib/source";
 import { useLibrarySync } from "@/hooks/use-library-sync";
@@ -70,6 +73,53 @@ function ActiveSourceSync() {
   useEffect(() => {
     applyActiveSource(id);
   }, [id]);
+  return null;
+}
+
+/**
+ * Full-screen lock gate. Shows the lock screen whenever a PIN is set and the
+ * app has not been unlocked this session (reloads re-lock). Re-locks when the
+ * app regains focus (visibilitychange -> visible). Never shows on /lock so the
+ * PIN management window itself is always reachable.
+ */
+function LockGate() {
+  const [location] = useLocation();
+  const [locked, setLocked] = useState(() => !isUnlockedThisSession() && hasAnyPin());
+  const onLockRoute = location === "/lock";
+
+  // Initial check — also cover logged-in users whose PIN lives on the server
+  // (fresh device with no local cache). Skip when already unlocked.
+  useEffect(() => {
+    if (isUnlockedThisSession()) return;
+    refreshServerLock().then((serverLocked) => {
+      if (serverLocked && !isUnlockedThisSession()) setLocked(true);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-lock on focus regain, mirroring welcome-overlay.tsx.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (isUnlockedThisSession()) return;
+      if (hasAnyPin()) setLocked(true);
+      refreshServerLock().then((serverLocked) => {
+        if (serverLocked && !isUnlockedThisSession()) setLocked(true);
+      });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (locked && !onLockRoute) {
+    return (
+      <LockScreen
+        onUnlocked={() => {
+          setUnlocked(true);
+          setLocked(false);
+        }}
+      />
+    );
+  }
   return null;
 }
 
@@ -123,6 +173,7 @@ function AppContent() {
           <Header />
           <InstallBanner />
           <WelcomeOverlay />
+          <LockGate />
           <div className="flex-1 pb-16 md:pb-0">
             <Switch>
               <Route path="/">
@@ -172,6 +223,9 @@ function AppContent() {
               </Route>
               <Route path="/generation">
                 <Lazy><GenerationPage /></Lazy>
+              </Route>
+              <Route path="/lock">
+                <Lazy><LockPage /></Lazy>
               </Route>
               <Route component={NotFound} />
             </Switch>

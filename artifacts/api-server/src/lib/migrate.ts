@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS library_sync (
   data       JSONB NOT NULL DEFAULT '{}',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Lock feature (idempotent — safe to run on every deploy)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS lock_pin_hash TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS lock_pin_updated_at TIMESTAMPTZ DEFAULT NOW();
 `;
 
 export async function runMigrations() {

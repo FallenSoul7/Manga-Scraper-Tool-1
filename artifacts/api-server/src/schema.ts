@@ -6,6 +6,8 @@ export const users = pgTable("users", {
   email: text("email").notNull(),
   username: text("username"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  lockPinHash: text("lock_pin_hash"),
+  lockPinUpdatedAt: timestamp("lock_pin_updated_at").defaultNow(),
 });
 
 // 🚀 REMAINS THE SAME: This perfectly holds your offline localStorage data!

@@ -73,6 +73,11 @@ onlyBuiltDependencies:
   - esbuild
   - msw
   - unrs-resolver
+  - core-js
+
+allowBuilds:
+  core-js: true
+  esbuild: true
 
 overrides:
   # replit uses linux-x64 only, we can exclude all other platforms
