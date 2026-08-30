@@ -45,8 +45,13 @@ export interface BypassFetchResult {
 }
 
 let _client: AxiosInstance | null = null;
-let _healthChecked = false;
-let _serverAvailable = false;
+let _lastCheckedAt = 0;
+let _cachedAvailable = false;
+
+/** Don't re-hit the health endpoint more often than this (ms). */
+const HEALTH_CHECK_INTERVAL_MS = 5_000;
+/** Timeout for a single health check (ms) — generous to tolerate cold starts. */
+const HEALTH_CHECK_TIMEOUT_MS = 15_000;
 
 function client(): AxiosInstance {
   if (!_client) {
@@ -61,25 +66,35 @@ function client(): AxiosInstance {
 }
 
 /**
- * Check if the bypass server is running. Cached after first check.
+ * Check if the bypass server is running.
+ *
+ * Re-checks the health endpoint on every call, but uses a short time-based
+ * cache (HEALTH_CHECK_INTERVAL_MS) so a healthy server isn't hammered. A
+ * negative result is never latched for the process lifetime — if the server
+ * becomes reachable later (cold start, network blip, env fix), a subsequent
+ * call will rediscover it once the interval has elapsed.
+ *
  * Called automatically by fetchViaBypass — you don't need to call this directly.
  */
 export async function isBypassAvailable(): Promise<boolean> {
-  if (_healthChecked) return _serverAvailable;
-  _healthChecked = true;
-  try {
-    const res = await client().get("/health", { timeout: 5_000 });
-    _serverAvailable = res.status === 200 && res.data?.status === "ok";
-  } catch {
-    _serverAvailable = false;
+  const now = Date.now();
+  if (now - _lastCheckedAt < HEALTH_CHECK_INTERVAL_MS) {
+    return _cachedAvailable;
   }
-  return _serverAvailable;
+  _lastCheckedAt = now;
+  try {
+    const res = await client().get("/health", { timeout: HEALTH_CHECK_TIMEOUT_MS });
+    _cachedAvailable = res.status === 200 && res.data?.status === "ok";
+  } catch {
+    _cachedAvailable = false;
+  }
+  return _cachedAvailable;
 }
 
 /** Reset the health check cache (e.g., after the bypass server is started). */
 export function resetBypassHealthCache(): void {
-  _healthChecked = false;
-  _serverAvailable = false;
+  _lastCheckedAt = 0;
+  _cachedAvailable = false;
 }
 
 /**
