@@ -15,6 +15,7 @@ import type {
 const API = "https://pawchive.pw/api/v1";
 const FILES = "https://file.pawchive.pw/data";
 const THUMBS = "https://img.pawchive.pw/thumbnail/data";
+const SOURCE_ICON = "/public/source-icons/all.pawchive.svg";
 const PAGE_SIZE = 24;
 
 type Creator = {
@@ -84,11 +85,13 @@ function decodePostId(id: string) {
 
 function fileUrl(file: MediaFile | undefined): string | null {
   if (!file?.path) return null;
+  if (/^https?:\/\//i.test(file.path)) return file.path;
   return `${FILES}${file.path}${file.name ? `?f=${encodeURIComponent(file.name)}` : ""}`;
 }
 
 function thumbnailUrl(file: MediaFile | undefined): string {
-  if (!file?.path) return "https://pawchive.pw/static/logo.png";
+  if (!file?.path) return SOURCE_ICON;
+  if (/^https?:\/\//i.test(file.path)) return file.path;
   return `${THUMBS}${file.path}`;
 }
 
@@ -98,7 +101,9 @@ function creatorSummary(creator: Creator): MangaSummary {
   return {
     id: idFor(service, user),
     title: String(creator.name ?? `${service} creator ${user}`),
-    thumbnail: "https://pawchive.pw/static/logo.png",
+    // Pawchive's creator endpoint has no avatar field. Use the real source
+    // mark instead of making every creator request a remote logo image.
+    thumbnail: SOURCE_ICON,
     type: `Creator · ${service}`,
     isNsfw: false,
   };
@@ -137,6 +142,7 @@ export const PawchiveSource: MangaSource = {
   name: "Pawchive",
   lang: "all",
   isNsfw: false,
+  imageReferer: "https://pawchive.pw/",
 
   async popular(opts: ListOptions): Promise<MangaListResponse> {
     const all = (await creators()).sort((a, b) => Number(b.favorited ?? 0) - Number(a.favorited ?? 0));
@@ -211,7 +217,7 @@ export const PawchiveSource: MangaSource = {
         ),
         mediaType: (() => {
           const media = [post.file, ...(post.attachments ?? [])]
-            .filter(f => !!f?.path && MEDIA_EXT.test(f.name ?? f.path ?? ""));
+            .filter((f): f is MediaFile => !!f?.path && MEDIA_EXT.test(f.name ?? f.path ?? ""));
           const hasImage = media.some(f => IMAGE_EXT.test(f.name ?? f.path ?? ""));
           const hasVideo = media.some(f => VIDEO_EXT.test(f.name ?? f.path ?? ""));
           return hasImage && hasVideo ? "mixed" : hasVideo ? "video" : "image";

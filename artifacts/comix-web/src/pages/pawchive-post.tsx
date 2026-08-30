@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRoute, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { customFetch, setExtraHeader } from "@workspace/api-client-react";
-import { ArrowLeft, Download, FileImage, Loader2, Play, Share2 } from "lucide-react";
+import { customFetch } from "@workspace/api-client-react";
+import { ArrowLeft, Download, FileImage, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { proxyImage } from "@/lib/utils";
 import { saveChapterToFile } from "@/lib/save-to-file";
@@ -14,20 +14,32 @@ function isVideo(url: string) {
   return /\.(mp4|webm|mov|mkv|avi|m4v)(\?|$)/i.test(url);
 }
 
+function decodeRoutePart(value: string | undefined): string {
+  if (!value) return "";
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+
+function mediaUrl(url: string): string {
+  // Images and videos both go through the same SSRF-safe proxy. Direct file
+  // URLs are hotlink-protected and also fail on the deployed web origin.
+  return proxyImage(url, "all.pawchive");
+}
+
 export default function PawchivePostPage() {
   const [, params] = useRoute("/sources/all.pawchive/post/:postId");
   const [, setLocation] = useLocation();
   const search = useSearch();
-  const postId = params?.postId ? decodeURIComponent(params.postId) : "";
+  const postId = decodeRoutePart(params?.postId);
   const creatorId = new URLSearchParams(search).get("creatorId") ?? "";
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState("");
 
-  useEffect(() => { setExtraHeader("X-Source", "all.pawchive"); }, []);
-
   const pages = useQuery<PagesResponse>({
     queryKey: ["pawchive-post", postId],
-    queryFn: () => customFetch<PagesResponse>(`/api/chapter/${postId}/pages`),
+    queryFn: () => customFetch<PagesResponse>(
+      `/api/chapter/${encodeURIComponent(postId)}/pages`,
+      { headers: { "X-Source": "all.pawchive" } },
+    ),
     enabled: !!postId,
   });
 
@@ -82,18 +94,18 @@ export default function PawchivePostPage() {
         </div>
       ) : allVideo ? (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-black p-3">
-          <video src={media[0].url} controls playsInline autoPlay className="max-h-[calc(100vh-5rem)] w-full max-w-5xl rounded-xl" />
+           <video src={mediaUrl(media[0].url)} controls playsInline autoPlay className="max-h-[calc(100vh-5rem)] w-full max-w-5xl rounded-xl" />
         </div>
       ) : media.length === 1 && !isVideo(media[0].url) ? (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-black p-3">
-          <img src={proxyImage(media[0].url, "all.pawchive")} alt="Pawchive artwork" className="max-h-[calc(100vh-5rem)] max-w-full rounded-xl object-contain" />
+           <img src={mediaUrl(media[0].url)} alt="Pawchive artwork" className="max-h-[calc(100vh-5rem)] max-w-full rounded-xl object-contain" />
         </div>
       ) : (
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-3 p-3 sm:grid-cols-2">
-          {media.map(page => isVideo(page.url) ? (
-            <video key={page.index} src={page.url} controls playsInline className="w-full rounded-xl bg-black" />
+           {media.map(page => isVideo(page.url) ? (
+             <video key={page.index} src={mediaUrl(page.url)} controls playsInline className="w-full rounded-xl bg-black" />
           ) : (
-            <img key={page.index} src={proxyImage(page.url, "all.pawchive")} alt={`Attachment ${page.index + 1}`} loading="lazy" className="w-full rounded-xl object-contain" />
+             <img key={page.index} src={mediaUrl(page.url)} alt={`Attachment ${page.index + 1}`} loading="lazy" className="w-full rounded-xl object-contain" />
           ))}
         </div>
       )}

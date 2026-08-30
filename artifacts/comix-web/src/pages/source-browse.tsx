@@ -65,6 +65,12 @@ function buildQuery(params: Record<string, string | string[] | undefined>): stri
 
 const DEBOUNCE_MS = 220;
 const VPN_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+
+function resolveAssetUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return url.startsWith("/") && API_ORIGIN ? `${API_ORIGIN}${url}` : url;
+}
 
 // ---------------------------------------------------------------------------
 // VPN / Blocked-source banner (unchanged)
@@ -508,9 +514,9 @@ export default function SourceBrowsePage() {
 
         {/* Title row */}
         <div className="flex items-center gap-3 px-4 h-14">
-          {catalogEntry?.iconUrl ? (
+          {resolveAssetUrl(catalogEntry?.iconUrl) ? (
             <img
-              src={catalogEntry.iconUrl}
+              src={resolveAssetUrl(catalogEntry?.iconUrl)!}
               alt=""
               className="h-8 w-8 rounded-xl shrink-0 object-contain bg-muted border border-border/30"
             />
@@ -863,8 +869,8 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
             manga={m as any}
             sourceId={sourceId}
             href={sourceId === "all.pawchive"
-              ? `/sources/${sourceId}/creator/${m.id}`
-              : sourceId ? `/sources/${sourceId}/manga/${m.id}` : undefined}
+              ? `/sources/${sourceId}/creator/${encodeURIComponent(m.id)}`
+              : sourceId ? `/sources/${sourceId}/manga/${encodeURIComponent(m.id)}` : undefined}
           />
         ))}
       </div>

@@ -1,7 +1,7 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { customFetch, setExtraHeader } from "@workspace/api-client-react";
+import { customFetch } from "@workspace/api-client-react";
 import { ArrowLeft, Calendar, Film, Image as ImageIcon, Loader2, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,22 +18,55 @@ type Post = {
   attachmentCount?: number;
 };
 
+function decodeRoutePart(value: string | undefined): string {
+  if (!value) return "";
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+
+function PawchiveThumbnail({
+  src,
+  alt,
+  className,
+  loading,
+}: {
+  src?: string;
+  alt: string;
+  className: string;
+  loading?: "lazy" | "eager";
+}) {
+  const [failed, setFailed] = useState(false);
+  const fallback = "/public/source-icons/all.pawchive.svg";
+  return (
+    <img
+      src={!failed && src ? proxyImage(src, "all.pawchive") : fallback}
+      alt={alt}
+      loading={loading}
+      onError={() => setFailed(true)}
+      className={className}
+      draggable={false}
+    />
+  );
+}
+
 export default function PawchiveCreatorPage() {
   const [, params] = useRoute("/sources/all.pawchive/creator/:creatorId");
   const [, setLocation] = useLocation();
-  const creatorId = params?.creatorId ? decodeURIComponent(params.creatorId) : "";
+  const creatorId = decodeRoutePart(params?.creatorId);
   const [search, setSearch] = useState("");
-
-  useEffect(() => { setExtraHeader("X-Source", "all.pawchive"); }, []);
 
   const details = useQuery<Creator>({
     queryKey: ["pawchive-creator", creatorId],
-    queryFn: () => customFetch<Creator>(`/api/manga/${creatorId}`),
+    queryFn: () => customFetch<Creator>(`/api/manga/${encodeURIComponent(creatorId)}`, {
+      headers: { "X-Source": "all.pawchive" },
+    }),
     enabled: !!creatorId,
   });
   const posts = useQuery<{ items: Post[] }>({
     queryKey: ["pawchive-creator-posts", creatorId],
-    queryFn: () => customFetch<{ items: Post[] }>(`/api/manga/${creatorId}/chapters?dedupe=false`),
+    queryFn: () => customFetch<{ items: Post[] }>(
+      `/api/manga/${encodeURIComponent(creatorId)}/chapters?dedupe=false`,
+      { headers: { "X-Source": "all.pawchive" } },
+    ),
     enabled: !!creatorId,
   });
 
@@ -76,7 +109,12 @@ export default function PawchiveCreatorPage() {
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
         ) : (
           <div className="mb-5 flex items-center gap-3">
-            <img src={proxyImage(details.data?.thumbnail, "all.pawchive")} alt="" className="h-16 w-16 rounded-2xl object-cover" />
+            <PawchiveThumbnail
+              src={details.data?.thumbnail}
+              alt=""
+              className="h-16 w-16 rounded-2xl object-cover"
+              loading="eager"
+            />
             <div className="min-w-0">
               <h2 className="truncate text-xl font-bold">{title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{visiblePosts.length} posts · images, GIFs, videos and attachments</p>
@@ -100,7 +138,12 @@ export default function PawchiveCreatorPage() {
                 className="group overflow-hidden rounded-2xl border border-border/50 bg-card text-left transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg"
               >
                 <div className="relative aspect-[4/5] overflow-hidden bg-muted">
-                  <img src={proxyImage(post.thumbnail, "all.pawchive")} alt="" loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+                  <PawchiveThumbnail
+                    src={post.thumbnail}
+                    alt=""
+                    loading="lazy"
+                    className="h-full w-full object-cover transition group-hover:scale-105"
+                  />
                   <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white">
                     {post.mediaType === "video" ? <Film className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
                     {post.attachmentCount ?? 1}

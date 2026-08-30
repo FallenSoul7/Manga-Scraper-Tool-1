@@ -155,7 +155,12 @@ function GlobalSearchResults({ query, results, isSearching, onClear }: {
             ) : (
               <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
                 {items.map((manga) => (
-                  <Link key={manga.id} href={`/sources/${source.id}/manga/${manga.id}`}>
+                  <Link
+                    key={manga.id}
+                    href={source.id === "all.pawchive"
+                      ? `/sources/${source.id}/creator/${encodeURIComponent(manga.id)}`
+                      : `/sources/${source.id}/manga/${encodeURIComponent(manga.id)}`}
+                  >
                     <div className="shrink-0 w-24 sm:w-28 cursor-pointer group">
                       <div className="aspect-[2/3] rounded-lg overflow-hidden bg-muted mb-1.5 shadow-sm">
                         <img
