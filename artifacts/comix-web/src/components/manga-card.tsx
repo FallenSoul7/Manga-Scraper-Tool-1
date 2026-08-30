@@ -64,7 +64,7 @@ export const MangaCard = memo(function MangaCard({
           src={proxyImage(manga.thumbnail, sourceId)}
           alt={manga.title}
           className={[
-            "h-full w-full object-contain bg-black/10 transition-all duration-300",
+            "h-full w-full object-cover object-center bg-black/10 transition-all duration-300",
             isSelected && "opacity-70",
           ].filter(Boolean).join(" ")}
           loading="lazy"
