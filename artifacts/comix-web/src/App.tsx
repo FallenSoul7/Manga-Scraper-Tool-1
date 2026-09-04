@@ -89,7 +89,7 @@ function ActiveSourceSync() {
  * route changes / focus inside the app, but re-locks after tab switches,
  * home-screen backgrounding, and iOS/Android standalone PWA backgrounding.
  */
-function LockGate() {
+function LockGate({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [locked, setLocked] = useState(() => !isUnlockedThisSession() && shouldLockCurrentMode());
   const onLockRoute = location === "/lock";
@@ -132,17 +132,19 @@ function LockGate() {
 
   if (locked && !onLockRoute) {
     return (
-      <Lazy>
-        <LockScreen
-          onUnlocked={() => {
-            setUnlocked(true);
-            setLocked(false);
-          }}
-        />
-      </Lazy>
+      <ErrorBoundary>
+        <Suspense fallback={<div className="fixed inset-0 z-[100] bg-black" />}>
+          <LockScreen
+            onUnlocked={() => {
+              setUnlocked(true);
+              setLocked(false);
+            }}
+          />
+        </Suspense>
+      </ErrorBoundary>
     );
   }
-  return null;
+  return <>{children}</>;
 }
 
 function AppContent() {
@@ -195,7 +197,6 @@ function AppContent() {
           <Header />
           <InstallBanner />
           <WelcomeOverlay />
-          <LockGate />
           <div className="flex-1 pb-16 md:pb-0">
             <Switch>
               <Route path="/">
@@ -265,7 +266,9 @@ function App() {
         <PwaProvider>
           <ActiveSourceSync />
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <AppContent />
+            <LockGate>
+              <AppContent />
+            </LockGate>
           </WouterRouter>
           <Toaster />
         </PwaProvider>
