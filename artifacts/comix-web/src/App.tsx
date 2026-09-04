@@ -7,7 +7,6 @@ import { PwaProvider } from "@/lib/pwa-context";
 import { Header } from "@/components/header";
 import { InstallBanner } from "@/components/install-banner";
 import { WelcomeOverlay } from "@/components/welcome-overlay";
-import { LockScreen } from "@/components/lock-screen";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Loader2 } from "lucide-react";
 import { isUnlockedThisSession, setUnlocked, shouldLockCurrentMode, refreshServerLock } from "@/lib/lock";
@@ -37,6 +36,7 @@ const LoginPage            = lazy(() => import("@/pages/login"));
 const ProfilePage          = lazy(() => import("@/pages/profile"));
 const GenerationPage       = lazy(() => import("@/pages/generation"));
 const LockPage             = lazy(() => import("@/pages/lock"));
+const LockScreen           = lazy(() => import("@/components/lock-screen").then(({ LockScreen }) => ({ default: LockScreen })));
 
 import { useActiveSourceId, applyActiveSource, registerQueryClient } from "@/lib/source";
 import { useLibrarySync } from "@/hooks/use-library-sync";
@@ -132,12 +132,14 @@ function LockGate() {
 
   if (locked && !onLockRoute) {
     return (
-      <LockScreen
-        onUnlocked={() => {
-          setUnlocked(true);
-          setLocked(false);
-        }}
-      />
+      <Lazy>
+        <LockScreen
+          onUnlocked={() => {
+            setUnlocked(true);
+            setLocked(false);
+          }}
+        />
+      </Lazy>
     );
   }
   return null;
