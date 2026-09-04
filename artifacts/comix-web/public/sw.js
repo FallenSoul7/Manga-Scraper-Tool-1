@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'comihub-static-v7';
+const STATIC_CACHE = 'comihub-static-v8';
 const API_CACHE    = 'comihub-api-v3';
 const IMAGE_CACHE  = 'comihub-images-v1';
 
@@ -92,6 +92,36 @@ async function cacheFirst(request, cacheName, maxAgeSecs) {
   }
 }
 
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request) ||
+    (request.mode === 'navigate' ? await cache.match('/') : undefined);
+
+  const update = fetch(request.clone()).then((res) => {
+    if (res.ok) {
+      const headers = new Headers(res.headers);
+      headers.set('sw-cached-at', Date.now().toString());
+      const cloned = new Response(res.clone().body, { status: res.status, headers });
+      cache.put(request, cloned);
+    }
+    return res;
+  }).catch(() => null);
+
+  if (cached) {
+    // Do not hold the navigation open for a network response. The next
+    // launch will use the refreshed shell if the update succeeded.
+    update.catch(() => {});
+    return cached;
+  }
+
+  const fresh = await update;
+  if (fresh) return fresh;
+  return new Response(JSON.stringify({ error: 'offline' }), {
+    status: 503,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
@@ -112,7 +142,7 @@ self.addEventListener('fetch', (event) => {
   } else if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, 7 * 24 * 3600));
   } else if (isHtml(event.request, url)) {
-    event.respondWith(networkFirst(event.request, STATIC_CACHE, 24 * 3600));
+    event.respondWith(staleWhileRevalidate(event.request, STATIC_CACHE));
   }
 });
 
