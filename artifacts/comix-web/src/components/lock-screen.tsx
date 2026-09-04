@@ -114,7 +114,7 @@ export function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
                 <div className="mb-1">
                   <InputOTP
                     maxLength={6}
-                    pattern={/^[0-9]+$/}
+                    pattern="[0-9]+"
                     value={pin}
                     onChange={(v) => { setPin(v); if (v.length === 6) handlePinComplete(v); }}
                     inputMode="numeric"
@@ -216,7 +216,7 @@ function EmailCodeInput({ onCode }: { onCode: (code: string) => void }) {
   return (
     <InputOTP
       maxLength={6}
-      pattern={/^[0-9]+$/}
+      pattern="[0-9]+"
       value={code}
       onChange={handle}
       inputMode="numeric"

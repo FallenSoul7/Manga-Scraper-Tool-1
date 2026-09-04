@@ -5,6 +5,7 @@ import { apiUrl } from "@/lib/api-url";
 const PIN_KEY = "comihub-lock-pin-v1";
 const ATTEMPTS_KEY = "comihub-lock-attempts-v1";
 const LOCKED_UNTIL_KEY = "comihub-lock-locked-until-v1";
+const MODES_KEY = "comihub-lock-modes-v1";
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15000;
@@ -13,6 +14,16 @@ const LOCKOUT_MS = 15000;
 let unlockedThisSession = false;
 
 export const LOCK_DISCORD_URL = "https://discord.gg/ChdA4sxkX";
+
+export interface LockModes {
+  browser: boolean;
+  standalone: boolean;
+}
+
+const DEFAULT_LOCK_MODES: LockModes = {
+  browser: true,
+  standalone: true,
+};
 
 export function setUnlocked(v: boolean) {
   unlockedThisSession = v;
@@ -50,6 +61,46 @@ export function hasAnyPin(): boolean {
   } catch {
     return false;
   }
+}
+
+function isStandaloneMode(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const standaloneMedia = window.matchMedia?.("(display-mode: standalone)").matches ?? false;
+  const iosStandalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  return standaloneMedia || iosStandalone;
+}
+
+export function getLockModes(): LockModes {
+  try {
+    const raw = localStorage.getItem(MODES_KEY);
+    if (!raw) return { ...DEFAULT_LOCK_MODES };
+    const parsed = JSON.parse(raw) as Partial<LockModes>;
+    return {
+      browser: parsed.browser !== false,
+      standalone: parsed.standalone !== false,
+    };
+  } catch {
+    return { ...DEFAULT_LOCK_MODES };
+  }
+}
+
+export function setLockModes(modes: LockModes): void {
+  try {
+    localStorage.setItem(MODES_KEY, JSON.stringify({
+      browser: !!modes.browser,
+      standalone: !!modes.standalone,
+    }));
+  } catch {
+    // The PIN itself will report storage errors; mode preferences can safely
+    // fall back to the secure defaults when storage is unavailable.
+  }
+}
+
+/** Whether automatic locking is enabled for the current browser/PWA context. */
+export function shouldLockCurrentMode(): boolean {
+  if (!hasAnyPin()) return false;
+  const modes = getLockModes();
+  return isStandaloneMode() ? modes.standalone : modes.browser;
 }
 
 // ── Lockout --------------------------------------------------------------
@@ -164,6 +215,7 @@ export async function clearPin(): Promise<string | null> {
     localStorage.removeItem(PIN_KEY);
     localStorage.removeItem(ATTEMPTS_KEY);
     localStorage.removeItem(LOCKED_UNTIL_KEY);
+    localStorage.removeItem(MODES_KEY);
   } catch { /* */ }
   unlockedThisSession = true;
 
@@ -181,16 +233,16 @@ export async function clearPin(): Promise<string | null> {
 /** Returns true if a PIN should gate the app (local device hash, or server-side for logged-in users). */
 export async function refreshServerLock(): Promise<boolean> {
   const token = getAccessToken();
-  if (!token) return hasAnyPin();
+  if (!token) return shouldLockCurrentMode();
   try {
     const res = await fetch(apiUrl("/api/auth/lock-pin-status"), {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json();
-    if (data?.hasPin) return true;
-    return hasAnyPin();
+    if (data?.hasPin) return getLockModes()[isStandaloneMode() ? "standalone" : "browser"];
+    return shouldLockCurrentMode();
   } catch {
-    return hasAnyPin();
+    return shouldLockCurrentMode();
   }
 }
 
@@ -225,6 +277,7 @@ export async function verifyEmailCode(email: string, code: string): Promise<{ ok
       localStorage.removeItem(PIN_KEY);
       localStorage.removeItem(ATTEMPTS_KEY);
       localStorage.removeItem(LOCKED_UNTIL_KEY);
+      localStorage.removeItem(MODES_KEY);
     } catch { /* */ }
     return { ok: true, message: data.message || "Code verified." };
   } catch {

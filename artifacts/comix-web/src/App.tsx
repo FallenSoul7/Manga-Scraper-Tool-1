@@ -10,7 +10,7 @@ import { WelcomeOverlay } from "@/components/welcome-overlay";
 import { LockScreen } from "@/components/lock-screen";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Loader2 } from "lucide-react";
-import { hasAnyPin, isUnlockedThisSession, setUnlocked, refreshServerLock } from "@/lib/lock";
+import { isUnlockedThisSession, setUnlocked, shouldLockCurrentMode, refreshServerLock } from "@/lib/lock";
 import NotFound from "@/pages/not-found";
 
 const SearchPage           = lazy(() => import("@/pages/search"));
@@ -91,7 +91,7 @@ function ActiveSourceSync() {
  */
 function LockGate() {
   const [location] = useLocation();
-  const [locked, setLocked] = useState(() => !isUnlockedThisSession() && hasAnyPin());
+  const [locked, setLocked] = useState(() => !isUnlockedThisSession() && shouldLockCurrentMode());
   const onLockRoute = location === "/lock";
 
   // Initial check — also cover logged-in users whose PIN lives on the server
@@ -109,13 +109,12 @@ function LockGate() {
       if (document.visibilityState !== "hidden") return;
       setUnlocked(false);
     };
-    const onBlur = () => setUnlocked(false);
     const onPageHide = () => setUnlocked(false);
 
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       if (isUnlockedThisSession()) return;
-      if (hasAnyPin()) setLocked(true);
+      if (shouldLockCurrentMode()) setLocked(true);
       refreshServerLock().then((serverLocked) => {
         if (serverLocked && !isUnlockedThisSession()) setLocked(true);
       });
@@ -123,12 +122,10 @@ function LockGate() {
 
     document.addEventListener("visibilitychange", onHidden);
     document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("blur", onBlur);
     window.addEventListener("pagehide", onPageHide);
     return () => {
       document.removeEventListener("visibilitychange", onHidden);
       document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("blur", onBlur);
       window.removeEventListener("pagehide", onPageHide);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
