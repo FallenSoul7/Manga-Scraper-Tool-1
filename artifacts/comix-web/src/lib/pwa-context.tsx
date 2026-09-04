@@ -67,18 +67,11 @@ export function PwaProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ── Service-worker auto-update ───────────────────────────────────────────────
-  // When a new SW activates (skipWaiting fires), reload the page so the
-  // app immediately picks up the new JS/CSS bundles.
+  // Let a new SW activate without forcing a page reload. A controllerchange
+  // reload creates a visible dark/blank flash in installed home-screen apps,
+  // especially on first launch or when returning from the background.
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
-
-    let reloading = false;
-    const handleControllerChange = () => {
-      if (reloading) return;
-      reloading = true;
-      window.location.reload();
-    };
-    navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
 
     // Poll for SW updates every 60 s so long-lived PWA sessions pick up new
     // versions without requiring the user to close and reopen the app.
@@ -90,7 +83,6 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     }).catch(() => {});
 
     return () => {
-      navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
       clearInterval(interval);
     };
   }, []);
