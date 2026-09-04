@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'comihub-static-v5';
+const STATIC_CACHE = 'comihub-static-v6';
 const API_CACHE    = 'comihub-api-v3';
 const IMAGE_CACHE  = 'comihub-images-v1';
 

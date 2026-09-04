@@ -28,7 +28,7 @@ export default function LockPage() {
   const isLoggedIn = !!getCachedUser();
   const hasPin = hasAnyPin();
 
-  async function handleSetPin(value: string) {
+  async function handleSetPin(value: string, okMessage = "PIN set. The app will lock when you leave and come back.") {
     if (busy) return;
     if (!confirmStep) {
       setPin(value);
@@ -48,7 +48,7 @@ export default function LockPage() {
     if (err) {
       setMessage({ type: "err", text: err });
     } else {
-      setMessage({ type: "ok", text: "PIN set. The app will lock on next open." });
+      setMessage({ type: "ok", text: okMessage });
       setView("main");
     }
     setPin("");
@@ -57,7 +57,7 @@ export default function LockPage() {
 
   async function handleChangePin(value: string) {
     // Same entered-twice flow; changing replaces the old PIN.
-    await handleSetPin(value);
+    await handleSetPin(value, "PIN changed.");
   }
 
   async function handleRemove() {
