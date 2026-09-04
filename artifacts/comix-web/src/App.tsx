@@ -81,6 +81,13 @@ function ActiveSourceSync() {
  * app has not been unlocked this session (reloads re-lock). Re-locks when the
  * app regains focus (visibilitychange -> visible). Never shows on /lock so the
  * PIN management window itself is always reachable.
+ *
+ * Lock persistence: `unlockedThisSession` is a module-level flag that only a
+ * full reload resets, so we explicitly clear it the moment the app is left
+ * (visibilitychange -> hidden, window blur, pagehide). The visible handler then
+ * re-locks on return when a PIN is set. This keeps the app unlocked across
+ * route changes / focus inside the app, but re-locks after tab switches,
+ * home-screen backgrounding, and iOS/Android standalone PWA backgrounding.
  */
 function LockGate() {
   const [location] = useLocation();
@@ -96,8 +103,15 @@ function LockGate() {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-lock on focus regain, mirroring welcome-overlay.tsx.
+  // Re-lock on leaving the app and on focus regain, mirroring welcome-overlay.tsx.
   useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState !== "hidden") return;
+      setUnlocked(false);
+    };
+    const onBlur = () => setUnlocked(false);
+    const onPageHide = () => setUnlocked(false);
+
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       if (isUnlockedThisSession()) return;
@@ -106,8 +120,17 @@ function LockGate() {
         if (serverLocked && !isUnlockedThisSession()) setLocked(true);
       });
     };
+
+    document.addEventListener("visibilitychange", onHidden);
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("pagehide", onPageHide);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (locked && !onLockRoute) {
