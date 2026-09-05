@@ -9,3 +9,4 @@
 - [Source icon proxy setup](source-icon-proxy.md) — icons live at comix-web/public/public/source-icons/; API serves via static at /public/source-icons; Vite must proxy /public → API (port 8080); vite.config.ts also defines VITE_API_URL="" in dev so relative paths go through proxy instead of render.com backend.
 - [CSS theme system](css-pitch-black.md) — dark mode and all color themes use pitch-black bases (0 0% 0% for dark, 2-3% for tinted themes); themes are CSS vars on .dark and html[data-theme=X].
 - [Rule34 Paheal limits](rule34-paheal-limits.md) — Rule34 uses Paheal; some Rule34.xxx tags such as rimjob are absent upstream and cannot return results through this source.
+- [API workspace dependency links](api-workspace-dependency-links.md) — a stale pnpm workspace link can break the API despite a valid lockfile; filtered online install repairs it and rebuilds logger workers.
