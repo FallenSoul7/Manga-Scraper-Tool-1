@@ -8,6 +8,7 @@ import { Header } from "@/components/header";
 import { InstallBanner } from "@/components/install-banner";
 import { WelcomeOverlay } from "@/components/welcome-overlay";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { LockLoading } from "@/components/lock-loading";
 import { Loader2 } from "lucide-react";
 import { isUnlockedThisSession, setUnlocked, shouldLockCurrentMode, refreshServerLock } from "@/lib/lock";
 import NotFound from "@/pages/not-found";
@@ -133,7 +134,7 @@ function LockGate({ children }: { children: React.ReactNode }) {
   if (locked && !onLockRoute) {
     return (
       <ErrorBoundary>
-        <Suspense fallback={<div className="fixed inset-0 z-[100] bg-black" />}>
+        <Suspense fallback={<LockLoading />}>
           <LockScreen
             onUnlocked={() => {
               setUnlocked(true);
