@@ -77,6 +77,13 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     // versions without requiring the user to close and reopen the app.
     let interval: ReturnType<typeof setInterval>;
     navigator.serviceWorker.ready.then((reg) => {
+      // Warm the two critical offline routes after the worker controls the
+      // page. Vite's lazy chunks are then captured by the service worker
+      // before the user leaves the app.
+      if (navigator.onLine) {
+        void import("@/pages/reader");
+        void import("@/pages/downloads");
+      }
       interval = setInterval(() => {
         reg.update().catch(() => {});
       }, 60_000);

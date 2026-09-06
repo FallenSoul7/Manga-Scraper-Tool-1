@@ -1,6 +1,16 @@
-const STATIC_CACHE = 'comihub-static-v8';
-const API_CACHE    = 'comihub-api-v3';
+const STATIC_CACHE = 'comihub-static-v9';
+const API_CACHE    = 'comihub-api-v4';
 const IMAGE_CACHE  = 'comihub-images-v1';
+const OFFLINE_IMAGE_CACHE = 'comihub-offline-v1';
+const OFFLINE_PAGES_CACHE = 'comihub-offline-pages-v1';
+
+const OWNED_CACHES = [
+  STATIC_CACHE,
+  API_CACHE,
+  IMAGE_CACHE,
+  OFFLINE_IMAGE_CACHE,
+  OFFLINE_PAGES_CACHE,
+];
 
 const API_PATTERNS = ['/api/popular', '/api/latest', '/api/search', '/api/tags', '/api/details', '/api/chapters', '/api/pages'];
 const IMAGE_PATTERNS = ['/api/image'];
@@ -17,7 +27,9 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((k) => ![STATIC_CACHE, API_CACHE, IMAGE_CACHE].includes(k))
+          // Offline chapter caches are user data. Never delete them during a
+          // service-worker version update.
+          .filter((k) => !OWNED_CACHES.includes(k))
           .map((k) => caches.delete(k)),
       ),
     ).then(() => self.clients.claim()),
@@ -33,6 +45,10 @@ function isImageRequest(url) {
 }
 function isHashedAsset(url) {
   return /\/assets\/[^/]+-[a-zA-Z0-9]{8,}\.(js|css)$/.test(url.pathname);
+}
+function isCodeAsset(url) {
+  return /\.(js|css)$/i.test(url.pathname) &&
+    !url.pathname.endsWith('/sw.js');
 }
 function isStaticAsset(url) {
   return /\.(woff2?|ttf|eot|svg|ico|png|webp|jpg|jpeg|manifest\.json)$/i.test(url.pathname) &&
@@ -92,6 +108,13 @@ async function cacheFirst(request, cacheName, maxAgeSecs) {
   }
 }
 
+async function offlineImageFirst(request) {
+  const offlineCache = await caches.open(OFFLINE_IMAGE_CACHE);
+  const offline = await offlineCache.match(request);
+  if (offline) return offline;
+  return cacheFirst(request, IMAGE_CACHE, 30 * 24 * 3600);
+}
+
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request) ||
@@ -128,8 +151,14 @@ self.addEventListener('fetch', (event) => {
 
   if (url.pathname.startsWith('/api/auth')) return;
 
-  if (isImageRequest(url) && url.origin !== self.location.origin) {
-    event.respondWith(cacheFirst(event.request, IMAGE_CACHE, 30 * 24 * 3600));
+  // Downloaded pages are stored under same-origin /api/image URLs. Check the
+  // persistent offline cache first so the reader works with no network.
+  if (isImageRequest(url)) {
+    event.respondWith(
+      url.origin === self.location.origin
+        ? offlineImageFirst(event.request)
+        : cacheFirst(event.request, IMAGE_CACHE, 30 * 24 * 3600),
+    );
     return;
   }
 
@@ -137,7 +166,7 @@ self.addEventListener('fetch', (event) => {
 
   if (isApiRequest(url)) {
     event.respondWith(networkFirst(event.request, API_CACHE, 3600));
-  } else if (isHashedAsset(url)) {
+  } else if (isHashedAsset(url) || isCodeAsset(url)) {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, null));
   } else if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, 7 * 24 * 3600));

@@ -49,10 +49,9 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
         "fullscreen",
       ],
       settings: ["speed", "quality"],
-      speed: [0.5, 0.75, 1, 1.25, 1.5, 2],
-      ratio: null,
+      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
       seekTime: 10,
-      tooltips: { seek: true, volume: true },
+      tooltips: { seek: true },
       keyboard: { focused: true, global: true },
     });
     plyrRef.current = player;

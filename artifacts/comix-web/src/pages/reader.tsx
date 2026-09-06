@@ -423,8 +423,16 @@ export default function Reader() {
   return (
     <div className={`min-h-[100dvh] ${bgClass} relative select-none`} onClick={handlePageClick}>
       {/* Top Bar */}
-      <div className={`fixed top-0 left-0 w-full z-50 transition-transform duration-300 ${showControls ? 'translate-y-0' : '-translate-y-full'}`}>
-        <div className="bg-black/90 backdrop-blur border-b border-white/10 text-white flex items-center justify-between p-2 sm:px-4 h-14">
+      <div
+        className="fixed inset-x-0 top-0 z-50 bg-black/90 backdrop-blur transition-transform duration-300"
+        style={{
+          paddingTop: "env(safe-area-inset-top, 0px)",
+          transform: showControls
+            ? "translateY(0)"
+            : "translateY(calc(-100% - env(safe-area-inset-top, 0px)))",
+        }}
+      >
+        <div className="border-b border-white/10 text-white flex items-center justify-between p-2 sm:px-4 h-14">
           <div className="flex items-center gap-2 overflow-hidden flex-1">
             <Button variant="ghost" size="icon" className="text-white/70 hover:text-white shrink-0" onClick={(e) => { e.stopPropagation(); goBack(); }}>
               <ChevronLeft className="h-5 w-5" />

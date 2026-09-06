@@ -10,8 +10,11 @@ import { WelcomeOverlay } from "@/components/welcome-overlay";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { LockLoading } from "@/components/lock-loading";
 import { Loader2 } from "lucide-react";
+import { BookOpen, Download, RefreshCw, WifiOff } from "lucide-react";
 import { isUnlockedThisSession, setUnlocked, shouldLockCurrentMode, refreshServerLock } from "@/lib/lock";
 import NotFound from "@/pages/not-found";
+import { useOfflineChapters, formatBytes } from "@/lib/offline-db";
+import { readerUrl } from "@/lib/utils";
 
 const SearchPage           = lazy(() => import("@/pages/search"));
 const MangaDetail          = lazy(() => import("@/pages/manga-detail"));
@@ -67,6 +70,106 @@ function Lazy({ children }: { children: React.ReactNode }) {
       <Suspense fallback={<PageLoader />}>{children}</Suspense>
     </ErrorBoundary>
   );
+}
+
+function useOnlineStatus() {
+  const [online, setOnline] = useState(
+    () => typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+
+  useEffect(() => {
+    const setOnlineState = () => setOnline(navigator.onLine);
+    window.addEventListener("online", setOnlineState);
+    window.addEventListener("offline", setOnlineState);
+    return () => {
+      window.removeEventListener("online", setOnlineState);
+      window.removeEventListener("offline", setOnlineState);
+    };
+  }, []);
+
+  return online;
+}
+
+function OfflineHome() {
+  const [, setLocation] = useLocation();
+  const chapters = useOfflineChapters();
+  const totalBytes = chapters.reduce((sum, chapter) => sum + (chapter.sizeBytes || 0), 0);
+
+  return (
+    <main className="container mx-auto max-w-2xl px-4 py-10 sm:py-16">
+      <div className="rounded-3xl border border-border/70 bg-card p-6 sm:p-8 shadow-sm">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+          <WifiOff className="h-6 w-6" />
+        </div>
+        <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+          Offline mode
+        </p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+          Your saved chapters are ready
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          You are offline, so online discovery is paused. Open a downloaded chapter below or manage your offline library.
+        </p>
+
+        {chapters.length > 0 ? (
+          <div className="mt-6 space-y-2">
+            {chapters.slice(0, 6).map((chapter) => (
+              <button
+                key={chapter.chapterId}
+                type="button"
+                onClick={() => setLocation(readerUrl(chapter.chapterId, chapter.mangaId, chapter.sourceId, true))}
+                className="flex w-full items-center gap-3 rounded-2xl border border-border/70 bg-background/60 p-3 text-left transition-colors hover:bg-muted/50"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <BookOpen className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-foreground">{chapter.mangaTitle}</span>
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                    Chapter {chapter.chapterNumber} · {chapter.pageUrls.length} pages
+                  </span>
+                </span>
+                <span className="text-xs text-muted-foreground">Read</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-6 rounded-2xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">
+            No chapters have been saved to this device yet.
+          </div>
+        )}
+
+        <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => setLocation("/downloads")}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            <Download className="h-4 w-4" />
+            Offline Library
+          </button>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Try again
+          </button>
+        </div>
+        {chapters.length > 0 && (
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            {chapters.length} chapter{chapters.length === 1 ? "" : "s"} · {formatBytes(totalBytes)} stored locally
+          </p>
+        )}
+      </div>
+    </main>
+  );
+}
+
+function HomeRoute() {
+  const online = useOnlineStatus();
+  return online ? <Lazy><LibraryPage /></Lazy> : <OfflineHome />;
 }
 
 function ActiveSourceSync() {
@@ -201,7 +304,7 @@ function AppContent() {
           <div className="flex-1 pb-16 md:pb-0">
             <Switch>
               <Route path="/">
-                <Lazy><LibraryPage /></Lazy>
+                <HomeRoute />
               </Route>
               <Route path="/search">
                 <Lazy><SearchPage /></Lazy>
