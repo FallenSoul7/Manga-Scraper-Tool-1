@@ -16,6 +16,7 @@ RUN apt-get update \
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt \
+    && python -c "from scrapling.fetchers import StealthyFetcher; print('Scrapling StealthyFetcher is available')" \
     && python -m playwright install --with-deps chromium
 
 COPY main.py .

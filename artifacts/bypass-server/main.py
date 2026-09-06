@@ -57,7 +57,17 @@ class FetchResponse(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "concurrent_slots": MAX_CONCURRENT, "active": len(_active_sessions)}
+    try:
+        from scrapling.fetchers import StealthyFetcher  # noqa: F401
+        bypass_ready = True
+    except Exception:
+        bypass_ready = False
+    return {
+        "status": "ok" if bypass_ready else "degraded",
+        "bypass_ready": bypass_ready,
+        "concurrent_slots": MAX_CONCURRENT,
+        "active": len(_active_sessions),
+    }
 
 
 @app.post("/fetch", response_model=FetchResponse)

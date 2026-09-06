@@ -13,6 +13,9 @@ services:
     rootDir: artifacts/api-server
     buildCommand: pnpm install && pnpm run build
     startCommand: node --enable-source-maps ./dist/index.mjs
+    envVars:
+      - key: BYPASS_SERVER_URL
+        value: https://comi-hub-bypasser-scarpiling.onrender.com
 
   # 2) Python bypass — FastAPI + Scrapling. MUST build from
   #    artifacts/bypass-server/Dockerfile so `pip install -r requirements.txt`
