@@ -4,7 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <meta name="google-site-verification" content="AY-bM5zanztxAe_E0wdVeVomSg6qgBHV4Nx1V0eLQds" />
-    <title>Comix Reader</title>
+    <title>ComiHub — Manga Reader</title>
+    <meta name="description" content="Read manga and manhwa online with ComiHub. Discover titles from multiple sources, save your library, and read offline." />
+    <link rel="canonical" href="https://comihub.vercel.app/" />
+    <meta property="og:title" content="ComiHub — Manga Reader" />
+    <meta property="og:description" content="Discover, save, and read manga and manhwa from multiple sources with ComiHub." />
+    <meta property="og:url" content="https://comihub.vercel.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://comihub.vercel.app/opengraph.jpg" />
+    <meta property="og:site_name" content="ComiHub" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ComiHub — Manga Reader" />
+    <meta name="twitter:description" content="Discover, save, and read manga and manhwa from multiple sources with ComiHub." />
+    <meta name="twitter:image" content="https://comihub.vercel.app/opengraph.jpg" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#000000" />
@@ -18,6 +30,17 @@
   </head>
   <body>
     <div id="root"></div>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "ComiHub",
+        "description": "A manga and manhwa reader with multiple sources, library syncing, and offline reading.",
+        "url": "https://comihub.vercel.app/",
+        "applicationCategory": "EntertainmentApplication",
+        "operatingSystem": "Web"
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
