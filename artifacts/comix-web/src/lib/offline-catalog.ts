@@ -3,6 +3,7 @@ import { useStore, getStoreSnapshot, type StoreState } from "@/lib/storage";
 import { proxyImage } from "@/lib/utils";
 
 const STORAGE_KEY = "comihub-offline-catalog-v1";
+const SOURCE_CATALOG_KEY = "comihub-offline-source-catalog-v1";
 
 export interface OfflineCatalogSnapshot {
   version: 1;
@@ -22,7 +23,25 @@ function readSnapshot(): OfflineCatalogSnapshot | null {
   if (typeof localStorage === "undefined") return null;
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
-    return value?.version === 1 ? value : null;
+    if (value?.version !== 1) return null;
+
+    // Keep catalogs that were saved inside the original combined snapshot
+    // format, while allowing new catalog writes to survive other snapshot
+    // updates independently.
+    if (value.sourceCatalog == null) {
+      const separateCatalog = readSeparateSourceCatalog();
+      if (separateCatalog != null) return { ...value, sourceCatalog: separateCatalog };
+    }
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function readSeparateSourceCatalog(): unknown | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    return JSON.parse(localStorage.getItem(SOURCE_CATALOG_KEY) ?? "null");
   } catch {
     return null;
   }
@@ -32,6 +51,9 @@ function publish(next: OfflineCatalogSnapshot) {
   snapshot = next;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    if (next.sourceCatalog != null) {
+      localStorage.setItem(SOURCE_CATALOG_KEY, JSON.stringify(next.sourceCatalog));
+    }
   } catch {
     // The app's primary state remains in its existing storage. A catalog
     // snapshot is best-effort so a full device never blocks local reading.
@@ -57,14 +79,16 @@ export function saveOfflineCatalogState(state: Pick<
 
 export function saveOfflineSourceCatalog(sourceCatalog: unknown) {
   const state = getStoreSnapshot();
-  saveOfflineCatalogState({
+  publish({
+    version: 1,
+    updatedAt: Date.now(),
     library: state.library,
     categories: state.categories,
     progress: state.progress,
     history: state.history,
     installedSources: state.installedSources,
+    sourceCatalog,
   });
-  publish({ ...snapshot!, sourceCatalog });
 }
 
 export function getCachedSourceCatalog<T = any>(): T | null {
