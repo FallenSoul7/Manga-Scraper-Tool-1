@@ -69,17 +69,11 @@ SOURCES_BY_ID.set("en.allanime", AllMangaSource);
 
 // Madara-themed sources
 register(createMadaraSource({
-  id: "en.resetscans",
-  name: "Reset Scans",
-  baseUrl: "https://reset-scans.org",
-  lang: "en",
-}));
-register(createMadaraSource({
   id: "en.manhuaplus",
   name: "Manhua Plus",
   baseUrl: "https://manhuaplus.com",
   lang: "en",
-  postType: null,
+  searchPath: "/manga/",
 }));
 // Utoon (Cloudflare-protected; may rate-limit but registered for completeness)
 register(createMadaraSource({

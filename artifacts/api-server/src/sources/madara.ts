@@ -29,6 +29,8 @@ export interface MadaraOptions {
   /** Search post type; set to null for sites whose normal WordPress search
    * already returns manga results without a post_type restriction. */
   postType?: string | null;
+  /** Optional path for advanced search pages, e.g. "/manga/" on Manhua Plus. */
+  searchPath?: string;
 }
 
 const DATE_FMT_RE = /(\d{1,2})[ -](\w+)[ -](\d{4})/;
@@ -136,7 +138,8 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
 
     // WordPress handles queries perfectly using either the 'paged' query param or clean route matching
     const pagePath = page > 1 ? `page/${page}/` : "";
-    const url = `${baseUrl}/${pagePath}?${params.toString()}`;
+    const searchPath = (opts.searchPath ?? "/").replace(/^\/?/, "/");
+    const url = `${baseUrl}${searchPath}${pagePath ? `${pagePath}` : ""}?${params.toString()}`;
     
     const { $ } = await fetchHtml(http, url);
     const items: MangaSummary[] = [];
