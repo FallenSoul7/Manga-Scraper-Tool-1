@@ -26,6 +26,9 @@ export interface MadaraOptions {
   useAjaxChapters?: boolean;
   /** path used when search returns nothing on the load-more endpoint */
   filterNonMangaItems?: boolean;
+  /** Search post type; set to null for sites whose normal WordPress search
+   * already returns manga results without a post_type restriction. */
+  postType?: string | null;
 }
 
 const DATE_FMT_RE = /(\d{1,2})[ -](\w+)[ -](\d{4})/;
@@ -114,7 +117,9 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
   async function fetchAdvancedList(page: number, query: string, sort: string, tagIds?: string[]): Promise<MangaListResponse> {
     const params = new URLSearchParams();
     params.append("s", query);
-    params.append("post_type", "wp-manga");
+    if (opts.postType !== null) {
+      params.append("post_type", opts.postType ?? "wp-manga");
+    }
     
     if (sort) {
       params.append("m_orderby", sort);

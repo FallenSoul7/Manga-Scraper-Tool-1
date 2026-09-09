@@ -11,6 +11,7 @@ import { ComickFanSource } from "./comickfan";
 import { AsuraScansSource } from "./asurascans";
 import { OnlyTheBestHentaiSource } from "./onlythebesthentai";
 import { WebtoonsSource } from "./webtoons";
+import { ResetScansSource } from "./resetscans";
 import { XkcdSource } from "./xkcd";
 import { HentaiYogaSource } from "./hentaiyoga";
 import { PandaChaikaSource } from "./pandachaika";
@@ -53,6 +54,7 @@ register(ComickFanSource);
 register(AsuraScansSource);
 register(OnlyTheBestHentaiSource);
 register(WebtoonsSource);
+register(ResetScansSource);
 register(XkcdSource);
 register(HentaiYogaSource);
 register(PandaChaikaSource);
@@ -77,6 +79,7 @@ register(createMadaraSource({
   name: "Manhua Plus",
   baseUrl: "https://manhuaplus.com",
   lang: "en",
+  postType: null,
 }));
 // Utoon (Cloudflare-protected; may rate-limit but registered for completeness)
 register(createMadaraSource({
