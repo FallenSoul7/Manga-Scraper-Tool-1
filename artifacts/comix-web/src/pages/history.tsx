@@ -7,6 +7,8 @@ import { formatDistanceToNow, isToday, isYesterday, isThisWeek } from "date-fns"
 import { BookOpen, Clock, Film, Search, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { registerHistoryHeader } from "@/lib/header-history";
+import { useOfflineChapters } from "@/lib/offline-db";
+import { useOnlineStatus } from "@/lib/offline-catalog";
 
 type DateGroup = "Today" | "Yesterday" | "This Week" | "Older";
 
@@ -31,11 +33,14 @@ export default function HistoryPage() {
   const historyKeys = useStore(s => s.history);
   const progressMap = useStore(s => s.progress);
   const library = useStore(s => s.library);
+  const offlineChapters = useOfflineChapters();
+  const online = useOnlineStatus();
   const [filterText, setFilterText] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const historyItems = historyKeys.map(k => progressMap[k]).filter(Boolean);
+  const offlineChapterIds = new Set(offlineChapters.map(chapter => `${chapter.mangaId}:${chapter.chapterId}`));
 
   const q = filterText.trim().toLowerCase();
   const filtered = q
@@ -155,7 +160,8 @@ export default function HistoryPage() {
                 {items.map((item) => {
                   const isVideo = isVideoItem(item);
                   const sid = library[item.mangaId]?.sourceId;
-                  const readerHref = readerUrl(item.chapterId, item.mangaId, sid);
+                  const canReadOffline = offlineChapterIds.has(`${item.mangaId}:${item.chapterId}`);
+                  const readerHref = readerUrl(item.chapterId, item.mangaId, sid, !online && canReadOffline);
                   const progressPct = item.totalPages > 1
                     ? Math.min(100, Math.round((item.lastPageRead / item.totalPages) * 100))
                     : item.isRead ? 100 : 0;
@@ -198,7 +204,10 @@ export default function HistoryPage() {
                       </Link>
 
                       {/* Info — links to reader */}
-                      <Link href={readerHref} className="flex-1 min-w-0 py-0.5">
+                        <Link
+                          href={readerHref}
+                          className={`flex-1 min-w-0 py-0.5 ${!online && !canReadOffline ? "pointer-events-none opacity-60" : ""}`}
+                        >
                         <p className="font-semibold text-[14px] leading-snug text-foreground line-clamp-1 mb-0.5">
                           {item.mangaTitle}
                         </p>

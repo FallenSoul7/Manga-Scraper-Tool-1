@@ -79,17 +79,13 @@ export const offlineDb = {
   },
 
   async delete(chapterId: string): Promise<void> {
-    // Remove from IndexedDB
+    const chapter = await offlineDb.get(chapterId);
+    if (chapter) {
+      await offlineDb.deleteWithPages(chapter);
+      return;
+    }
     const store = await tx('readwrite');
     await wrap(store.delete(chapterId));
-
-    // Remove cached images for this chapter
-    try {
-      const cache = await caches.open('comihub-offline-v1');
-      const chapter = await offlineDb.get(chapterId); // note: already deleted, use local var
-      // We'll clean up via the separate deleteWithPages helper
-    } catch {}
-
     notifyOffline();
   },
 

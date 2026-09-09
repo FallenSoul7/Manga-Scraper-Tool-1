@@ -6,6 +6,7 @@ import { Loader2, Search as SearchIcon, Clock } from "lucide-react";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
+import { useOnlineStatus } from "@/lib/offline-catalog";
 
 // ── Session snapshot helpers ────────────────────────────────────────────────
 interface SearchSnapshot { query: string; page: number; items: any[] }
@@ -26,6 +27,7 @@ export default function SearchPage() {
   const query = useMemo(() => new URLSearchParams(searchString).get("query") || "", [searchString]);
   const [, setLocation] = useLocation();
   const { settings } = useSettings();
+  const online = useOnlineStatus();
   const searchHistory = useStore(s => s.searchHistory);
 
   const trimmed = query.trim();
@@ -61,7 +63,7 @@ export default function SearchPage() {
   const searchParams = { query: trimmed, nsfw: !settings.hideNsfw, poster: settings.posterQuality, page };
   const { data: results, isLoading, isFetching } = useSearchManga(searchParams as any, {
     query: {
-      enabled: trimmed.length >= 2,
+      enabled: trimmed.length >= 2 && online,
       queryKey: getSearchMangaQueryKey(searchParams as any),
     },
   });
@@ -104,7 +106,7 @@ export default function SearchPage() {
     const onScroll = () => sessionStorage.setItem(scrollKey(trimmed), String(window.scrollY));
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, [trimmed]);
+  }, [trimmed, online]);
 
   // ── Scroll restoration ───────────────────────────────────────────────
   useEffect(() => {
@@ -203,6 +205,20 @@ export default function SearchPage() {
       ) : tooShort ? (
         <div className="py-12 text-center text-muted-foreground border rounded-2xl bg-card/50">
           Type at least 2 characters to search.
+        </div>
+      ) : !online ? (
+        <div className="py-16 text-center text-muted-foreground border rounded-2xl bg-card/50 px-4">
+          <p className="mb-1">Search is unavailable offline.</p>
+          <p className="text-sm">
+            {displayItems.length > 0
+              ? "Showing the last cached results for this search."
+              : "Reconnect to search the source catalog."}
+          </p>
+          {displayItems.length > 0 && (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-5 mt-6 text-left">
+              {displayItems.map((manga: any) => <MangaCard key={manga.id} manga={manga} />)}
+            </div>
+          )}
         </div>
       ) : isLoading && displayItems.length === 0 ? (
         <div className="flex justify-center py-20">

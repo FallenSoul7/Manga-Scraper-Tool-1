@@ -25,6 +25,8 @@ import { toast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { useOfflineChapters } from "@/lib/offline-db";
+import { useOnlineStatus } from "@/lib/offline-catalog";
 
 
 /** Decode a Koofr base64url manga ID back to its file path and check if it's a video. */
@@ -96,12 +98,17 @@ function DownloadProgressRing({ progress, size = 32 }: { progress: number; size?
 }
 
 /** Chapter download button — shows ring when queued/downloading, checkmark when done */
-function ChapterDownloadButton({ chapterId, onClick }: { chapterId: number | string; onClick: (e: React.MouseEvent) => void }) {
+function ChapterDownloadButton({ chapterId, onClick, isDownloaded, offline }: {
+  chapterId: number | string;
+  onClick: (e: React.MouseEvent) => void;
+  isDownloaded?: boolean;
+  offline?: boolean;
+}) {
   const item = useDownloadQueue(s => s.items.find(i => String(i.chapterId) === String(chapterId)));
   const status = item?.status;
   const progress = item?.progress ?? 0;
 
-  if (status === 'done') {
+  if (status === 'done' || isDownloaded) {
     return (
       <button
         type="button"
@@ -111,6 +118,14 @@ function ChapterDownloadButton({ chapterId, onClick }: { chapterId: number | str
       >
         <Check className="h-4 w-4" />
       </button>
+    );
+  }
+
+  if (offline) {
+    return (
+      <span className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground/50" title="Download unavailable offline">
+        <ArrowDownToLine className="h-4 w-4" />
+      </span>
     );
   }
 
@@ -211,6 +226,8 @@ export default function MangaDetail() {
   const activeSourceId = useStore(s => s.activeSourceId);
   const scanlatorPrefs = useStore(s => s.scanlatorPrefs);
   const chapterSortAsc = useStore(s => s.chapterSortAsc);
+  const online = useOnlineStatus();
+  const offlineChapters = useOfflineChapters();
 
   const inLibrary = id ? !!library[id] : false;
   const savedManga = id ? library[id] : null;
@@ -231,20 +248,45 @@ export default function MangaDetail() {
   const mangaParams = { poster: settings.posterQuality, alt: settings.showAltNames, score: settings.scorePosition };
   const chaptersParams = { dedupe: false };
 
-  const { data: manga, isLoading: mangaLoading } = useGetMangaDetails(id || "", mangaParams, {
+  const { data: mangaData, isLoading: mangaLoading } = useGetMangaDetails(id || "", mangaParams, {
     query: {
-      enabled: !!id && sourceReady,
+      enabled: !!id && sourceReady && online,
       queryKey: [...getGetMangaDetailsQueryKey(id || "", mangaParams), effectiveSourceForKey ?? ""],
     },
   });
   const { data: chaptersResponse, isLoading: chaptersLoading, isError: chaptersError } = useGetChapters(id || "", chaptersParams, {
     query: {
-      enabled: !!id && sourceReady,
+      enabled: !!id && sourceReady && online,
       queryKey: [...getGetChaptersQueryKey(id || "", chaptersParams), effectiveSourceForKey ?? ""],
     },
   });
 
-  const allChapters = chaptersResponse?.items || [];
+  const downloadedChapters = useMemo(
+    () => offlineChapters
+      .filter(chapter => chapter.mangaId === id)
+      .map(chapter => ({
+        id: Number.isNaN(Number(chapter.chapterId)) ? chapter.chapterId : Number(chapter.chapterId),
+        number: chapter.chapterNumber,
+        title: chapter.chapterTitle,
+        date: Math.floor(chapter.downloadedAt / 1000),
+        lang: "en",
+        isOfficial: false,
+        scanlator: "Downloaded",
+        isDownloaded: true,
+      })),
+    [offlineChapters, id],
+  );
+  const allChapters: any[] = online ? (chaptersResponse?.items || []) : downloadedChapters;
+  const manga = mangaData ?? (savedManga
+    ? {
+        ...savedManga,
+        altTitles: [],
+        sourceTags: [],
+        genres: [],
+        synopsis: "",
+        rating: null,
+      }
+    : undefined) as any;
 
   const newChapterIds = useMemo(() => {
     if (!savedManga) return new Set<number>();
@@ -321,7 +363,10 @@ export default function MangaDetail() {
 
   const latestProgress = useMemo(() => {
     if (!id) return null;
-    const items = Object.values(progressMap).filter(p => p.mangaId === id);
+    const downloadedIds = new Set(downloadedChapters.map(chapter => String(chapter.id)));
+    const items = Object.values(progressMap).filter(p =>
+      p.mangaId === id && (online || downloadedIds.has(String(p.chapterId)))
+    );
     if (items.length === 0) return null;
     items.sort((a, b) => b.updatedAt - a.updatedAt);
     return items[0];
@@ -423,7 +468,7 @@ export default function MangaDetail() {
   };
 
 
-  const showLoading = !sourceReady || mangaLoading;
+  const showLoading = !sourceReady || (online && mangaLoading);
   const showFallback = !showLoading && !manga && !!savedManga;
   const showNotFound = !showLoading && !manga && !savedManga;
   const altTitles = manga?.altTitles || [];
@@ -654,7 +699,7 @@ export default function MangaDetail() {
           ) : latestProgress ? (
             <Button
               className="w-full h-12 text-base font-semibold rounded-xl"
-              onClick={() => setLocation(readerUrl(latestProgress.chapterId, manga.id, sourceContext ?? activeSourceId))}
+              onClick={() => setLocation(readerUrl(latestProgress.chapterId, manga.id, sourceContext ?? activeSourceId, !online))}
             >
               {isKoofrVideo ? <Play className="mr-2 h-5 w-5" /> : <BookOpen className="mr-2 h-5 w-5" />}
               {isKoofrVideo ? 'Continue watching' : isRule34 ? "View artwork" : `Continue reading · Ch. ${latestProgress.chapterNumber}`}
@@ -662,7 +707,7 @@ export default function MangaDetail() {
           ) : firstChapter ? (
             <Button
               className="w-full h-12 text-base font-semibold rounded-xl"
-              onClick={() => setLocation(readerUrl(firstChapter.id, manga.id, sourceContext ?? activeSourceId))}
+              onClick={() => setLocation(readerUrl(firstChapter.id, manga.id, sourceContext ?? activeSourceId, !online))}
             >
               <Play className="mr-2 h-5 w-5" />
               {isKoofrVideo ? 'Watch' : isRule34 ? "View artwork" : "Start reading"}
@@ -841,7 +886,7 @@ export default function MangaDetail() {
                           totalPages: 0, lastPageRead: 0, isRead: false,
                         });
                       }
-                      setLocation(readerUrl(chapter.id, manga.id, sourceContext ?? activeSourceId));
+                      setLocation(readerUrl(chapter.id, manga.id, sourceContext ?? activeSourceId, !online));
                     }}
                     onContextMenu={e => {
                       e.preventDefault();
@@ -885,6 +930,8 @@ export default function MangaDetail() {
                     {!chapterSelectionMode ? (
                       <ChapterDownloadButton
                         chapterId={chapter.id}
+                        isDownloaded={!!chapter.isDownloaded}
+                        offline={!online}
                         onClick={e => {
                           e.stopPropagation();
                           setDownloadTarget({

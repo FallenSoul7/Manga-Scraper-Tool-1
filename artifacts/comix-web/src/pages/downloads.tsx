@@ -3,7 +3,7 @@
  *   1. "Downloading"    — live queue of chapters being fetched (real progress bars)
  *   2. "Offline Library" — chapters saved to the device for offline reading
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useDownloadQueue, queueActions } from "@/lib/download-queue";
 import { useOfflineChapters, offlineDb, formatBytes } from "@/lib/offline-db";
@@ -272,6 +272,20 @@ function OfflineLibraryTab() {
   const [deleting, setDeleting] = useState<string | null>(null);
 
   const totalBytes = chapters.reduce((sum, c) => sum + (c.sizeBytes || 0), 0);
+  const mangaGroups = useMemo(() => {
+    const groups = new Map<string, typeof chapters>();
+    for (const chapter of chapters) {
+      const current = groups.get(chapter.mangaId) ?? [];
+      current.push(chapter);
+      groups.set(chapter.mangaId, current);
+    }
+    return Array.from(groups.entries())
+      .map(([mangaId, items]) => ({
+        mangaId,
+        chapters: items.sort((a, b) => b.downloadedAt - a.downloadedAt),
+      }))
+      .sort((a, b) => (b.chapters[0]?.downloadedAt ?? 0) - (a.chapters[0]?.downloadedAt ?? 0));
+  }, [chapters]);
 
   async function handleDelete(chapterId: string) {
     const chapter = chapters.find(c => c.chapterId === chapterId);
@@ -304,70 +318,73 @@ function OfflineLibraryTab() {
         <span>{chapters.length} chapter{chapters.length !== 1 ? 's' : ''} · {formatBytes(totalBytes)} used</span>
       </div>
 
-      {/* Chapter list */}
+      {/* Manga groups — a manga is shown once, with its downloaded chapters below */}
       <div className="space-y-2">
-        {chapters.map(chapter => (
-          <div
-            key={chapter.chapterId}
-            className="flex items-center gap-3 rounded-2xl bg-card border border-border/50 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
-            onClick={() => {
-              setLocation(
-                readerUrl(chapter.chapterId, chapter.mangaId, chapter.sourceId, true)
-              );
-            }}
-          >
-            <img
-              src={proxyImage(chapter.mangaThumbnail, chapter.sourceId)}
-              alt={chapter.mangaTitle}
-              className="h-16 w-12 rounded-xl object-cover shrink-0"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-sm truncate leading-tight">{chapter.mangaTitle}</div>
-              <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                Ch.{chapter.chapterNumber}{chapter.chapterTitle ? ` · ${chapter.chapterTitle}` : ''}
-              </div>
-              <div className="flex items-center gap-2 mt-1.5">
-                <span className="flex items-center gap-1 text-[11px] font-semibold text-green-500">
-                  <WifiOff className="h-3 w-3" /> Available offline
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  {chapter.pageUrls.length} pages
-                  {chapter.sizeBytes ? ` · ${formatBytes(chapter.sizeBytes)}` : ''}
-                </span>
-              </div>
-            </div>
+        {mangaGroups.map(({ mangaId, chapters: mangaChapters }) => {
+          const first = mangaChapters[0]!;
+          return (
+            <section key={mangaId} className="rounded-2xl bg-card border border-border/50 overflow-hidden">
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 p-3 text-left hover:bg-muted/30 transition-colors"
+                onClick={() => setLocation(`/manga/${encodeURIComponent(mangaId)}`)}
+              >
+                <img
+                  src={proxyImage(first.mangaThumbnail, first.sourceId)}
+                  alt={first.mangaTitle}
+                  className="h-20 w-15 rounded-xl object-cover shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-sm truncate leading-tight">{first.mangaTitle}</div>
+                  <div className="flex items-center gap-1.5 mt-1 text-[11px] font-semibold text-green-500">
+                    <WifiOff className="h-3 w-3" /> Available offline
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {mangaChapters.length} downloaded chapter{mangaChapters.length !== 1 ? "s" : ""}
+                  </div>
+                </div>
+              </button>
 
-            <div className="flex flex-col items-end gap-2 shrink-0">
-              <span className="text-[11px] text-muted-foreground">
-                {format(new Date(chapter.downloadedAt), 'MMM d')}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="h-8 w-8 flex items-center justify-center rounded-full text-primary hover:bg-primary/10 transition-colors"
-                  title="Read offline"
-                  onClick={e => {
-                    e.stopPropagation();
-                    setLocation(
-                      readerUrl(chapter.chapterId, chapter.mangaId, chapter.sourceId, true)
-                    );
-                  }}
-                >
-                  <BookOpen className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  disabled={deleting === chapter.chapterId}
-                  className="h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40 transition-colors"
-                  title="Delete offline copy"
-                  onClick={e => { e.stopPropagation(); handleDelete(chapter.chapterId); }}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+              <div className="border-t border-border/40 divide-y divide-border/30">
+                {mangaChapters.map(chapter => (
+                  <div key={chapter.chapterId} className="flex items-center gap-3 px-3 py-2.5">
+                    <button
+                      type="button"
+                      className="flex-1 min-w-0 text-left hover:text-primary transition-colors"
+                      onClick={() => setLocation(readerUrl(chapter.chapterId, chapter.mangaId, chapter.sourceId, true))}
+                    >
+                      <div className="font-medium text-sm truncate">
+                        Chapter {chapter.chapterNumber}{chapter.chapterTitle ? ` · ${chapter.chapterTitle}` : ""}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                        {chapter.pageUrls.length} pages
+                        {chapter.sizeBytes ? ` · ${formatBytes(chapter.sizeBytes)}` : ""}
+                        {" · "}{format(new Date(chapter.downloadedAt), "MMM d")}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className="h-8 w-8 flex items-center justify-center rounded-full text-primary hover:bg-primary/10 transition-colors shrink-0"
+                      title="Read offline"
+                      onClick={() => setLocation(readerUrl(chapter.chapterId, chapter.mangaId, chapter.sourceId, true))}
+                    >
+                      <BookOpen className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deleting === chapter.chapterId}
+                      className="h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40 transition-colors shrink-0"
+                      title="Delete offline copy"
+                      onClick={() => handleDelete(chapter.chapterId)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            </div>
-          </div>
-        ))}
+            </section>
+          );
+        })}
       </div>
     </div>
   );

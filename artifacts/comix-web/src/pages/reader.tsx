@@ -35,12 +35,14 @@ export default function Reader() {
 
   // Offline mode: load pages from IndexedDB instead of the API
   const [offlinePages, setOfflinePages] = useState<{ index: number; url: string }[] | null>(null);
+  const [offlineChapter, setOfflineChapter] = useState<Awaited<ReturnType<typeof offlineDb.get>>>(null);
   const [offlineLoading, setOfflineLoading] = useState(isOfflineMode);
   useEffect(() => {
     if (!isOfflineMode || !chapterId) return;
     setOfflineLoading(true);
     offlineDb.get(String(chapterId)).then(chapter => {
       if (chapter?.pageUrls?.length) {
+        setOfflineChapter(chapter);
         setOfflinePages(chapter.pageUrls.map((url, i) => ({ index: i, url })));
       }
       setOfflineLoading(false);
@@ -136,17 +138,28 @@ export default function Reader() {
   const chapterFetchParams = { dedupe: false };
   const { data: chaptersData } = useGetChapters(mangaId || "", chapterFetchParams, {
     query: {
-      enabled: !!mangaId,
+      enabled: !!mangaId && !isOfflineMode,
       queryKey: getGetChaptersQueryKey(mangaId || "", chapterFetchParams),
     },
   });
 
   const { data: mangaData } = useGetMangaDetails(mangaId || "", undefined, {
     query: {
-      enabled: !!mangaId,
+      enabled: !!mangaId && !isOfflineMode,
       queryKey: getGetMangaDetailsQueryKey(mangaId || ""),
     },
   });
+
+  const offlineChapterMetadata = offlineChapter
+    ? {
+        id: offlineChapter.chapterId,
+        number: offlineChapter.chapterNumber,
+        title: offlineChapter.chapterTitle,
+        scanlator: "Downloaded",
+      }
+    : null;
+  const effectiveMangaData = mangaData ?? (mangaId ? library[mangaId] : null);
+  const effectiveChapterData: any[] = chaptersData?.items ?? (offlineChapterMetadata ? [offlineChapterMetadata] : []);
 
   useEffect(() => {
     const TICK_MS = 5000;
@@ -212,7 +225,7 @@ export default function Reader() {
 
   useEffect(() => {
     const handleScroll = () => {
-      if (!effectivePages.length || !mangaId || !chaptersData || !mangaData) return;
+      if (!effectivePages.length || !mangaId || !effectiveChapterData.length || !effectiveMangaData) return;
       clearTimeout(scrollTimeout.current);
       scrollTimeout.current = setTimeout(() => {
         const container = effectiveDirection === 'webtoon' || effectiveDirection === 'vertical' ? window : containerRef.current;
@@ -228,8 +241,8 @@ export default function Reader() {
           }
           const docHeight = document.documentElement.scrollHeight;
           if (scrollY + wh >= docHeight * 0.9) {
-            const ch = chaptersData.items.find(c => String(c.id) === chapterId);
-            if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, effectivePages.length);
+            const ch = effectiveChapterData.find(c => String(c.id) === chapterId);
+            if (ch) storeActions.markChapterRead(mangaId, ch, effectiveMangaData, effectivePages.length);
           }
         } else {
           if (containerRef.current) {
@@ -237,19 +250,19 @@ export default function Reader() {
             const cw = containerRef.current.clientWidth;
             newPage = Math.round(scrollX / cw);
             if (newPage >= effectivePages.length - 1) {
-              const ch = chaptersData.items.find(c => String(c.id) === chapterId);
-              if (ch) storeActions.markChapterRead(mangaId, ch, mangaData, effectivePages.length);
+              const ch = effectiveChapterData.find(c => String(c.id) === chapterId);
+              if (ch) storeActions.markChapterRead(mangaId, ch, effectiveMangaData, effectivePages.length);
             }
           }
         }
         if (newPage !== currentPage) {
           setCurrentPage(newPage);
-          const ch = chaptersData.items.find(c => String(c.id) === chapterId);
+          const ch = effectiveChapterData.find(c => String(c.id) === chapterId);
           if (ch && !currentProgress?.isRead) {
             storeActions.recordProgress({
               mangaId, chapterId: ch.id, chapterNumber: ch.number,
-              chapterTitle: ch.title, mangaTitle: mangaData.title,
-              mangaThumbnail: mangaData.thumbnail, totalPages: effectivePages.length,
+              chapterTitle: ch.title, mangaTitle: effectiveMangaData.title,
+              mangaThumbnail: effectiveMangaData.thumbnail, totalPages: effectivePages.length,
               lastPageRead: newPage, isRead: false,
             });
           }
@@ -262,23 +275,23 @@ export default function Reader() {
       if (container) container.removeEventListener('scroll', handleScroll);
       clearTimeout(scrollTimeout.current);
     };
-  }, [effectiveDirection, pagesData, mangaId, chaptersData, mangaData, currentPage, currentProgress?.isRead]);
+  }, [effectiveDirection, pagesData, mangaId, effectiveChapterData, effectiveMangaData, currentPage, currentProgress?.isRead]);
 
   const navChapters = useMemo<any[]>(() => {
-    if (!chaptersData?.items) return [];
+    if (!effectiveChapterData.length) return [];
     if (!selectedScanlator) {
       const map = new Map<number, any>();
       const score = (ch: any) => (ch.isOfficial ? 100000 : 0) + (ch.votes || 0);
-      for (const ch of chaptersData.items) {
+      for (const ch of effectiveChapterData) {
         const existing = map.get(ch.number);
         if (!existing || score(ch) > score(existing)) map.set(ch.number, ch);
       }
       return Array.from(map.values()).sort((a, b) => b.number - a.number);
     }
-    const filtered = chaptersData.items.filter(c => (c.scanlator || "Unknown") === selectedScanlator);
-    if (!filtered.find(c => String(c.id) === chapterId)) return chaptersData.items;
+    const filtered = effectiveChapterData.filter(c => (c.scanlator || "Unknown") === selectedScanlator);
+    if (!filtered.find(c => String(c.id) === chapterId)) return effectiveChapterData;
     return filtered.sort((a, b) => b.number - a.number);
-  }, [chaptersData, selectedScanlator, chapterId]);
+  }, [effectiveChapterData, selectedScanlator, chapterId]);
 
   const chapterIndex = useMemo(() => navChapters.findIndex(c => String(c.id) === chapterId), [navChapters, chapterId]);
   const prevChapter = chapterIndex >= 0 && chapterIndex < navChapters.length - 1 ? navChapters[chapterIndex + 1] : null;
@@ -386,8 +399,8 @@ export default function Reader() {
   // bypass the manga strip entirely and show the full-screen video player.
   if (effectivePages.length > 0 && effectivePages.some(p => isVideoUrl(p.url))) {
     const videoUrl = effectivePages[0].url;
-    const mangaTitle = mangaData?.title ?? "Video";
-    const chObj = chaptersData?.items.find(c => String(c.id) === chapterId);
+    const mangaTitle = effectiveMangaData?.title ?? "Video";
+    const chObj = effectiveChapterData.find(c => String(c.id) === chapterId);
     const chapterTitle = chObj
       ? `Ch. ${chObj.number}${chObj.title ? ` — ${chObj.title}` : ""}`
       : undefined;
@@ -418,7 +431,7 @@ export default function Reader() {
     }
   };
 
-  const currChapterObj = chaptersData?.items.find(c => String(c.id) === chapterId);
+  const currChapterObj = effectiveChapterData.find(c => String(c.id) === chapterId);
 
   return (
     <div className={`min-h-[100dvh] ${bgClass} relative select-none`} onClick={handlePageClick}>
@@ -438,7 +451,7 @@ export default function Reader() {
               <ChevronLeft className="h-5 w-5" />
             </Button>
             <div className="min-w-0 flex flex-col justify-center">
-              <div className="text-xs text-white/50 truncate leading-none mb-1">{mangaData?.title || "Loading..."}</div>
+              <div className="text-xs text-white/50 truncate leading-none mb-1">{effectiveMangaData?.title || "Loading..."}</div>
               <div className="text-sm font-semibold truncate leading-none">
                 {isRule34
                   ? "Artwork"

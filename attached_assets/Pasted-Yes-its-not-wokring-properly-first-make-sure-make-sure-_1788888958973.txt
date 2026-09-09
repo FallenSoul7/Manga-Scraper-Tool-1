@@ -1,0 +1,42 @@
+Yes its not wokring properly first make sure make sure evrything is caragory show even offline slong with icon and make sure updates oage load and so extrntion and other fully and also make sure when i doenload 2 choater of a manga i dont show them different it show in the doenload to web page as one manga with two download also make sure it show no pop as read your download amd stuff what you do if come yo doenloa df page then doenload were it show downloaded to app manga when your able to click on that downloaded manga wich you downloaded the chapter of along with its icon there and choater and you click on the choater you downloaded and direclty read it if its in catagory the one download then you can read from there direclty from what i know tachimanga dose not hold back on these stuff they have these type ot chace wich are 300mb or more so dont hold back here too
+I’ll first map the existing offline library, downloads page, categories, updates, and source/extension flows so I can design this as one coherent offline experience rather than patching each screen separately. Then I’ll show you the implementation options before changing code.
+I found the main gaps: the current offline library is chapter-by-chapter, the separate “Downloaded” page is driven by library metadata instead of IndexedDB, and categories/updates/sources are not yet backed by an offline snapshot. One important behavior needs to be fixed in the design before I change it: extension installation and update checks cannot create new network data while offline, but their installed/cached state can still be shown.
+When offline, should network-only actions be shown as disabled with a clear “Connect to refresh/install” state while all cached/local content remains usable?
+Offline behavior
+Show cached content; disable refresh/install actions
+Additional comments
+Make sure the app shiw evrything with no wifi other than chapter that were not downloaded so it should show all catagory fully with all mahwa along with icon and if one of the mahwa has download chaoter yiu can read them by cliking on ut then cliking the downloaded chapter evrything should work from a to z but the one such as loading chapter that are not download or something else that absolutely need wifi should just not work thats it 
+That clarifies the target: offline should be a complete local version of the app. Categories, saved library manga, icons/covers, history, updates, installed extensions, settings, stats, and downloads should remain usable; only actions that require new server data—un-downloaded chapters, refresh, search, and installing extensions—should be disabled.
+I see three implementation paths:
+1. Recommended — one local offline catalog
+    * Keep the existing IndexedDB chapter cache.
+    * Add a versioned local catalog snapshot containing library manga, categories, pending updates, installed sources, source icons, and cached cover images.
+    * Make Home, Categories, Updates, Sources, System, and Downloads read this snapshot when offline.
+    * Group saved chapters by manga and show each manga once with its cover/icon and chapter list.
+    * Reading a saved chapter opens the existing offline reader directly.
+    * Replace blocking “read your downloads”/install prompts with inline status and disabled actions.
+2. Minimal patch
+    * Reuse the current Zustand local state for categories/library/updates/sources.
+    * Group IndexedDB chapters only on the Downloads page.
+    * Add offline guards to each existing page separately.
+    * Faster, but covers and source metadata can still disappear after a fresh PWA launch because they are not persisted in the same offline catalog.
+3. Large cache mirror
+    * Cache most API responses and pages through the service worker.
+    * Let existing online screens run from stale API responses offline.
+    * More automatic, but harder to make reliable and risks showing stale or partially valid chapter data.
+I recommend option 1 because it matches what you described and avoids treating incomplete API responses as a usable offline app. It also gives us one source of truth for grouping manga, showing icons, and marking a chapter as readable offline.
+The design would be:
+* Offline catalog: persisted metadata and cover/icon assets, refreshed whenever the app is online.
+* Downloads: one manga card per manga, with all downloaded chapters listed underneath; each chapter has a direct offline-read action and delete action.
+* Offline navigation: local versions of categories, updates, sources/extensions, history, stats, settings, and system remain accessible.
+* Network boundaries: refresh/search/install/new chapter actions are disabled with a small connection message; undownloaded chapters are visibly unavailable rather than opening a broken reader.
+* No blocking prompts: remove the download-related popups from this flow and keep guidance inline.
+Should I proceed with the recommended local offline catalog design?
+Implementation approach
+Option 1 — complete local offline catalog
+Additional comments
+I am not sure ehat do choe here becuse i don’t understand but make it like tachimanga 
+I’ll implement the complete local catalog approach: persist the local library/category/source metadata and covers, group offline chapters by manga, make offline routes use local data, and disable only network-required actions. I’ll keep the current reader/cache format so existing downloads remain readable.
+I’m going to turn the approved offline-catalog direction into a focused implementation: first I’ll trace the current offline database, local storage, routing, and page states, then I’ll update the shared data layer and the affected screens together so offline behavior stays consistent. I’ll also keep network-only actions explicit and non-blocking, then verify the build and preview.
+The existing structure already has the right primitives: local library/categories/history/settings in localStorage, and chapter pages in IndexedDB. I’m checking the remaining page entry points now so I can make offline mode a shared “local catalog” state instead of adding one-off fallbacks that still try to fetch.
+You've reached your monthly free quota limit. It will reset on September 30, 2026.

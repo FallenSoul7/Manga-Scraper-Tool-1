@@ -7,12 +7,17 @@ import { proxyImage, readerUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, CheckCircle2, Clock, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { useOnlineStatus } from "@/lib/offline-catalog";
+import { useOfflineChapters } from "@/lib/offline-db";
 
 const COLLAPSED_LIMIT = 6;
 
 export default function UpdatesPage() {
   const library = useStore(s => s.library);
   const queryClient = useQueryClient();
+  const online = useOnlineStatus();
+  const offlineChapters = useOfflineChapters();
+  const offlineChapterIds = new Set(offlineChapters.map(chapter => `${chapter.mangaId}:${chapter.chapterId}`));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -59,15 +64,20 @@ export default function UpdatesPage() {
     <main className="container mx-auto px-4 pt-3 pb-8 max-w-4xl animate-in fade-in duration-500">
       {/* Action bar */}
       <div className="flex items-center justify-end gap-2 mb-5">
-        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
+        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing || !online}>
           <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
-          {isRefreshing ? "Checking…" : "Check all"}
+          {isRefreshing ? "Checking…" : online ? "Check all" : "Check all (offline)"}
         </Button>
         <Button variant="default" size="sm" onClick={storeActions.clearAllPendingUpdates} disabled={updatesByManga.length === 0}>
           <CheckCircle2 className="h-4 w-4 mr-2" />
           Mark all seen
         </Button>
       </div>
+      {!online && (
+        <div className="mb-5 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+          Showing saved pending updates. Checking for new chapters is disabled until you reconnect.
+        </div>
+      )}
 
       {isRefreshing && updatesByManga.length === 0 ? (
         <div className="space-y-6">
@@ -125,14 +135,21 @@ export default function UpdatesPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                    {visibleChapters.map(ch => (
-                      <Link key={ch.id} href={readerUrl(ch.id, manga.id, manga.sourceId)}>
-                        <span className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-primary/10 text-primary text-xs sm:text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer">
-                          <Sparkles className="h-2.5 w-2.5" />
-                          Ch. {ch.number}
-                        </span>
-                      </Link>
-                    ))}
+                     {visibleChapters.map(ch => {
+                       const canRead = online || offlineChapterIds.has(`${manga.id}:${ch.id}`);
+                       return canRead ? (
+                         <Link key={ch.id} href={readerUrl(ch.id, manga.id, manga.sourceId, !online)}>
+                           <span className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-primary/10 text-primary text-xs sm:text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer">
+                             <Sparkles className="h-2.5 w-2.5" />
+                             Ch. {ch.number}
+                           </span>
+                         </Link>
+                       ) : (
+                         <span key={ch.id} title="Download this chapter before going offline" className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-muted text-muted-foreground text-xs sm:text-sm font-medium cursor-not-allowed">
+                           Ch. {ch.number}
+                         </span>
+                       );
+                     })}
 
                     {hidden > 0 && (
                       <Button

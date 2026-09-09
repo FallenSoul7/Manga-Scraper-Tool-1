@@ -6,6 +6,7 @@ import { useStore, storeActions } from "@/lib/storage";
 import { MangaCard } from "@/components/manga-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { getCachedSourceCatalog, useOnlineStatus } from "@/lib/offline-catalog";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -79,6 +80,7 @@ const SelectableCard = memo(function SelectableCard({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function LibraryPage() {
+  const online = useOnlineStatus();
   const library   = useStore(s => s.library);
   const categories = useStore(s => s.categories);
   const searchString = useSearch();
@@ -264,7 +266,8 @@ export default function LibraryPage() {
       const res = await customFetch("/api/sources/catalog") as Response;
       return res.json();
     },
-    enabled: sourcePickerOpen,
+    enabled: sourcePickerOpen && online,
+    initialData: getCachedSourceCatalog<any>(),
     staleTime: 5 * 60 * 1000,
   });
 

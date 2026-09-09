@@ -15,8 +15,10 @@ import {
 import {
   ArrowLeft, Search, X, SlidersHorizontal, Loader2,
   Sun, Moon, Laptop, Check, AlertTriangle, RefreshCw,
+  WifiOff,
 } from "lucide-react";
 import type { SourceTag } from "@/lib/header-search";
+import { useOnlineStatus } from "@/lib/offline-catalog";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -140,6 +142,7 @@ function VpnBanner({
 // Main page
 // ---------------------------------------------------------------------------
 export default function SourceBrowsePage() {
+  const online = useOnlineStatus();
   const [, setLocation] = useLocation();
   const [, params] = useRoute("/sources/:id");
   const sourceId = params?.id || "";
@@ -159,7 +162,7 @@ export default function SourceBrowsePage() {
   const { data: catalogData } = useQuery<{ extensions: CatalogEntry[] }>({
     queryKey: ["catalog"],
     queryFn: () => customFetch<{ extensions: CatalogEntry[] }>("/api/sources/catalog"),
-    enabled: !installedSource && !!sourceId,
+    enabled: online && !installedSource && !!sourceId,
     staleTime: Infinity,
   });
   const catalogEntry = useMemo(
@@ -309,7 +312,7 @@ export default function SourceBrowsePage() {
   const { data: availableTags = [] } = useQuery<SourceTag[]>({
     queryKey: ["source-tags", sourceId],
     queryFn: () => customFetch<SourceTag[]>(`/api/tags`),
-    enabled: !!sourceId && !!source,
+    enabled: online && !!sourceId && !!source,
     staleTime: 60 * 60 * 1000,
   });
 
@@ -322,7 +325,7 @@ export default function SourceBrowsePage() {
   const popularQuery = useQuery<ListResponse>({
     queryKey: ["source-popular", sourceId, mediaType, popularPage, popularSort, settings.hideNsfw, settings.posterQuality],
     queryFn: () => customFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
-    enabled: !!sourceId && !!source && tab === "popular" && !isFiltering,
+    enabled: online && !!sourceId && !!source && tab === "popular" && !isFiltering,
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
@@ -330,7 +333,7 @@ export default function SourceBrowsePage() {
   const latestQuery = useQuery<ListResponse>({
     queryKey: ["source-latest", sourceId, mediaType, latestPage, popularSort, settings.hideNsfw, settings.posterQuality],
     queryFn: () => customFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
-    enabled: !!sourceId && !!source && tab === "latest" && !isFiltering,
+    enabled: online && !!sourceId && !!source && tab === "latest" && !isFiltering,
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
@@ -343,7 +346,7 @@ export default function SourceBrowsePage() {
       page: String(filterPage),
       "tagIds[]": allTagIds,
     })}`),
-    enabled: !!sourceId && !!source && isFiltering,
+    enabled: online && !!sourceId && !!source && isFiltering,
     staleTime: 30 * 1000,
     retry: 1,
   });
@@ -451,6 +454,19 @@ export default function SourceBrowsePage() {
   }, [pageScrollKey]);
 
   // ---- Render ----
+  if (!online) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background px-6 text-center">
+        <WifiOff className="h-10 w-10 text-muted-foreground/40" />
+        <div>
+          <h1 className="text-lg font-semibold">Source browsing is unavailable offline</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Your installed source and downloaded chapters are still available from Sources and Downloads.</p>
+        </div>
+        <Button variant="outline" onClick={() => setLocation("/sources")}>Back to sources</Button>
+      </div>
+    );
+  }
+
   if (!source && !catalogEntry && !!sourceId) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">

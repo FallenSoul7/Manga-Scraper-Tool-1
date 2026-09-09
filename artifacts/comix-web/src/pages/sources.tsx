@@ -18,9 +18,11 @@ import {
   SearchX,
   Settings2,
   Pin,
+  WifiOff,
 } from "lucide-react";
 import { useStore, storeActions, type InstalledSource } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
+import { getCachedSourceCatalog, saveOfflineSourceCatalog, useOnlineStatus } from "@/lib/offline-catalog";
 
 interface CatalogExtension {
   id: string; slug: string; name: string; lang: string;
@@ -186,6 +188,7 @@ function GlobalSearchResults({ query, results, isSearching, onClear }: {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SourcesPage() {
+  const online = useOnlineStatus();
   const installedMap = useStore(s => s.installedSources);
   const activeId     = useStore(s => s.activeSourceId);
   const searchString = useSearch();
@@ -202,6 +205,11 @@ export default function SourcesPage() {
   const [searchedQuery, setSearchedQuery] = useState("");
 
   useEffect(() => {
+    if (!online) {
+      setGlobalResults([]);
+      setIsSearching(false);
+      return;
+    }
     if (!urlQ) { setGlobalResults([]); setSearchedQuery(""); return; }
     if (urlQ === searchedQuery && globalResults.length > 0) return;
     setIsSearching(true);
@@ -225,21 +233,34 @@ export default function SourcesPage() {
 
     setIsSearching(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlQ]);
+  }, [urlQ, online]);
 
   const clearSearch = () => { setLocation("/sources"); setGlobalResults([]); setSearchedQuery(""); };
   const showGlobalSearch = !!(urlQ || isSearching || globalResults.length > 0);
 
+  const cachedCatalog = getCachedSourceCatalog<CatalogResponse>();
   const { data: catalog } = useQuery<CatalogResponse>({
     queryKey: ["sources-catalog"],
     queryFn: () => customFetch<CatalogResponse>("/api/sources/catalog"),
+    enabled: online,
+    initialData: cachedCatalog ?? undefined,
     staleTime: 24 * 60 * 60 * 1000,
   });
+  useEffect(() => {
+    if (online && catalog) saveOfflineSourceCatalog(catalog);
+  }, [online, catalog]);
   const extensionCount = catalog?.count ?? 0;
 
   return (
     <main className="pb-8 max-w-3xl mx-auto">
-      {showGlobalSearch ? (
+      {showGlobalSearch && !online ? (
+        <div className="px-4 py-20 text-center">
+          <WifiOff className="mx-auto h-10 w-10 text-muted-foreground/40" />
+          <p className="mt-4 text-sm font-medium">Global source search is unavailable offline</p>
+          <p className="mt-1 text-xs text-muted-foreground">Your installed sources and cached extension catalog are still available.</p>
+          <Button variant="outline" size="sm" className="mt-5" onClick={() => setLocation("/sources")}>View installed sources</Button>
+        </div>
+      ) : showGlobalSearch ? (
         <GlobalSearchResults
           query={urlQ || searchedQuery}
           results={globalResults}
@@ -282,11 +303,11 @@ export default function SourcesPage() {
           </TabsContent>
 
           <TabsContent value="anime" className="mt-0 animate-in fade-in duration-300">
-            <AnimeTab installed={installed} activeId={activeId} catalog={catalog ?? null} />
+            <AnimeTab installed={installed} activeId={activeId} catalog={catalog ?? null} online={online} />
           </TabsContent>
 
           <TabsContent value="extensions" className="mt-0 animate-in fade-in duration-300">
-            <BrowseTab installedMap={installedMap} catalog={catalog ?? null} />
+            <BrowseTab installedMap={installedMap} catalog={catalog ?? null} online={online} />
           </TabsContent>
         </Tabs>
       )}
@@ -399,7 +420,7 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
 }
 
 // ─── Anime tab ────────────────────────────────────────────────────────────────
-function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null }) {
+function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null; online: boolean }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -523,12 +544,13 @@ function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; active
                   size="sm"
                   variant="outline"
                   className="h-8 text-xs px-3 gap-1.5"
+                  disabled={!online}
                   onClick={() => {
                     storeActions.installSource({ id: ext.id, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl, isPinned: false });
                     toast({ title: `Installed ${ext.name}` });
                   }}
                 >
-                  <Plus className="h-3.5 w-3.5" /> Install
+                  <Plus className="h-3.5 w-3.5" /> {online ? "Install" : "Online only"}
                 </Button>
               )}
             </div>
@@ -544,7 +566,7 @@ const SUPPORTED_FIRST = (a: CatalogExtension, b: CatalogExtension) =>
   Number(b.supported) - Number(a.supported) || a.name.localeCompare(b.name);
 const PAGE_SIZE = 60;
 
-function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, InstalledSource>; catalog: CatalogResponse | null }) {
+function BrowseTab({ installedMap, catalog, online }: { installedMap: Record<string, InstalledSource>; catalog: CatalogResponse | null; online: boolean }) {
   const { toast } = useToast();
 
   const [search, setSearch]               = useState("");
@@ -581,7 +603,12 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
   const visible = filtered.slice(0, visibleCount);
 
   if (!catalog) {
-    return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    return (
+      <div className="py-20 text-center text-sm text-muted-foreground px-6">
+        <p>Extension catalog is not cached on this device yet.</p>
+        <p className="text-xs mt-1">Connect once to load available extensions.</p>
+      </div>
+    );
   }
 
   return (
@@ -632,13 +659,13 @@ function BrowseTab({ installedMap, catalog }: { installedMap: Record<string, Ins
               ) : (
                 <Button
                   size="sm" variant={isSupported ? "default" : "outline"}
-                  disabled={!isSupported} className="h-8 text-xs px-3 shrink-0"
+                  disabled={!isSupported || !online} className="h-8 text-xs px-3 shrink-0"
                   onClick={() => {
                     storeActions.installSource({ id: canonicalId, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl, isPinned: false });
                     toast({ title: `Added ${ext.name}`, description: "Open the Sources tab to browse it." });
                   }}
                 >
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Add
+                  <Plus className="h-3.5 w-3.5 mr-1" /> {online ? "Add" : "Online only"}
                 </Button>
               )}
             </div>
