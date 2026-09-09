@@ -27,7 +27,6 @@ const SavedMangaSchema = z.object({
   author: z.string().optional(),
   status: z.string().optional(),
   sourceId: z.string().optional(),
-  downloadedAt: z.number().optional(),
   addedAt: z.number(),
   // updatedAt is stamped on every mutation so the cloud merge can always pick
   // the truly-newest version of a manga entry, regardless of addedAt.
@@ -49,7 +48,6 @@ const ChapterProgressSchema = z.object({
   lastPageRead: z.number(),
   isRead: z.boolean(),
   updatedAt: z.number(),
-  downloadedAt: z.number().optional(),
 });
 export type ChapterProgress = z.infer<typeof ChapterProgressSchema>;
 
@@ -722,15 +720,4 @@ export const storeActions = {
     saveState({ ...memoryState, activeSourceId: id });
   },
 
-  markMangaDownloaded(mangaId: string) {
-    const manga = memoryState.library[mangaId];
-    if (!manga) return;
-    saveState({
-      ...memoryState,
-      library: {
-        ...memoryState.library,
-        [mangaId]: { ...manga, downloadedAt: Date.now() },
-      },
-    });
-  },
 };

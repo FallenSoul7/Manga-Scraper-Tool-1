@@ -305,10 +305,6 @@ async function runDownload(id: string): Promise<void> {
         sizeBytes:      totalBytes,
       });
 
-      // Mark in library store for the "downloaded" badge
-      import('./storage').then(({ storeActions }) => {
-        storeActions.markMangaDownloaded(finalItem.mangaId);
-      });
     } else if (item.mode === 'file') {
       // Pack ZIP and trigger browser download
       const chapterLabel = `Chapter ${finalItem.chapterNumber}${finalItem.chapterTitle ? ` - ${finalItem.chapterTitle}` : ''}`;
