@@ -239,7 +239,12 @@ export default function SourcesPage() {
   const showGlobalSearch = !!(urlQ || isSearching || globalResults.length > 0);
 
   const cachedCatalog = getCachedSourceCatalog<CatalogResponse>();
-  const { data: catalog } = useQuery<CatalogResponse>({
+  const {
+    data: catalog,
+    isLoading: catalogLoading,
+    isError: catalogError,
+    refetch: refetchCatalog,
+  } = useQuery<CatalogResponse>({
     queryKey: ["sources-catalog"],
     queryFn: () => customFetch<CatalogResponse>("/api/sources/catalog"),
     enabled: online,
@@ -307,7 +312,14 @@ export default function SourcesPage() {
           </TabsContent>
 
           <TabsContent value="extensions" className="mt-0 animate-in fade-in duration-300">
-            <BrowseTab installedMap={installedMap} catalog={catalog ?? null} online={online} />
+            <BrowseTab
+              installedMap={installedMap}
+              catalog={catalog ?? null}
+              online={online}
+              loading={catalogLoading}
+              error={catalogError}
+              onRetry={() => void refetchCatalog()}
+            />
           </TabsContent>
         </Tabs>
       )}
@@ -566,7 +578,21 @@ const SUPPORTED_FIRST = (a: CatalogExtension, b: CatalogExtension) =>
   Number(b.supported) - Number(a.supported) || a.name.localeCompare(b.name);
 const PAGE_SIZE = 60;
 
-function BrowseTab({ installedMap, catalog, online }: { installedMap: Record<string, InstalledSource>; catalog: CatalogResponse | null; online: boolean }) {
+function BrowseTab({
+  installedMap,
+  catalog,
+  online,
+  loading,
+  error,
+  onRetry,
+}: {
+  installedMap: Record<string, InstalledSource>;
+  catalog: CatalogResponse | null;
+  online: boolean;
+  loading: boolean;
+  error: boolean;
+  onRetry: () => void;
+}) {
   const { toast } = useToast();
 
   const [search, setSearch]               = useState("");
@@ -603,6 +629,24 @@ function BrowseTab({ installedMap, catalog, online }: { installedMap: Record<str
   const visible = filtered.slice(0, visibleCount);
 
   if (!catalog) {
+    if (online && loading) {
+      return (
+        <div className="py-20 flex flex-col items-center gap-3 text-sm text-muted-foreground px-6">
+          <Loader2 className="h-7 w-7 animate-spin text-primary" />
+          <p>Loading extension catalog…</p>
+        </div>
+      );
+    }
+
+    if (online && error) {
+      return (
+        <div className="py-20 flex flex-col items-center gap-3 text-center text-sm text-muted-foreground px-6">
+          <p>Couldn’t load the extension catalog.</p>
+          <Button variant="outline" size="sm" onClick={onRetry}>Try again</Button>
+        </div>
+      );
+    }
+
     return (
       <div className="py-20 text-center text-sm text-muted-foreground px-6">
         <p>Extension catalog is not cached on this device yet.</p>
