@@ -111,9 +111,20 @@ export function useOnlineStatus() {
 
   useEffect(() => {
     const update = () => setOnline(navigatorOnline());
+    // iOS/Android standalone PWAs can report navigator.onLine=false during
+    // their first paint even when the network is already available. Probe
+    // once after mount so the UI does not get stuck in its offline branch.
+    const probe = () => {
+      if (typeof window === "undefined") return;
+      fetch(`${window.location.origin}/`, { method: "HEAD", cache: "no-store" })
+        .then(() => setOnline(true))
+        .catch(() => {});
+    };
     window.addEventListener("online", update);
     window.addEventListener("offline", update);
+    const timer = window.setTimeout(probe, 0);
     return () => {
+      window.clearTimeout(timer);
       window.removeEventListener("online", update);
       window.removeEventListener("offline", update);
     };

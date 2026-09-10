@@ -12,7 +12,7 @@ const OWNED_CACHES = [
   OFFLINE_PAGES_CACHE,
 ];
 
-const API_PATTERNS = ['/api/popular', '/api/latest', '/api/search', '/api/tags', '/api/details', '/api/chapters', '/api/pages'];
+const API_PATTERNS = ['/api/sources/catalog', '/api/popular', '/api/latest', '/api/search', '/api/tags', '/api/details', '/api/chapters', '/api/pages'];
 const IMAGE_PATTERNS = ['/api/image'];
 
 self.addEventListener('install', (event) => {

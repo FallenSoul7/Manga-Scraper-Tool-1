@@ -258,6 +258,10 @@ export default function SourcesPage() {
     enabled: true,
     initialData: cachedCatalog ?? undefined,
     staleTime: 24 * 60 * 60 * 1000,
+    networkMode: "always",
+    refetchOnMount: "always",
+    retry: 3,
+    retryDelay: attempt => Math.min(1000 * 2 ** attempt, 5000),
   });
   useEffect(() => {
     if (online && catalog) saveOfflineSourceCatalog(catalog);

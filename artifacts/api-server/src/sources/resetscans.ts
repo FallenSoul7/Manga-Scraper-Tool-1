@@ -10,7 +10,7 @@ import type {
   ChapterSummary,
   PageInfo,
 } from "./types";
-import { absUrl, fetchHtml, imgAttr, makeHttp } from "./scraper-utils";
+import { absUrl, fetchHtml, fetchHtmlWithBypass, imgAttr, makeHttp } from "./scraper-utils";
 import * as cheerio from "cheerio";
 
 const BASE = "https://www.resetscans.net";
@@ -28,9 +28,23 @@ function numberFrom(text: string): number {
 }
 
 function backgroundImage($el: cheerio.Cheerio<any>): string {
-  const style = $el.attr("style") ?? "";
-  const match = style.match(/background-image\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)/i);
-  return match?.[1]?.trim() ?? "";
+  const values = [
+    $el.attr("data-background-image"),
+    $el.attr("data-bg"),
+    $el.attr("data-bg-image"),
+    $el.attr("data-thumb"),
+    $el.attr("style"),
+  ].filter(Boolean) as string[];
+
+  for (const value of values) {
+    const match = value.match(/(?:background-image|background)\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)/i)
+      ?? value.match(/^https?:\/\/.+$/i);
+    if (match?.[1] ?? match?.[0]) return (match?.[1] ?? match?.[0]).trim();
+  }
+
+  const nested = $el.find("[style*='background'], [data-background-image], [data-bg], [data-bg-image], [data-thumb]").first();
+  if (nested.length) return backgroundImage(nested);
+  return "";
 }
 
 function parseCards($: cheerio.CheerioAPI): MangaSummary[] {
@@ -57,10 +71,10 @@ function parseCards($: cheerio.CheerioAPI): MangaSummary[] {
       title: title || "Untitled",
       // Reset Scans uses CSS background images for its cards rather than
       // <img> elements. Keep the normal img fallback for older page layouts.
-      thumbnail: absUrl(
-        BASE,
-        backgroundImage(root.find(".series-card-thumb, .manga-thumb, .thumb").first()) ||
-          imgAttr(root.find("img").first()),
+      thumbnail: absUrl(BASE,
+        backgroundImage(root.find(".series-card-thumb, .manga-thumb, .thumb, .series-card-image").first()) ||
+        backgroundImage(root) ||
+        imgAttr(root.find("img").first()),
       ),
       type: "Manga",
       isNsfw: false,
@@ -135,6 +149,16 @@ function chapterPathFromId(id: string): string {
   return id.startsWith("http") ? id : absUrl(BASE, id);
 }
 
+async function fetchResetScansHtml(
+  url: string,
+  config: Parameters<typeof fetchHtml>[2] = {},
+) {
+  return fetchHtmlWithBypass(http, url, config, {
+    referer: `${BASE}/`,
+    waitFor: "dom_loaded",
+  });
+}
+
 export const ResetScansSource: MangaSource = {
   id: "en.resetscans",
   name: "Reset Scans",
@@ -155,10 +179,12 @@ export const ResetScansSource: MangaSource = {
   },
 
   async details(id: string, opts: DetailOptions): Promise<MangaDetail> {
-    const { $ } = await fetchHtml(http, id);
+    const { $ } = await fetchResetScansHtml(id);
     const title = $(".series-title, h1.entry-title").first().text().trim();
     const description = $(".series-description, .entry-content").first().text().replace(/\s+/g, " ").trim();
-    const thumbnail = imgAttr($(".series-header-thumbnail img, .manga-hero-header img").first());
+    const thumbnail = backgroundImage(
+      $(".series-header-thumbnail, .manga-hero-header, .series-header, .manga-hero, .profile-manga").first(),
+    ) || imgAttr($(".series-header-thumbnail img, .manga-hero-header img, .profile-manga img").first());
     const genres = $(".manga-genres a, .genres a, .cat-links a").map((_i, el) => $(el).text().trim()).get().filter(Boolean);
 
     return {
@@ -180,15 +206,15 @@ export const ResetScansSource: MangaSource = {
   },
 
   async chapters(mangaId: string): Promise<ChapterListResponse> {
-    const { $ } = await fetchHtml(http, mangaId);
+    const { $ } = await fetchResetScansHtml(mangaId);
     const items: ChapterSummary[] = [];
     const seen = new Set<string>();
 
-    $(".chapters-list .chapter-item, .chapter-list .chapter-item").each((_i, el) => {
+    $(".chapters-list .chapter-item, .chapter-list .chapter-item, .wp-manga-chapter, .listing-chapters_wrap li, .chapter-list li, .chapters-list li").each((_i, el) => {
       const root = $(el);
-      const link = root.find("a.chapter-link, a[href]").first();
+      const link = root.find("a.chapter-link, a[href*='/chapter/'], a[href]").first();
       const href = link.attr("href");
-      if (!href) return;
+      if (!href || !/chapter/i.test(href) && !/chapter/i.test(link.text())) return;
       const id = href.replace(BASE, "");
       if (seen.has(id)) return;
       seen.add(id);
@@ -207,10 +233,10 @@ export const ResetScansSource: MangaSource = {
   },
 
   async pages(chapterId: string): Promise<PageListResponse> {
-    const { $ } = await fetchHtml(http, chapterPathFromId(chapterId));
+    const { $ } = await fetchResetScansHtml(chapterPathFromId(chapterId));
     const pages: PageInfo[] = [];
     const seen = new Set<string>();
-    $(".entry-content img, .chapter-content img, .reading-content img, .wp-block-image img").each((_i, el) => {
+    $(".entry-content img, .chapter-content img, .reading-content img, .wp-block-image img, .page-break img, .chapter-images img").each((_i, el) => {
       const url = absUrl(BASE, imgAttr($(el)));
       if (!url || seen.has(url) || url.startsWith("data:")) return;
       seen.add(url);
