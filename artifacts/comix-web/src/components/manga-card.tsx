@@ -1,8 +1,8 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Link } from "wouter";
 import { proxyImage } from "@/lib/utils";
 import { Check } from "lucide-react";
-import { Film } from "lucide-react";
+import { BookOpen, Film } from "lucide-react";
 import type { MangaSummary } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
 
@@ -51,6 +51,8 @@ export const MangaCard = memo(function MangaCard({
   showSourceBadge,
 }: MangaCardProps) {
   const { settings } = useSettings();
+  const [imageFailed, setImageFailed] = useState(false);
+  const thumbnail = manga.thumbnail ? proxyImage(manga.thumbnail, sourceId) : "";
   const inner = (
     <div className="group relative cursor-pointer select-none">
       <div
@@ -60,16 +62,27 @@ export const MangaCard = memo(function MangaCard({
           isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "",
         ].filter(Boolean).join(" ")}
       >
-        <img
-          src={proxyImage(manga.thumbnail, sourceId)}
-          alt={manga.title}
-          className={[
-            "h-full w-full object-cover object-center bg-black/10 transition-all duration-300",
-            isSelected && "opacity-70",
-          ].filter(Boolean).join(" ")}
-          loading="lazy"
-          draggable={false}
-        />
+        {thumbnail && !imageFailed ? (
+          <img
+            src={thumbnail}
+            alt={manga.title}
+            className={[
+              "h-full w-full object-cover object-center bg-black/10 transition-all duration-300",
+              isSelected && "opacity-70",
+            ].filter(Boolean).join(" ")}
+            loading="lazy"
+            draggable={false}
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <div
+            className="h-full w-full flex flex-col items-center justify-center gap-2 bg-muted px-2 text-center text-muted-foreground"
+            aria-label={`${manga.title} cover unavailable`}
+          >
+            <BookOpen className="h-8 w-8 opacity-40" />
+            <span className="text-[10px] font-medium leading-tight line-clamp-3">{manga.title}</span>
+          </div>
+        )}
         {manga.isNsfw && settings.showNsfwBadge && (
           <div className="absolute top-2 right-2 rounded-md bg-destructive/90 px-1.5 py-0.5 text-[10px] font-semibold text-destructive-foreground backdrop-blur-sm">
             18+

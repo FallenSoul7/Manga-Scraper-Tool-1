@@ -27,6 +27,12 @@ function numberFrom(text: string): number {
   return match ? Number(match[1]) || 0 : 0;
 }
 
+function backgroundImage($el: cheerio.Cheerio<any>): string {
+  const style = $el.attr("style") ?? "";
+  const match = style.match(/background-image\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)/i);
+  return match?.[1]?.trim() ?? "";
+}
+
 function parseCards($: cheerio.CheerioAPI): MangaSummary[] {
   const items: MangaSummary[] = [];
   const seen = new Set<string>();
@@ -49,7 +55,13 @@ function parseCards($: cheerio.CheerioAPI): MangaSummary[] {
     items.push({
       id,
       title: title || "Untitled",
-      thumbnail: absUrl(BASE, imgAttr(root.find("img").first())),
+      // Reset Scans uses CSS background images for its cards rather than
+      // <img> elements. Keep the normal img fallback for older page layouts.
+      thumbnail: absUrl(
+        BASE,
+        backgroundImage(root.find(".series-card-thumb, .manga-thumb, .thumb").first()) ||
+          imgAttr(root.find("img").first()),
+      ),
       type: "Manga",
       isNsfw: false,
     });
@@ -72,13 +84,15 @@ export const ResetScansSource: MangaSource = {
   async popular(opts: ListOptions): Promise<MangaListResponse> {
     const page = opts.page > 1 ? `/manga/page/${opts.page}/` : `${LANGUAGE_ROOT}/`;
     const { $ } = await fetchHtml(http, page);
-    return { items: parseCards($), page: opts.page, hasNextPage: true };
+    // The live site currently exposes a single 20-title homepage listing and
+    // does not publish a working next-page link.
+    return { items: parseCards($), page: opts.page, hasNextPage: false };
   },
 
   async latest(opts: ListOptions): Promise<MangaListResponse> {
-    const page = opts.page > 1 ? `/manga/page/${opts.page}/` : `${LANGUAGE_ROOT}/manga/`;
+    const page = opts.page > 1 ? `/manga/page/${opts.page}/` : `${LANGUAGE_ROOT}/`;
     const { $ } = await fetchHtml(http, page);
-    return { items: parseCards($), page: opts.page, hasNextPage: true };
+    return { items: parseCards($), page: opts.page, hasNextPage: false };
   },
 
   async search(query: string, opts: ListOptions): Promise<MangaListResponse> {

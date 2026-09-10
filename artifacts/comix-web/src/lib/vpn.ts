@@ -20,6 +20,7 @@ export function getProxiedImageUrl(originalUrl: string, sourceId: string): strin
     "en.comickfan": "https://comickfan.com/",
     "en.utoon": "https://utoon.net/",
     "en.elftoon": "https://elftoon.com/",
+    "en.resetscans": "https://www.resetscans.net/",
   };
   const referer = referers[sourceId] ?? "";
   const encodedUrl = encodeURIComponent(originalUrl);

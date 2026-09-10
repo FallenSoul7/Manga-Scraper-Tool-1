@@ -5,6 +5,7 @@
 - [MangaDex chapters language fallback](mangadex-chapters.md) — chapters endpoint filters English first; falls back to all languages if 0 results so non-EN manga show chapters.
 - [ComickFan pages blocked](comickfan-pages.md) — chapter pages unfixable from server: JS-rendered shell, api.comick.fun blocked by Cloudflare.
 - [Webtoons source](webtoons-source.md) — episode list via m.webtoons.com mobile API; pages via HTML viewer; 290+ panels/episode is normal for vertical scroll.
+- [Reset Scans source](resetscans-source.md) — live site is www.resetscans.net; listing covers are CSS background images, and its homepage exposes one 20-title page.
 - [mkissa.to blocked](mkissa-blocked.md) — SvelteKit SSR app; API at api.mkissa.net returns CF 400/403; __data.json returns null nodes; no RSS/sitemap; no X-Frame-Options (may allow iframe). Completely unscrapable server-side.
 - [Source icon proxy setup](source-icon-proxy.md) — icons live at comix-web/public/public/source-icons/; API serves via static at /public/source-icons; Vite must proxy /public → API (port 8080); vite.config.ts also defines VITE_API_URL="" in dev so relative paths go through proxy instead of render.com backend.
 - [CSS theme system](css-pitch-black.md) — dark mode and all color themes use pitch-black bases (0 0% 0% for dark, 2-3% for tinted themes); themes are CSS vars on .dark and html[data-theme=X].
