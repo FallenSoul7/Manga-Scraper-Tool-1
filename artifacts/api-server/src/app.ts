@@ -108,7 +108,7 @@ app.get("/api/image-proxy", async (req, res) => {
       timeout: 15000,
     });
 
-    res.set("Content-Type", response.headers["content-type"] || "image/jpeg");
+    res.set("Content-Type", String(response.headers["content-type"] || "image/jpeg"));
     res.set("Cache-Control", "public, max-age=86400"); 
     
     return res.send(Buffer.from(response.data));
@@ -191,9 +191,11 @@ app.get("/api/allmanga/video", async (req, res) => {
     (upstream.data as NodeJS.ReadableStream).on("error", () => {
       if (!res.headersSent) res.status(502).end();
     });
+    return;
   } catch (err: any) {
     logger.error({ err: err.message, url: target.hostname }, "AllManga video proxy failed");
-    if (!res.headersSent) res.status(502).json({ error: "Failed to stream AllManga video" });
+    if (!res.headersSent) return res.status(502).json({ error: "Failed to stream AllManga video" });
+    return;
   }
 });
 
@@ -206,7 +208,7 @@ app.get("/api/koofr/file", (req, res) => {
   const filePath = nodePath.join(KOOFR_CACHE_ROOT, dir, nodePath.basename(file));
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: "not found" });
   res.setHeader("Cache-Control", "public, max-age=86400");
-  res.sendFile(filePath);
+   return res.sendFile(filePath);
 });
 
 // ── Koofr: cover for zip (extracts first image only, then aborts download) ───
@@ -217,10 +219,10 @@ app.get("/api/koofr/cover", async (req, res) => {
     const coverPath = await getKoofrCover(id);
     if (!coverPath) return res.status(404).json({ error: "no images in zip" });
     res.setHeader("Cache-Control", "public, max-age=86400");
-    res.sendFile(coverPath);
+     return res.sendFile(coverPath);
   } catch (err: any) {
     logger.error({ err: err.message }, "Koofr cover extraction failed");
-    res.status(502).json({ error: "failed to extract cover" });
+     return res.status(502).json({ error: "failed to extract cover" });
   }
 });
 
@@ -256,9 +258,11 @@ app.get("/api/koofr/proxy", async (req, res) => {
     res.status(upstream.status);
     (upstream.data as NodeJS.ReadableStream).pipe(res);
     (upstream.data as NodeJS.ReadableStream).on("error", () => { if (!res.headersSent) res.status(502).end(); });
+    return;
   } catch (err: any) {
     logger.error({ err: err.message, path: koofrPath }, "Koofr proxy failed");
-    if (!res.headersSent) res.status(502).json({ error: "failed to stream file" });
+    if (!res.headersSent) return res.status(502).json({ error: "failed to stream file" });
+    return;
   }
 });
 
@@ -282,6 +286,7 @@ app.get("/api/koofr/thumbnail", async (req, res) => {
         } catch { res.status(502).end(); }
       }
     });
+     return;
   } catch {
     // Koofr thumbnail API unsupported (returns 404 for most file types) — fall back to full proxy
     try {
@@ -290,9 +295,11 @@ app.get("/api/koofr/thumbnail", async (req, res) => {
       if (contentType) res.setHeader("Content-Type", contentType);
       (stream as any).pipe(res);
       (stream as any).on("error", () => { if (!res.headersSent) res.status(502).end(); });
+       return;
     } catch (err: any) {
       logger.error({ err: err.message, path: koofrPath }, "Koofr thumbnail+proxy failed");
-      if (!res.headersSent) res.status(502).json({ error: "failed to fetch file" });
+       if (!res.headersSent) return res.status(502).json({ error: "failed to fetch file" });
+       return;
     }
   }
 });

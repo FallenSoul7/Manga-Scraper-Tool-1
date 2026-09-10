@@ -38,6 +38,7 @@ export function WelcomeOverlay() {
       const t = setTimeout(() => setShowSuccess(false), 1500);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [showSuccess]);
 
   // Check auth with server — called on mount AND whenever the PWA comes to foreground
@@ -87,7 +88,21 @@ export function WelcomeOverlay() {
       const t = setTimeout(() => setVisible(true), 600);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [step]);
+
+  // Show success before the normal hidden/done guard so the OAuth success
+  // flash can still render after the overlay has been dismissed.
+  if (showSuccess && (step === "done" || !visible)) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none">
+        <div className="bg-green-500 text-white rounded-2xl px-6 py-4 flex items-center gap-3 text-base font-semibold shadow-xl">
+          <CheckCircle2 className="h-6 w-6" />
+          Signed in successfully!
+        </div>
+      </div>
+    );
+  }
 
   if (step === "done" || !visible) return null;
   if (isStandalone && step === "install") {
@@ -117,18 +132,6 @@ export function WelcomeOverlay() {
       }
     }
     advanceToLogin();
-  }
-
-  // Show success banner standalone (no overlay card) when returning from OAuth
-  if (showSuccess && (step === "done" || !visible)) {
-    return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none">
-        <div className="bg-green-500 text-white rounded-2xl px-6 py-4 flex items-center gap-3 text-base font-semibold shadow-xl">
-          <CheckCircle2 className="h-6 w-6" />
-          Signed in successfully!
-        </div>
-      </div>
-    );
   }
 
   return (

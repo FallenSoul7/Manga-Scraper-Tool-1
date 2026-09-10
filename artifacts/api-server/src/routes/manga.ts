@@ -80,7 +80,7 @@ router.get("/search", wrap(async (req) => {
 router.get("/manga/:id", wrap(async (req) => {
   const src = getSource(getSourceId(req));
   const q = req.query as Record<string, string>;
-  return src.details(req.params.id, {
+  return src.details(String(req.params.id), {
     poster: (["small", "medium", "large"].includes(q.poster)
       ? q.poster
       : "medium") as PosterQuality,
@@ -96,14 +96,14 @@ router.get("/manga/:id", wrap(async (req) => {
 router.get("/manga/:id/chapters", wrap(async (req) => {
   const src = getSource(getSourceId(req));
   const dedupe = req.query.dedupe !== "false";
-  return src.chapters(req.params.id, dedupe);
+  return src.chapters(String(req.params.id), dedupe);
 }));
 
 // ── Chapter pages ──────────────────────────────────────────────────────────
 
 router.get("/chapter/:id/pages", wrap(async (req) => {
   const src = getSource(getSourceId(req));
-  return src.pages(req.params.id);
+  return src.pages(String(req.params.id));
 }));
 
 // ── Popular sorts ──────────────────────────────────────────────────────────

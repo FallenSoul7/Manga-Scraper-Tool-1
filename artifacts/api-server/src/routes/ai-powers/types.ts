@@ -1,6 +1,9 @@
 // ai-powers/types.ts
 
-import type { apiFetch as ApiFetchType } from "@/lib/api-fetch"; // Adjust import path as needed
+type ApiFetchType = (
+  input: string | URL,
+  init?: RequestInit,
+) => Promise<Response>;
 
 // ────────────────────────────────────────────────
 // STORE TYPES (from your storage)
@@ -54,7 +57,7 @@ export interface SkillContext {
   actions: StoreActions;
 
   /** Fetch function that calls your backend API */
-  apiFetch: typeof ApiFetchType;
+  apiFetch: ApiFetchType;
 
   /** Optional page data for "eyes" skills (injected by frontend) */
   pageData?: PageData;

@@ -13,3 +13,4 @@
 - [API workspace dependency links](api-workspace-dependency-links.md) — a stale pnpm workspace link can break the API despite a valid lockfile; filtered online install repairs it and rebuilds logger workers.
 - [Scrapling browser dependency](scrapling-curl-cffi.md) — Scrapling 0.4.x lazily imports curl_cffi for StealthyFetcher; health must reflect browser-engine readiness.
 - [Web workspace dependency repair](web-workspace-dependencies.md) — workspace-scoped pnpm install may be needed when the package installer targets the monorepo root.
+- [Type contract drift](type-contract-drift.md) — source routes must use MangaSource details/chapters/pages, and Plyr's bundled declarations need an explicit default-import exception.

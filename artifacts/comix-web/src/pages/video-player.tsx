@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, RotateCcw } from "lucide-react";
+// Plyr's declaration file exposes both `export =` and a default export, but
+// TypeScript's bundler resolution selects the former for this package.
+// @ts-expect-error The runtime default export is the constructable Plyr class.
 import Plyr from "plyr";
 import "plyr/dist/plyr.css";
 import { apiUrl } from "@/lib/api-url";

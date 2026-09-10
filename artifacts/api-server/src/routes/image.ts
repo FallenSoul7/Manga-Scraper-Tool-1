@@ -176,7 +176,7 @@ router.get("/", async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
 
     const contentLength = upstream.headers["content-length"];
-    if (contentLength) res.setHeader("Content-Length", contentLength);
+    if (contentLength) res.setHeader("Content-Length", String(contentLength));
 
     (upstream.data as NodeJS.ReadableStream).pipe(res);
   } catch (err) {

@@ -173,16 +173,22 @@ router.post("/analyze-manga", async (req: Request, res: Response) => {
 
     // Fetch manga details
     const id = mangaId ?? mangaUrl ?? "";
-    const details = await source.getMangaDetails(id);
+    const details = await source.details(id, {
+      poster: "medium",
+      alt: false,
+      score: "none",
+    });
 
     // Fetch chapter list
-    const chapters = await source.getChapterList(id);
+    const chaptersResponse = await source.chapters(id, false);
+    const chapters = chaptersResponse.items;
     const firstChapter = chapters[chapters.length - 1]; // oldest chapter first
 
     let pageUrls: string[] = [];
     if (firstChapter) {
       try {
-        const pages = await source.getChapterPages(firstChapter.id);
+        const pagesResponse = await source.pages(String(firstChapter.id));
+        const pages = pagesResponse.pages;
         pageUrls = pages.slice(0, 4).map((p) => p.url);
       } catch (_) {
         // page fetch failing is non-fatal
@@ -235,10 +241,11 @@ router.post("/analyze-manga", async (req: Request, res: Response) => {
       title: details.title,
       author: details.author ?? "",
       status: details.status ?? "",
-      description: details.desc ?? "",
-      tags: (details.tags ?? []).map((t: { name?: string } | string) =>
-        typeof t === "string" ? t : t.name ?? ""
-      ),
+      description: details.synopsis ?? "",
+      tags: [
+        ...(details.genres ?? []),
+        ...(details.sourceTags ?? []).map((tag) => tag.name),
+      ],
       chapter_count: chapters.length,
       page_analyses: pageAnalyses,
       analyzed_at: new Date().toISOString(),
@@ -248,11 +255,13 @@ router.post("/analyze-manga", async (req: Request, res: Response) => {
     let stored = false;
     try {
       const { getSupabase } = await import("../lib/supabase");
-      const sb = getSupabase();
-      const { error } = await sb
-        .from("manga_knowledge")
-        .upsert(knowledgeEntry, { onConflict: "source_id,manga_id" });
-      if (!error) stored = true;
+      const sb = getSupabase() as any;
+      if (sb) {
+        const { error } = await sb
+          .from("manga_knowledge")
+          .upsert(knowledgeEntry, { onConflict: "source_id,manga_id" });
+        if (!error) stored = true;
+      }
     } catch (_) {
       // Supabase not available — return result without storing
     }
@@ -294,7 +303,11 @@ CREATE TABLE IF NOT EXISTS manga_knowledge (
 router.get("/knowledge/stats", async (_req: Request, res: Response) => {
   try {
     const { getSupabase } = await import("../lib/supabase");
-    const sb = getSupabase();
+    const sb = getSupabase() as any;
+    if (!sb) {
+      res.json({ totalManga: 0, status: "table_not_created" });
+      return;
+    }
     const { count, error } = await sb
       .from("manga_knowledge")
       .select("*", { count: "exact", head: true });

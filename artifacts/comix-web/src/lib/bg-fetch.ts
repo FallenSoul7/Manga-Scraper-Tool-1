@@ -20,6 +20,11 @@ export interface BgFetchOptions {
   estimatedSize?: number;
 }
 
+interface BackgroundFetchRegistration {
+  abort(): Promise<boolean>;
+  matchAll(): Promise<Response[]>;
+}
+
 export function isBackgroundFetchSupported(): boolean {
   return typeof self !== 'undefined' && 'BackgroundFetchManager' in self;
 }

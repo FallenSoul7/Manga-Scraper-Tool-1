@@ -88,7 +88,7 @@ export const MangaCard = memo(function MangaCard({
             18+
           </div>
         )}
-        {manga.mediaType === "anime" && (
+        {(manga as MangaSummary & { mediaType?: "manga" | "anime" }).mediaType === "anime" && (
           <div className="absolute bottom-2 right-2 rounded-md bg-black/75 px-1.5 py-1 text-white backdrop-blur-sm" title="Video">
             <Film className="h-3.5 w-3.5" />
           </div>

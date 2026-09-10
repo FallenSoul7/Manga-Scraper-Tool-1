@@ -115,6 +115,9 @@ export interface MangaSource {
   popular(opts: ListOptions): Promise<MangaListResponse>;
   latest(opts: ListOptions): Promise<MangaListResponse>;
   search(query: string, opts: ListOptions): Promise<MangaListResponse>;
+  popularAll?(opts: ListOptions): Promise<MangaListResponse>;
+  latestAll?(opts: ListOptions): Promise<MangaListResponse>;
+  searchAll?(query: string, opts: ListOptions): Promise<MangaListResponse>;
   details(id: string, opts: DetailOptions): Promise<MangaDetail>;
   chapters(mangaId: string, dedupe: boolean): Promise<ChapterListResponse>;
   pages(chapterId: string): Promise<PageListResponse>;

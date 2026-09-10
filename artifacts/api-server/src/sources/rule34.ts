@@ -82,7 +82,7 @@ function pickTitle(rawTags: string, id: string): string {
 }
 
 // ── Post → summary ────────────────────────────────────────────────────────────
-function toSummary($: cheerio.CheerioAPI, el: cheerio.Element): MangaSummary {
+function toSummary($: cheerio.CheerioAPI, el: any): MangaSummary {
   const $el     = $(el);
   const id      = $el.attr("id") ?? "";
   const rawTags = ($el.attr("tags") ?? "").trim();

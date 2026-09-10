@@ -58,10 +58,10 @@ router.get("/sync", requireAuth, async (req, res) => {
     
     // ✅ Fix: Return the entire data payload, not just the library object
     const data = rows[0]?.data ?? {};
-    res.json({ data, updatedAt: rows[0]?.updatedAt ?? null });
+     return res.json({ data, updatedAt: rows[0]?.updatedAt ?? null });
   } catch (err) {
     console.error("library sync GET failed:", err);
-    res.status(500).json({ error: "Database error" });
+     return res.status(500).json({ error: "Database error" });
   }
 });
 
@@ -154,6 +154,7 @@ router.post("/sync", requireAuth, async (req, res) => {
     console.error("library sync POST failed:", err);
     res.status(500).json({ error: "Database error" });
   }
+  return;
 });
 
 export default router;

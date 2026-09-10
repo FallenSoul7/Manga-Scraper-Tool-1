@@ -96,7 +96,7 @@ class SupabaseSessionStore extends session.Store {
 
   private async ensureTable() {
     if (this.tableReady) return;
-    const sb = getSupabaseAdmin();
+    const sb = getSupabaseAdmin() as any;
     if (!sb) return;
     await sb.rpc("exec_sql", {
       sql: `
@@ -108,7 +108,7 @@ class SupabaseSessionStore extends session.Store {
         CREATE INDEX IF NOT EXISTS comihub_sessions_expires_idx
           ON comihub_sessions (expires_at);
       `,
-    }).then(({ error }) => {
+    }).then(({ error }: { error?: { message?: string } }) => {
       if (error) {
         if (!error.message?.includes("already exists")) {
           console.warn("Sessions table setup warning:", error.message);
@@ -121,7 +121,7 @@ class SupabaseSessionStore extends session.Store {
   }
 
   get(sid: string, callback: (err: any, session?: session.SessionData | null) => void) {
-    const sb = getSupabaseAdmin();
+    const sb = getSupabaseAdmin() as any;
     if (!sb) return callback(null, null);
     this.ensureTable().then(async () => {
       try {
@@ -143,7 +143,7 @@ class SupabaseSessionStore extends session.Store {
   }
 
   set(sid: string, sessionData: session.SessionData, callback?: (err?: any) => void) {
-    const sb = getSupabaseAdmin();
+    const sb = getSupabaseAdmin() as any;
     if (!sb) return callback?.();
     const expiresAt = (sessionData.cookie?.expires instanceof Date)
       ? sessionData.cookie.expires
@@ -162,9 +162,9 @@ class SupabaseSessionStore extends session.Store {
   }
 
   destroy(sid: string, callback?: (err?: any) => void) {
-    const sb = getSupabaseAdmin();
+    const sb = getSupabaseAdmin() as any;
     if (!sb) return callback?.();
-    getSupabaseAdmin()!
+    (getSupabaseAdmin() as any)!
       .from("comihub_sessions")
       .delete()
       .eq("sid", sid)
@@ -173,7 +173,7 @@ class SupabaseSessionStore extends session.Store {
   }
 
   touch(sid: string, sessionData: session.SessionData, callback?: (err?: any) => void) {
-    const sb = getSupabaseAdmin();
+    const sb = getSupabaseAdmin() as any;
     if (!sb) return callback?.();
     const expiresAt = (sessionData.cookie?.expires instanceof Date)
       ? sessionData.cookie.expires

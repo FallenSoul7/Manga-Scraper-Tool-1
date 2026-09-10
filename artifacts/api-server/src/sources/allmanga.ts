@@ -273,8 +273,8 @@ function toDetail(id: string, item: ShowData["show"] | MangaData["manga"], kind:
   return {
     id,
     title,
-    author: kind === "manga" ? ((item as MangaData["manga"]).authors?.join(", ") ?? "") : "",
-    artist: kind === "manga" ? ((item as MangaData["manga"]).authors?.join(", ") ?? "") : "",
+    author: kind === "manga" ? ((item as NonNullable<MangaData["manga"]>).authors?.join(", ") ?? "") : "",
+    artist: kind === "manga" ? ((item as NonNullable<MangaData["manga"]>).authors?.join(", ") ?? "") : "",
     synopsis: cleanDescription(item.description),
     altTitles: item.altNames ?? [],
     status: item.status?.toLowerCase().includes("releas") ? "Ongoing" : item.status ?? "Unknown",
@@ -340,11 +340,14 @@ async function listAll(query: string, opts: ListOptions): Promise<MangaListRespo
 const source: MangaSource = {
   id: "en.allmanga",
   name: "AllManga",
-  tags: [
+  lang: "all",
+  async tags() {
+    return [
     { id: "manga", name: "Manga", group: "Media" },
     { id: "anime", name: "Anime", group: "Media" },
     { id: "video", name: "Video", group: "Media" },
-  ],
+    ];
+  },
   isNsfw: true,
 
   async popular(opts: ListOptions): Promise<MangaListResponse> {
