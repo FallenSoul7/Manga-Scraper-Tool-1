@@ -15,6 +15,10 @@ import * as cheerio from "cheerio";
 
 const BASE = "https://www.resetscans.net";
 const LANGUAGE_ROOT = "/en";
+// Reset Scans intentionally publishes a few entries without a cover image.
+// Use the site's own branded artwork for those entries so the app does not
+// turn a valid title into a broken-cover card.
+const FALLBACK_THUMBNAIL = `${BASE}/wp-content/uploads/manganex_wallpaper.jpg`;
 const http = makeHttp(BASE, { Referer: `${BASE}/` });
 
 function parseDate(text: string): number {
@@ -74,7 +78,8 @@ function parseCards($: cheerio.CheerioAPI): MangaSummary[] {
       thumbnail: absUrl(BASE,
         backgroundImage(root.find(".series-card-thumb, .manga-thumb, .thumb, .series-card-image").first()) ||
         backgroundImage(root) ||
-        imgAttr(root.find("img").first()),
+        imgAttr(root.find("img").first()) ||
+        FALLBACK_THUMBNAIL,
       ),
       type: "Manga",
       isNsfw: false,
