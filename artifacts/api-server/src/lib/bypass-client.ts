@@ -16,7 +16,13 @@
 
 import axios, { type AxiosInstance } from "axios";
 
-const BYPASS_URL = process.env["BYPASS_SERVER_URL"] || "http://localhost:3100";
+// The hosted API workflow does not inherit the root .replit userenv reliably.
+// Keep BYPASS_SERVER_URL as an override for local development, but default to
+// the project's hosted Scrapling service instead of silently falling back to a
+// localhost server that is not running in the API artifact.
+const BYPASS_URL =
+  process.env["BYPASS_SERVER_URL"] ||
+  "https://comi-hub-bypasser-scarpiling.onrender.com";
 
 export interface BypassFetchOptions {
   /** URL to fetch */

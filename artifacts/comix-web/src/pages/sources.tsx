@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useStore, storeActions, type InstalledSource } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
-import { getCachedSourceCatalog, saveOfflineSourceCatalog, useOnlineStatus } from "@/lib/offline-catalog";
+import { getCachedSourceCatalog, saveOfflineSourceCatalog, useOfflineCatalog, useOnlineStatus } from "@/lib/offline-catalog";
 
 interface CatalogExtension {
   id: string; slug: string; name: string; lang: string;
@@ -189,6 +189,7 @@ function GlobalSearchResults({ query, results, isSearching, onClear }: {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SourcesPage() {
   const online = useOnlineStatus();
+  const offlineCatalog = useOfflineCatalog();
   const installedMap = useStore(s => s.installedSources);
   const activeId     = useStore(s => s.activeSourceId);
   const searchString = useSearch();
@@ -238,7 +239,11 @@ export default function SourcesPage() {
   const clearSearch = () => { setLocation("/sources"); setGlobalResults([]); setSearchedQuery(""); };
   const showGlobalSearch = !!(urlQ || isSearching || globalResults.length > 0);
 
-  const cachedCatalog = getCachedSourceCatalog<CatalogResponse>();
+  // Subscribe to the offline snapshot so a catalog written during startup is
+  // visible without requiring a full browser refresh.
+  const cachedCatalog =
+    (offlineCatalog?.sourceCatalog as CatalogResponse | null) ??
+    getCachedSourceCatalog<CatalogResponse>();
   const {
     data: catalog,
     isLoading: catalogLoading,
@@ -247,7 +252,10 @@ export default function SourcesPage() {
   } = useQuery<CatalogResponse>({
     queryKey: ["sources-catalog"],
     queryFn: () => customFetch<CatalogResponse>("/api/sources/catalog"),
-    enabled: online,
+    // Catalog loading is safe to attempt even when navigator.onLine is stale
+    // inside a preview iframe. React Query keeps cached data visible if the
+    // request fails, while other source actions still honor the online flag.
+    enabled: true,
     initialData: cachedCatalog ?? undefined,
     staleTime: 24 * 60 * 60 * 1000,
   });

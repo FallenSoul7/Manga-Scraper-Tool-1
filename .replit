@@ -60,3 +60,4 @@ BYPASS_SERVER_URL = "https://comi-hub-bypasser-scarpiling.onrender.com"
 
 [nix]
 channel = "stable-25_05"
+packages = ["gitFull", "playwright-driver"]
