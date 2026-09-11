@@ -3,15 +3,15 @@
   "count": 1356,
   "extensions": [
     {
-      "id": "en.novelfull",
-      "slug": "novelfull",
-      "name": "NovelFull",
+      "id": "en.royalroad",
+      "slug": "royalroad",
+      "name": "Royal Road",
       "lang": "en",
       "isNsfw": false,
       "versionCode": 1,
-      "extClass": "NovelFullSource",
+      "extClass": "RoyalRoadSource",
       "themePkg": null,
-      "baseUrl": "https://novelfull.net",
+      "baseUrl": "https://www.royalroad.com",
       "icon": null
     },
     {
