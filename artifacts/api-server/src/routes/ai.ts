@@ -1,10 +1,80 @@
 // routes/ai.ts
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { PROMPTS } from "./ai-powers/prompts";
 
 const router = Router();
 
 const FETCH_TIMEOUT_MS = 65_000;
+
+const AI_RATE_WINDOW_MS = 60 * 60 * 1000;
+const AI_REQUESTS_PER_WINDOW = 20;
+const AI_MAX_CONCURRENT = 3;
+const AI_MAX_WAITING = 8;
+
+type RateEntry = { startedAt: number[] };
+const rateEntries = new Map<string, RateEntry>();
+let activeAiRequests = 0;
+let waitingAiRequests = 0;
+const aiWaiters: Array<() => void> = [];
+
+function clientKey(req: Request): string {
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function admitNextAiRequest() {
+  const next = aiWaiters.shift();
+  if (!next) return;
+  waitingAiRequests = Math.max(0, waitingAiRequests - 1);
+  activeAiRequests++;
+  next();
+}
+
+async function aiAdmission(req: Request, res: Response, next: NextFunction) {
+  const now = Date.now();
+  const key = clientKey(req);
+  const entry = rateEntries.get(key) ?? { startedAt: [] };
+  entry.startedAt = entry.startedAt.filter((time) => now - time < AI_RATE_WINDOW_MS);
+
+  if (entry.startedAt.length >= AI_REQUESTS_PER_WINDOW) {
+    res.setHeader("Retry-After", "3600");
+    res.status(429).json({ error: "AI request limit reached. Please try again later." });
+    return;
+  }
+
+  if (activeAiRequests >= AI_MAX_CONCURRENT) {
+    if (waitingAiRequests >= AI_MAX_WAITING) {
+      res.setHeader("Retry-After", "30");
+      res.status(429).json({ error: "AI service is busy. Please try again shortly." });
+      return;
+    }
+
+    waitingAiRequests++;
+    await new Promise<void>((resolve) => aiWaiters.push(resolve));
+  } else {
+    activeAiRequests++;
+  }
+
+  entry.startedAt.push(now);
+  rateEntries.set(key, entry);
+
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    activeAiRequests = Math.max(0, activeAiRequests - 1);
+    admitNextAiRequest();
+    if (rateEntries.size > 1000) {
+      for (const [storedKey, storedEntry] of rateEntries) {
+        if (!storedEntry.startedAt.some((time) => now - time < AI_RATE_WINDOW_MS)) {
+          rateEntries.delete(storedKey);
+        }
+      }
+    }
+  };
+  res.once("finish", release);
+  res.once("close", release);
+  next();
+}
 
 // ── API key collection ────────────────────────────────────────────
 function collectKeys(base: string): string[] {
@@ -258,7 +328,7 @@ function parseToolCalls(content: string): any[] | null {
 }
 
 // ──────────────────────────────────────────────────────────────────
-router.post("/chat", async (req, res) => {
+router.post("/chat", aiAdmission, async (req, res) => {
   const { messages: rawMessages, modelMode = "auto" } = req.body as {
     messages: Array<{ role: string; content: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }>;
     modelMode: string;

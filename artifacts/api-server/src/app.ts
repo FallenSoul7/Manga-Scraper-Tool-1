@@ -13,6 +13,7 @@ import axios from "axios";
 import { getKoofrCover, koofrStream, koofrThumbnail, isProxySafe, CACHE_ROOT as KOOFR_CACHE_ROOT } from "./sources/koofr.js";
 
 const app: Express = express();
+app.set("trust proxy", 1);
 
 app.use(
   pinoHttp({
@@ -57,8 +58,8 @@ app.use(
   }),
 );
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "4mb" }));
+app.use(express.urlencoded({ extended: true, limit: "256kb" }));
 
 // Apply session + passport globally so ALL routes (including /api/library) can use req.isAuthenticated()
 app.use(buildSessionMiddleware());
