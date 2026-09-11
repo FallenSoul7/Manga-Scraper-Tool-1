@@ -36,7 +36,6 @@ const CachePage            = lazy(() => import("@/pages/cache"));
 const InstallPage          = lazy(() => import("@/pages/install"));
 const LoginPage            = lazy(() => import("@/pages/login"));
 const ProfilePage          = lazy(() => import("@/pages/profile"));
-const GenerationPage       = lazy(() => import("@/pages/generation"));
 const LockPage             = lazy(() => import("@/pages/lock"));
 const LockScreen           = lazy(() => import("@/components/lock-screen").then(({ LockScreen }) => ({ default: LockScreen })));
 
@@ -261,9 +260,6 @@ function AppContent() {
               </Route>
               <Route path="/profile">
                 <Lazy><ProfilePage /></Lazy>
-              </Route>
-              <Route path="/generation">
-                <Lazy><GenerationPage /></Lazy>
               </Route>
               <Route path="/lock">
                 <Lazy><LockPage /></Lazy>

@@ -21,7 +21,3 @@ export function getSupabaseAdmin() {
 export function isSupabaseConfigured() {
   return !!(process.env["SUPABASE_URL"] && process.env["SUPABASE_SERVICE_KEY"]);
 }
-
-// Alias kept for backward compatibility with dynamic imports elsewhere
-// (e.g. routes/generation.ts imports { getSupabase }).
-export const getSupabase = getSupabaseAdmin;

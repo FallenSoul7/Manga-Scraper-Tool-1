@@ -63,13 +63,14 @@ export function Header() {
   const isUpdates = location === "/updates";
   const isHistory = location === "/history";
   const isSources = location === "/sources";
+  const isSystem  = location === "/system";
 
   const urlQ = isSources ? (new URLSearchParams(searchString).get("q") ?? "") : "";
   const [sourcesQuery, setSourcesQuery] = useState(urlQ);
   useEffect(() => { setSourcesQuery(urlQ); }, [urlQ]);
 
   const pageTitle = PAGE_TITLES[location] ?? "";
-  const showTheme = !isUpdates && !isHistory;
+  const showTheme = !isUpdates && !isHistory && !isSystem;
 
   const handleSourcesSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -100,7 +101,7 @@ export function Header() {
                 Library
               </span>
             </Link>
-          ) : (
+          ) : isSystem ? null : (
             <span className="font-serif font-bold text-base sm:text-xl tracking-tight whitespace-nowrap shrink-0">
               {pageTitle}
             </span>
