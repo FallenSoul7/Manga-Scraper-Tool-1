@@ -24,6 +24,8 @@ export interface Chapter {
 export interface ChapterPage {
   index: number;
   url: string;
+  text?: string;
+  title?: string;
 }
 
 export interface MangaDetails {

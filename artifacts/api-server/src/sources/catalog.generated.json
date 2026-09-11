@@ -1,7 +1,19 @@
 {
   "generatedAt": 1777351232738,
-  "count": 1355,
+  "count": 1356,
   "extensions": [
+    {
+      "id": "en.novelfull",
+      "slug": "novelfull",
+      "name": "NovelFull",
+      "lang": "en",
+      "isNsfw": false,
+      "versionCode": 1,
+      "extClass": "NovelFullSource",
+      "themePkg": null,
+      "baseUrl": "https://novelfull.net",
+      "icon": null
+    },
     {
       "id": "all.pawchive",
       "slug": "pawchive",

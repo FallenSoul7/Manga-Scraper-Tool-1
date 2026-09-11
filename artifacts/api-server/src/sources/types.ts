@@ -99,6 +99,10 @@ export interface ChapterListResponse {
 export interface PageInfo {
   index: number;
   url: string;
+  /** Optional rendered HTML content for text-based novel sources. */
+  text?: string;
+  /** Optional chapter title for text-based sources. */
+  title?: string;
 }
 
 export interface PageListResponse {

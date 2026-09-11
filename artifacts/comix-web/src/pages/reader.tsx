@@ -7,6 +7,7 @@ import {
   getGetChaptersQueryKey,
   getGetMangaDetailsQueryKey,
   setExtraHeader,
+  type ChapterPage,
 } from "@workspace/api-client-react";
 import { proxyImage, readerUrl } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
@@ -130,7 +131,7 @@ export default function Reader() {
   });
 
   // Unified pages array: offline IndexedDB data OR live API data
-  const effectivePages: { index: number; url: string }[] =
+  const effectivePages: ChapterPage[] =
     (isOfflineMode && offlinePages) ? offlinePages : (pagesData?.pages ?? []);
   const effectiveLoading = isOfflineMode ? offlineLoading : pagesLoading;
   const effectiveError = isOfflineMode ? null : pagesError;
@@ -411,6 +412,32 @@ export default function Reader() {
         subtitle={chapterTitle}
         onBack={goBack}
       />
+    );
+  }
+
+  // ── Text content → render dedicated novel reader ────────────────────────
+  const textPage = effectivePages.find((page) => Boolean(page.text));
+  if (textPage?.text) {
+    const novelTitle = effectiveMangaData?.title ?? "Novel";
+    const chapterTitle = textPage.title || effectiveChapterData.find(c => String(c.id) === chapterId)?.title || "Chapter";
+    return (
+      <div className="min-h-[100dvh] bg-[#f4f1ea] text-[#27231f]" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-20 border-b border-black/10 bg-[#f4f1ea]/95 backdrop-blur px-3 py-3 sm:px-6">
+          <div className="mx-auto flex max-w-3xl items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={goBack} aria-label="Go back"><ChevronLeft className="h-5 w-5" /></Button>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs text-black/50">{novelTitle}</div>
+              <div className="truncate text-sm font-semibold">{chapterTitle}</div>
+            </div>
+            <Button variant="ghost" size="icon" disabled={!prevChapter} onClick={() => prevChapter && navigateToChapter(prevChapter.id)} aria-label="Previous chapter"><ChevronLeft className="h-5 w-5" /></Button>
+            <Button variant="ghost" size="icon" disabled={!nextChapter} onClick={() => nextChapter && navigateToChapter(nextChapter.id)} aria-label="Next chapter"><ChevronRight className="h-5 w-5" /></Button>
+          </div>
+        </div>
+        <article
+          className="prose prose-stone mx-auto max-w-3xl px-5 py-8 sm:px-8 sm:py-12 prose-p:leading-8 prose-headings:font-semibold"
+          dangerouslySetInnerHTML={{ __html: textPage.text }}
+        />
+      </div>
     );
   }
 
