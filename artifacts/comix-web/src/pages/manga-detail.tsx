@@ -4,6 +4,7 @@ import {
   useGetChapters,
   getGetMangaDetailsQueryKey,
   getGetChaptersQueryKey,
+  setExtraHeader,
 } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
 import { proxyImage, readerUrl } from "@/lib/utils";
@@ -188,6 +189,10 @@ export default function MangaDetail() {
   const params = useParams<{ id?: string; mangaId?: string; sourceId?: string }>();
   const id = params.id ?? params.mangaId ?? null;
   const sourceContext = params.sourceId ?? null;
+  // Apply the source before the first detail/chapter query. Without this,
+  // the initial render can query the backend without X-Source and show a
+  // false "Manga not found" state.
+  if (sourceContext) setExtraHeader("X-Source", sourceContext);
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const fromParam = new URLSearchParams(searchString).get("from");
