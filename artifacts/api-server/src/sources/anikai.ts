@@ -47,9 +47,8 @@ function parseSearchResults(html: string) {
     if (!title || !href) return [];
     const poster = node.find(".poster img").first();
     const thumbnail = poster.attr("src") || poster.attr("data-src") || "";
-    const path = href.startsWith("http") ? new URL(href).pathname : href;
     return [{
-      id: path.replace(/^\/watch\//, "").replace(/\/$/, ""),
+      id: href.replace(/^\/watch\//, "").replace(/\/$/, ""),
       title,
       thumbnail: absUrl(BASE_URL, thumbnail),
       type: "Anime",
