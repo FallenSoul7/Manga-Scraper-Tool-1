@@ -3,6 +3,19 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
+/* Keep reader controls aligned with browser mode when the app is installed
+   as a standalone PWA. The reader owns its own top bar, so the standalone
+   status-bar inset must not create a second blank band above it. */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .reader-top-bar {
+    padding-top: 0 !important;
+  }
+
+  .novel-reader-toolbar {
+    top: 0 !important;
+  }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
