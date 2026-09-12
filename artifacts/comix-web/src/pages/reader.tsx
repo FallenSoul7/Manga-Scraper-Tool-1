@@ -1,4 +1,5 @@
 import { useRoute, useSearch, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import {
   useGetChapterPages,
   useGetChapters,
@@ -7,12 +8,14 @@ import {
   getGetChaptersQueryKey,
   getGetMangaDetailsQueryKey,
   setExtraHeader,
+  customFetch,
   type ChapterPage,
 } from "@workspace/api-client-react";
 import { proxyImage, readerUrl } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
 // ── Keep this import ─────────────────────────────────────────────────────
 import { getProxiedImageUrl } from "@/lib/vpn";
+import { getClientSourceAdapter } from "@/lib/client-sources";
 import VideoPlayer from "@/pages/video-player";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
@@ -123,13 +126,25 @@ export default function Reader() {
     setLoadedImgs(prev => (prev[idx] ? prev : { ...prev, [idx]: true }));
   };
 
-  const { data: pagesData, isLoading: pagesLoading, error: pagesError } = useGetChapterPages(chapterId, {
+  const clientAdapter = getClientSourceAdapter(sourceId ?? "");
+  const clientPagesQuery = useQuery({
+    queryKey: ["client-pages", sourceId, chapterId],
+    queryFn: () => clientAdapter?.pages
+      ? clientAdapter.pages(chapterId).catch(() => customFetch<any>(`/api/chapter/${encodeURIComponent(chapterId)}/pages`))
+      : Promise.reject(new Error("Client pages unavailable")),
+    enabled: !isOfflineMode && !!chapterId && chapterId !== "0" && !!clientAdapter?.pages,
+    staleTime: 5 * 60 * 1000,
+  });
+  const serverPagesQuery = useGetChapterPages(chapterId, {
     query: {
-      // Skip API when reading an offline chapter — pages come from IndexedDB
-      enabled: !isOfflineMode && !!chapterId && chapterId !== "0",
+      // Skip API when reading offline or when this source has a client page adapter.
+      enabled: !isOfflineMode && !!chapterId && chapterId !== "0" && !clientAdapter?.pages,
       queryKey: getGetChapterPagesQueryKey(chapterId),
     },
   });
+  const pagesData = clientPagesQuery.data ?? serverPagesQuery.data;
+  const pagesLoading = clientPagesQuery.isLoading || (!clientAdapter?.pages && serverPagesQuery.isLoading);
+  const pagesError = clientPagesQuery.error ?? (!clientAdapter?.pages ? serverPagesQuery.error : null);
 
   // Unified pages array: offline IndexedDB data OR live API data
   const effectivePages: ChapterPage[] =

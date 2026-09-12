@@ -1,10 +1,12 @@
 import { useLocation, useParams, useSearch } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import {
   useGetMangaDetails,
   useGetChapters,
   getGetMangaDetailsQueryKey,
   getGetChaptersQueryKey,
   setExtraHeader,
+  customFetch,
 } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
 import { proxyImage, readerUrl } from "@/lib/utils";
@@ -28,6 +30,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useOfflineChapters } from "@/lib/offline-db";
 import { useOnlineStatus } from "@/lib/offline-catalog";
+import { getClientSourceAdapter } from "@/lib/client-sources";
 
 
 /** Decode a Koofr base64url manga ID back to its file path and check if it's a video. */
@@ -257,18 +260,42 @@ export default function MangaDetail() {
   const mangaParams = { poster: settings.posterQuality, alt: settings.showAltNames, score: settings.scorePosition };
   const chaptersParams = { dedupe: false };
 
-  const { data: mangaData, isLoading: mangaLoading } = useGetMangaDetails(id || "", mangaParams, {
+  const clientAdapter = getClientSourceAdapter(effectiveSourceForKey ?? "");
+  const clientDetailsQuery = useQuery({
+    queryKey: ["client-details", effectiveSourceForKey, id, settings.posterQuality, settings.showAltNames, settings.scorePosition],
+    queryFn: () => clientAdapter?.details
+      ? clientAdapter.details(id!, { scorePosition: settings.scorePosition === "hidden" ? "none" : settings.scorePosition })
+          .catch(() => customFetch<any>(`/api/manga/${encodeURIComponent(id!)}`))
+      : customFetch<any>(`/api/manga/${encodeURIComponent(id!)}`),
+    enabled: !!id && sourceReady && online && !!clientAdapter?.details,
+    staleTime: 5 * 60 * 1000,
+  });
+  const clientChaptersQuery = useQuery({
+    queryKey: ["client-chapters", effectiveSourceForKey, id],
+    queryFn: () => clientAdapter?.chapters
+      ? clientAdapter.chapters(id!).catch(() => customFetch<any>(`/api/manga/${encodeURIComponent(id!)}/chapters?dedupe=false`))
+      : Promise.reject(new Error("Client chapters unavailable")),
+    enabled: !!id && sourceReady && online && !!clientAdapter?.chapters,
+    staleTime: 60 * 1000,
+  });
+
+  const { data: serverMangaData, isLoading: serverMangaLoading } = useGetMangaDetails(id || "", mangaParams, {
     query: {
-      enabled: !!id && sourceReady && online,
+      enabled: !!id && sourceReady && online && !clientAdapter?.details,
       queryKey: [...getGetMangaDetailsQueryKey(id || "", mangaParams), effectiveSourceForKey ?? ""],
     },
   });
-  const { data: chaptersResponse, isLoading: chaptersLoading, isError: chaptersError } = useGetChapters(id || "", chaptersParams, {
+  const { data: serverChaptersResponse, isLoading: serverChaptersLoading, isError: serverChaptersError } = useGetChapters(id || "", chaptersParams, {
     query: {
-      enabled: !!id && sourceReady && online,
+      enabled: !!id && sourceReady && online && !clientAdapter?.chapters,
       queryKey: [...getGetChaptersQueryKey(id || "", chaptersParams), effectiveSourceForKey ?? ""],
     },
   });
+  const mangaData = clientDetailsQuery.data ?? serverMangaData;
+  const chaptersResponse = clientChaptersQuery.data ?? serverChaptersResponse;
+  const mangaLoading = clientDetailsQuery.isLoading || (!clientAdapter?.details && serverMangaLoading);
+  const chaptersLoading = clientChaptersQuery.isLoading || (!clientAdapter?.chapters && serverChaptersLoading);
+  const chaptersError = clientChaptersQuery.isError || (!clientAdapter?.chapters && serverChaptersError);
 
   const downloadedChapters = useMemo(
     () => offlineChapters

@@ -1,7 +1,12 @@
 import { apiUrl } from "@/lib/api-url";
+import { isClientSource } from "@/lib/client-sources";
 
 export function getProxiedImageUrl(originalUrl: string, sourceId: string): string {
   if (!originalUrl) return "";
+
+  // Client adapters already fetched the page/media URL in the browser. Keep
+  // it direct so the user's device, not Render, performs the image transfer.
+  if (isClientSource(sourceId) && /^https?:\/\//i.test(originalUrl)) return originalUrl;
 
   // Source adapters may already return a local proxy URL. Keep it local in
   // development, but point it at Render in production.
