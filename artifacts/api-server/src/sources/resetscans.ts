@@ -230,14 +230,27 @@ export const ResetScansSource: MangaSource = {
     // HTML response. Do not route this page through the optional bypass
     // service: some bypass responses omit the inline load-more config,
     // which silently leaves the adapter with only the first 10 chapters.
-    const firstPage = await fetchHtml(http, mangaId);
+    let firstPage: Awaited<ReturnType<typeof fetchHtml>>;
+    try {
+      firstPage = await fetchHtml(http, mangaId);
+      if (!firstPage.$(".series-title, h1.entry-title").first().text().trim()) {
+        firstPage = await fetchResetScansHtml(mangaId);
+      }
+    } catch {
+      firstPage = await fetchResetScansHtml(mangaId);
+    }
     const items: ChapterSummary[] = [];
     const seen = new Set<string>();
     parseChapterItems(firstPage.$, items, seen);
 
-    const categoryId = firstPage.$(".chapters-list").attr("data-category");
-    const loadMore = firstPage.$("#load-more-series").length > 0;
-    if (categoryId && loadMore) {
+    // ResetScans has returned slightly different markup to different server
+    // requests. Read these values from both the DOM and raw HTML so a valid
+    // page never gets mistaken for a page without pagination.
+    const categoryId = firstPage.$(".chapters-list").attr("data-category")
+      || firstPage.html.match(/class=["'][^"']*chapters-list[^"']*["'][^>]*data-category=["']([^"']+)/i)?.[1]
+      || firstPage.html.match(/data-category=["']([^"']+)["']/i)?.[1];
+    const hasMoreMarker = firstPage.$("#load-more-series").length > 0 || /load-more-series|load_more_chapters/i.test(firstPage.html);
+    if (categoryId && (hasMoreMarker || items.length >= 10)) {
       const nonce = getLoadMoreNonce(firstPage.html);
       const order = firstPage.$(".series-chapter-order .sort-trigger.active").attr("data-sort") || "desc";
       for (let page = 2, hasMore = true; page <= 50 && hasMore; page++) {
