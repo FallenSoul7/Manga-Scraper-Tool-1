@@ -1,32 +1,9 @@
-# Render Blueprint — pins the build for BOTH deployed services so Render
-# stops misbuilding them (see artifacts/bypass-server for the bypass fix).
-# No secrets here; runtime secrets stay in the Render dashboard as env vars.
+# Render Blueprint for the standalone main backend.
+# Optional local bypass support can be enabled separately with BYPASS_SERVER_URL.
 services:
-  # 1) Main backend — Express/TS api-server (native Node build, no Dockerfile).
-  #    Build mirrors artifacts/api-server/package.json (build = node ./build.mjs,
-  #    start = node --enable-source-maps ./dist/index.mjs). pnpm install at the
-  #    member dir resolves the pnpm-workspace.yaml upward and links the
-  #    @workspace/* libs so esbuild can bundle them.
   - type: web
     name: comihub-backend
     runtime: node
     rootDir: artifacts/api-server
     buildCommand: pnpm install && pnpm run build
     startCommand: node --enable-source-maps ./dist/index.mjs
-    envVars:
-      - key: BYPASS_SERVER_URL
-        value: https://comi-hub-bypasser-scarpiling.onrender.com
-
-  # 2) Python bypass — FastAPI + Scrapling. MUST build from
-  #    artifacts/bypass-server/Dockerfile so `pip install -r requirements.txt`
-  #    and `python -m playwright install --with-deps chromium` actually run.
-  #    Render injects $PORT automatically; the Dockerfile CMD already falls back
-  #    to 3100, so no BYPASS_PORT is needed.
-  - type: web
-    name: comi-hub-bypasser-scarpiling
-    runtime: docker
-    rootDir: artifacts/bypass-server
-    dockerfilePath: ./Dockerfile
-    envVars:
-      - key: BYPASS_PORT
-        value: "3100"

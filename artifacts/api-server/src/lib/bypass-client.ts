@@ -10,19 +10,15 @@
  * StealthyFetcher — a headless Chromium that solves Cloudflare challenges
  * and renders JavaScript.
  *
- * The bypass server runs on localhost:3100 by default. Set BYPASS_SERVER_URL
- * to override.
+ * Configure BYPASS_SERVER_URL only when running a separate local bypass
+ * service; production does not depend on one.
  */
 
 import axios, { type AxiosInstance } from "axios";
 
-// The hosted API workflow does not inherit the root .replit userenv reliably.
-// Keep BYPASS_SERVER_URL as an override for local development, but default to
-// the project's hosted Scrapling service instead of silently falling back to a
-// localhost server that is not running in the API artifact.
-const BYPASS_URL =
-  process.env["BYPASS_SERVER_URL"] ||
-  "https://comi-hub-bypasser-scarpiling.onrender.com";
+// Bypass support is optional. Configure BYPASS_SERVER_URL only for a local
+// browser service; the main API must not depend on a separate hosted backend.
+const BYPASS_URL = process.env["BYPASS_SERVER_URL"] || "";
 
 export interface BypassFetchOptions {
   /** URL to fetch */
@@ -83,6 +79,7 @@ function client(): AxiosInstance {
  * Called automatically by fetchViaBypass — you don't need to call this directly.
  */
 export async function isBypassAvailable(): Promise<boolean> {
+  if (!BYPASS_URL) return false;
   const now = Date.now();
   if (now - _lastCheckedAt < HEALTH_CHECK_INTERVAL_MS) {
     return _cachedAvailable;
