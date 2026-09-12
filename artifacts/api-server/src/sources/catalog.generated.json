@@ -1,6 +1,6 @@
 {
   "generatedAt": 1777351232738,
-  "count": 1358,
+  "count": 1356,
   "extensions": [
     {
       "id": "en.royalroad",
@@ -16285,19 +16285,6 @@
       "themePkg": null,
       "baseUrl": "https://zonatmo.to",
       "icon": "es.zonatmoto.png"
-    }
-    ,
-    {
-      "id": "en.anikai",
-      "slug": "anikai",
-      "name": "Anime Kai",
-      "lang": "en",
-      "isNsfw": false,
-      "versionCode": 1,
-      "extClass": "AnimeKaiSource",
-      "themePkg": null,
-      "baseUrl": "https://anikai.to",
-      "icon": null
     }
   ]
 }
