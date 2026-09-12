@@ -20,7 +20,6 @@ import { Rule34Source } from "./rule34";
 import { PawchiveSource } from "./pawchive";
 import { AllMangaSource } from "./allmanga";
 import { RoyalRoadSource } from "./royalroad";
-import { AnimeKaiSource } from "./anikai";
 import catalogJson from "./catalog.generated.json" with { type: "json" };
 
 interface CatalogExtension {
@@ -65,7 +64,6 @@ register(Rule34Source);
 register(PawchiveSource);
 register(AllMangaSource);
 register(RoyalRoadSource);
-register(AnimeKaiSource);
 // The upstream catalog historically called this extension "en.allanime",
 // while the implemented source uses "en.allmanga". Keep both IDs valid so
 // existing installed sources and saved library entries do not break.
