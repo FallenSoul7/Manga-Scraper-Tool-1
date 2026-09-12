@@ -56,6 +56,30 @@ const ALLMANGA_SOURCE_ID = "en.allmanga";
 const ALLMANGA_CATALOG_ID = "en.allanime";
 const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga", ALLMANGA_SOURCE_ID]);
 
+// Keep extension availability labels in one place so installed-source rows and
+// the extension browser always show the same status.
+const NOT_WORKING_SOURCE_IDS = new Set([
+  "en.comix",
+  "en.comickfan",
+  "en.utoon",
+  "en.manhuaplus",
+  "en.elftoon",
+]);
+
+function SourceStatusTag({ sourceId, supported = true }: { sourceId: string; supported?: boolean }) {
+  if (!supported) return null;
+  const notWorking = NOT_WORKING_SOURCE_IDS.has(sourceId);
+  return (
+    <span
+      className={notWorking
+        ? "text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 shrink-0"
+        : "text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0"}
+    >
+      {notWorking ? "Not working" : "Working"}
+    </span>
+  );
+}
+
 // Implemented (supported) sources that are intentionally hidden from the
 // default Extensions list. They are still installable — but only when found
 // through the search box, so they don't sit at the top of the browse list.
@@ -375,9 +399,7 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="font-semibold text-sm text-foreground truncate">{src.name}</p>
-            {src.id === "en.ninehentai" && (
-              <span className="text-[11px] font-semibold text-emerald-500 shrink-0">Working</span>
-            )}
+            <SourceStatusTag sourceId={src.id} />
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{langLabel(src.lang)}</p>
         </div>
@@ -705,6 +727,7 @@ function BrowseTab({
                   <span className="font-semibold text-sm truncate">{ext.name}</span>
                   {ext.isNsfw && <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">18+</span>}
                   {!isSupported && <span className="text-[10px] px-1.5 py-0 rounded bg-muted text-muted-foreground">Coming soon</span>}
+                  <SourceStatusTag sourceId={canonicalId} supported={isSupported} />
                 </div>
                 <p className="text-xs text-muted-foreground">{langLabel(ext.lang)}</p>
               </div>
