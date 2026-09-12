@@ -1,6 +1,6 @@
 {
   "generatedAt": 1777351232738,
-  "count": 1356,
+  "count": 1357,
   "extensions": [
     {
       "id": "en.royalroad",
@@ -16285,6 +16285,18 @@
       "themePkg": null,
       "baseUrl": "https://zonatmo.to",
       "icon": "es.zonatmoto.png"
+    },
+    {
+      "id": "en.animegg",
+      "slug": "animegg",
+      "name": "AnimeGG",
+      "lang": "en",
+      "isNsfw": false,
+      "versionCode": 1,
+      "extClass": ".AnimeGG",
+      "themePkg": null,
+      "baseUrl": "https://www.animegg.org",
+      "icon": null
     }
   ]
 }

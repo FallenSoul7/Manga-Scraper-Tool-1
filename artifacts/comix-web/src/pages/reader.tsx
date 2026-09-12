@@ -370,7 +370,8 @@ export default function Reader() {
     /\.(mp4|webm|ogg|mov|mkv|avi)(\?|$|&)/i.test(url) ||
     /\.(mp4|webm|mov|mkv|avi)$/i.test(decodeURIComponent(url)) ||
     /\/api\/allmanga\/video(\?|$)/i.test(url) ||
-    /\/api\/koofr\/proxy\?.*video/i.test(decodeURIComponent(url));
+    /\/api\/koofr\/proxy\?.*video/i.test(decodeURIComponent(url)) ||
+    /animegg\.org\/embed\//i.test(url);
 
   if (effectiveLoading) {
     return (

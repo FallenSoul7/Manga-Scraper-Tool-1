@@ -15,6 +15,7 @@ export interface VideoPlayerProps {
 }
 
 export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlayerProps) {
+  const isEmbed = /animegg\.org\/embed\//i.test(url);
   const videoRef = useRef<HTMLVideoElement>(null);
   const plyrRef = useRef<Plyr | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -36,6 +37,10 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
   }, [resumeKey]);
 
   useEffect(() => {
+    if (isEmbed) {
+      setLoading(false);
+      return;
+    }
     if (!videoRef.current) return;
 
     const player = new Plyr(videoRef.current, {
@@ -103,7 +108,7 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
       plyrRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]);
+  }, [url, isEmbed]);
 
   function retry() {
     setHasError(false);
@@ -153,14 +158,24 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
         if (plyrRef.current && plyrRef.current.playing) setControlsVisible(false);
       }}
     >
-      <video
-        ref={videoRef}
-        src={apiUrl(url)}
-        className="absolute inset-0 w-full h-full object-contain plyr-video"
-        playsInline
-        preload="metadata"
-        crossOrigin="anonymous"
-      />
+      {isEmbed ? (
+        <iframe
+          src={apiUrl(url)}
+          title={title}
+          className="absolute inset-0 w-full h-full border-0"
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowFullScreen
+        />
+      ) : (
+        <video
+          ref={videoRef}
+          src={apiUrl(url)}
+          className="absolute inset-0 w-full h-full object-contain plyr-video"
+          playsInline
+          preload="metadata"
+          crossOrigin="anonymous"
+        />
+      )}
 
       {/* Top bar — back button + title (separate from Plyr controls) */}
       <div

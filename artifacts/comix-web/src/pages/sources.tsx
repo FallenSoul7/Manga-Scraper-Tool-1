@@ -54,7 +54,7 @@ const langLabel = (code: string) => LANG_LABELS[code] ?? code.toUpperCase();
 // accidentally shown as an unsupported "Coming soon" extension.
 const ALLMANGA_SOURCE_ID = "en.allmanga";
 const ALLMANGA_CATALOG_ID = "en.allanime";
-const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga", ALLMANGA_SOURCE_ID]);
+const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga", ALLMANGA_SOURCE_ID, "en.animegg"]);
 
 // Keep extension availability labels in one place so installed-source rows and
 // the extension browser always show the same status.
