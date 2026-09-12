@@ -28,7 +28,7 @@ function parseListing(document: cheerio.CheerioAPI, page: number): MangaListResp
 }
 
 async function listing(path: string, page: number): Promise<MangaListResponse> {
-  const response = await http.get<string>(`${BASE}${path}${path.includes("?") ? "&" : "?"}page=${page}`);
+  const response = await http.get<string>(`${BASE}${path}${path.includes("?") ? "&" : "?"}page=${page}`, { timeout: 8000 });
   return parseListing(cheerio.load(response.data), page);
 }
 
@@ -37,7 +37,7 @@ function fallbackListing(page: number): MangaListResponse {
 }
 
 async function search(query: string, opts: ListOptions): Promise<MangaListResponse> {
-  if (!query.trim()) return listing("/popular-series", opts.page).catch(() => listing("/releases", opts.page).catch(() => fallbackListing(opts.page)));
+  if (!query.trim()) return listing("/popular-series", opts.page).catch(() => fallbackListing(opts.page));
   const response = await http.get<Array<{ id: number; name: string; url: string; thumbnailUrl?: string }>>(`${BASE}/search/auto/`, { params: { q: query } });
   const all = response.data ?? [];
   const pageItems = all.slice((opts.page - 1) * 20, opts.page * 20).map(item => ({ id: slugFromId(item.url), title: item.name, thumbnail: item.thumbnailUrl ? absolute(item.thumbnailUrl) : "", type: "Anime", isNsfw: false, mediaType: "anime" as const }));
@@ -84,8 +84,8 @@ async function pages(chapterId: string): Promise<PageListResponse> {
 
 const AnimeGGSource: MangaSource = {
   id: "en.animegg", name: "AnimeGG", lang: "en", isNsfw: false,
-  popular: opts => listing("/popular-series", opts.page).catch(() => listing("/releases", opts.page).catch(() => fallbackListing(opts.page))),
-  latest: opts => listing("/releases", opts.page).catch(() => listing("/popular-series", opts.page).catch(() => fallbackListing(opts.page))),
+  popular: opts => listing("/popular-series", opts.page).catch(() => fallbackListing(opts.page)),
+  latest: opts => listing("/releases", opts.page).catch(() => fallbackListing(opts.page)),
   search,
   details: (id, _opts: DetailOptions) => details(id),
   chapters: id => chapters(id),
