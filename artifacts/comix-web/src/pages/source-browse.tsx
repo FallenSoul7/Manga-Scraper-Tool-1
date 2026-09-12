@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { SourceTag } from "@/lib/header-search";
 import { useOnlineStatus } from "@/lib/offline-catalog";
-import { clientWebtoonsList, isClientWebtoons } from "@/lib/client-sources";
+import { getClientSourceAdapter } from "@/lib/client-sources";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -323,12 +323,12 @@ export default function SourceBrowsePage() {
     ...(isAllManga ? { media: mediaType } : {}),
   };
 
-  const clientFirstWebtoons = isClientWebtoons(sourceId);
+  const clientAdapter = getClientSourceAdapter(sourceId);
 
   const popularQuery = useQuery<ListResponse>({
     queryKey: ["source-popular", sourceId, mediaType, popularPage, popularSort, settings.hideNsfw, settings.posterQuality],
-    queryFn: () => clientFirstWebtoons
-      ? clientWebtoonsList("popular", popularPage).catch(() => customFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
+    queryFn: () => clientAdapter
+      ? clientAdapter.popular(popularPage).catch(() => customFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
       : customFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
     enabled: online && !!sourceId && !!source && tab === "popular" && !isFiltering,
     staleTime: 5 * 60 * 1000,
@@ -337,8 +337,8 @@ export default function SourceBrowsePage() {
 
   const latestQuery = useQuery<ListResponse>({
     queryKey: ["source-latest", sourceId, mediaType, latestPage, popularSort, settings.hideNsfw, settings.posterQuality],
-    queryFn: () => clientFirstWebtoons
-      ? clientWebtoonsList("latest", latestPage).catch(() => customFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
+    queryFn: () => clientAdapter
+      ? clientAdapter.latest(latestPage).catch(() => customFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
       : customFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
     enabled: online && !!sourceId && !!source && tab === "latest" && !isFiltering,
     staleTime: 5 * 60 * 1000,
@@ -347,8 +347,8 @@ export default function SourceBrowsePage() {
 
   const filterQuery = useQuery<ListResponse>({
     queryKey: ["source-filter", sourceId, mediaType, searchQuery, allTagIds.join(","), filterPage, settings.hideNsfw, settings.posterQuality],
-    queryFn: () => clientFirstWebtoons && isSearching
-      ? clientWebtoonsList("search", filterPage, searchQuery).catch(() => customFetch<ListResponse>(`/api/search${buildQuery({
+    queryFn: () => clientAdapter && isSearching
+      ? clientAdapter.search(searchQuery, filterPage).catch(() => customFetch<ListResponse>(`/api/search${buildQuery({
           ...commonOpts,
           query: searchQuery,
           page: String(filterPage),

@@ -12,6 +12,16 @@ export interface ClientListResponse {
   hasNextPage: boolean;
 }
 
+export type ClientSourceMode = "client" | "server";
+
+export interface ClientSourceAdapter {
+  sourceId: string;
+  mode: ClientSourceMode;
+  popular(page: number): Promise<ClientListResponse>;
+  latest(page: number): Promise<ClientListResponse>;
+  search(query: string, page: number): Promise<ClientListResponse>;
+}
+
 const WEBTOONS_BASE = "https://www.webtoons.com";
 const CACHE_DB = "comihub-client-cache";
 const CACHE_VERSION = 1;
@@ -85,7 +95,7 @@ function parseCards(html: string): ClientMangaSummary[] {
 
 const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
-export async function clientWebtoonsList(kind: "popular" | "latest" | "search", page: number, query = ""): Promise<ClientListResponse> {
+async function clientWebtoonsList(kind: "popular" | "latest" | "search", page: number, query = ""): Promise<ClientListResponse> {
   let path: string;
   if (kind === "search") {
     path = `/en/search/webtoon?keyword=${encodeURIComponent(query)}&page=${page}`;
@@ -109,4 +119,87 @@ export async function clientWebtoonsList(kind: "popular" | "latest" | "search", 
   };
 }
 
-export const isClientWebtoons = (sourceId: string) => sourceId === "all.webtoons";
+const webtoonsAdapter: ClientSourceAdapter = {
+  sourceId: "all.webtoons",
+  mode: "client",
+  popular: (page) => clientWebtoonsList("popular", page),
+  latest: (page) => clientWebtoonsList("latest", page),
+  search: (query, page) => clientWebtoonsList("search", page, query),
+};
+
+async function clientJson<T>(key: string, url: string): Promise<T> {
+  const raw = await cachedText(`client-json:${key}`, async () => {
+    const response = await fetch(url, { credentials: "omit", headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`Client source request failed: ${response.status}`);
+    return response.text();
+  });
+  return JSON.parse(raw) as T;
+}
+
+type AsuraList = { data: Array<{ slug: string; title: string; cover?: string; type?: string }>; meta: { has_more: boolean } };
+const asuraList = (sort: string, page: number, query = "") => clientJson<AsuraList>(`asura:${sort}:${query}:${page}`, `https://api.asurascans.com/api/series?offset=${(page - 1) * 20}&limit=20&sort=${sort}${query ? `&search=${encodeURIComponent(query)}` : ""}`).then((data) => ({ page, hasNextPage: data.meta?.has_more === true, items: data.data.map((s) => ({ id: s.slug, title: s.title, thumbnail: s.cover ?? "", type: s.type ?? "manga", isNsfw: false })) }));
+const asuraAdapter: ClientSourceAdapter = { sourceId: "en.asurascans", mode: "client", popular: (page) => asuraList("popular", page), latest: (page) => asuraList("latest", page), search: (query, page) => asuraList("latest", page, query) };
+
+function mapMangaDex(data: { data: any[]; total: number }, page: number): ClientListResponse {
+  return { page, hasNextPage: page * 20 < data.total, items: data.data.map((m) => {
+    const title = m.attributes?.title?.en || Object.values(m.attributes?.title ?? {})[0] || m.id;
+    const cover = m.relationships?.find((r: any) => r.type === "cover_art")?.attributes?.fileName;
+    return { id: m.id, title: String(title), thumbnail: cover ? `https://uploads.mangadex.org/covers/${m.id}/${cover}.256.jpg` : "", type: "manga", isNsfw: false };
+  }) };
+}
+const mangaDexList = (page: number, order: string, query = "") => {
+  const params = new URLSearchParams({ limit: "20", offset: String((page - 1) * 20), "includes[]": "cover_art" });
+  if (query) { params.set("title", query); params.set("order[relevance]", "desc"); }
+  else params.set(`order[${order}]`, "desc");
+  return clientJson<{ data: any[]; total: number }>(`mangadex:${order}:${query}:${page}`, `https://api.mangadex.org/manga?${params}`).then((data) => mapMangaDex(data, page));
+};
+const mangaDexAdapter: ClientSourceAdapter = { sourceId: "all.mangadex", mode: "client", popular: (page) => mangaDexList(page, "followedCount"), latest: (page) => mangaDexList(page, "latestUploadedChapter"), search: (query, page) => mangaDexList(page, "relevance", query) };
+
+const thunderAdapter: ClientSourceAdapter = {
+  sourceId: "all.thunderscans", mode: "client",
+  popular: (page) => themesiaList("popular", page), latest: (page) => themesiaList("update", page), search: (query, page) => themesiaList("search", page, query),
+};
+async function themesiaList(order: string, page: number, query = ""): Promise<ClientListResponse> {
+  const params = new URLSearchParams({ order, page: String(page) });
+  if (query) params.set("title", query);
+  const url = `https://en-thunderscans.com/comics/?${params}`;
+  const html = await cachedText(`thunderscans:list:${url}`, async () => { const response = await fetch(url, { credentials: "omit" }); if (!response.ok) throw new Error(`Thunder Scans client request failed: ${response.status}`); return response.text(); });
+  const document = new DOMParser().parseFromString(html, "text/html");
+  const items: ClientMangaSummary[] = [];
+  document.querySelectorAll(".listupd .bs .bsx, .listo .bs .bsx, .utao .uta .imgu").forEach((root) => {
+    const a = root.querySelector("a"); const href = a?.getAttribute("href"); const title = a?.getAttribute("title") || root.querySelector(".tt")?.textContent?.trim() || a?.textContent?.trim();
+    if (!href || !title || items.some((item) => item.id === href)) return;
+    const image = root.querySelector("img"); items.push({ id: encodeURIComponent(href.replace("https://en-thunderscans.com", "").replace(/^\/+|\/+$/g, "")), title, thumbnail: image?.getAttribute("data-src") || image?.getAttribute("src") || "", type: "Manga", isNsfw: false });
+  });
+  return { items, page, hasNextPage: Boolean(document.querySelector(".pagination .next, .hpage .r")) };
+}
+
+// Centralized execution policy. Adding a source later means registering its
+// adapter here; caching, fallback, and query routing stay shared.
+const sourceModes: Record<string, ClientSourceMode> = {
+  "all.webtoons": "client",
+  "en.asurascans": "client",
+  "all.mangadex": "client",
+  "all.thunderscans": "client",
+  "en.ninehentai": "server",
+  "en.royalroad": "server",
+  "all.pawchive": "server",
+};
+
+const clientAdapters: Record<string, ClientSourceAdapter> = {
+  "all.webtoons": webtoonsAdapter,
+  "en.asurascans": asuraAdapter,
+  "all.mangadex": mangaDexAdapter,
+  "all.thunderscans": thunderAdapter,
+};
+
+export function getClientSourceAdapter(sourceId: string): ClientSourceAdapter | null {
+  const adapter = clientAdapters[sourceId];
+  return adapter && sourceModes[sourceId] === "client" ? adapter : null;
+}
+
+export function getClientSourceMode(sourceId: string): ClientSourceMode {
+  return sourceModes[sourceId] ?? "server";
+}
+
+export const isClientWebtoons = (sourceId: string) => getClientSourceAdapter(sourceId)?.sourceId === "all.webtoons";
