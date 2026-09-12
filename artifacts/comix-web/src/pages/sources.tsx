@@ -64,6 +64,7 @@ const NOT_WORKING_SOURCE_IDS = new Set([
   "en.utoon",
   "en.manhuaplus",
   "en.elftoon",
+  "en.animegg",
 ]);
 
 function SourceStatusTag({ sourceId, supported = true }: { sourceId: string; supported?: boolean }) {
