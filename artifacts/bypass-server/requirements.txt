@@ -12,6 +12,7 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 scrapling>=0.3.0
-# Scrapling's StealthyFetcher imports its curl_cffi browser transport lazily.
+# Scrapling's StealthyFetcher imports Patchright for its stealth browser engine.
+patchright>=1.55.0
 curl_cffi>=0.7.0
 playwright>=1.40.0
