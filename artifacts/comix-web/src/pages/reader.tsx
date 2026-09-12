@@ -483,12 +483,13 @@ export default function Reader() {
       <div
         className={`reader-top-bar fixed inset-x-0 top-0 z-50 bg-black/90 backdrop-blur transition-[transform,opacity] duration-300 ${showControls ? "" : "reader-controls-hidden-standalone"}`}
         style={{
-          paddingTop: "env(safe-area-inset-top, 0px)",
+          paddingTop: "0px",
           transform: showControls
             ? "translateY(0)"
             : "translateY(calc(-100% - env(safe-area-inset-top, 0px)))",
         }}
       >
+        <div className="standalone-toolbar-safe-area" aria-hidden="true" />
         <div className="border-b border-white/10 text-white flex items-center justify-between p-2 sm:px-4 h-14">
           <div className="flex items-center gap-2 overflow-hidden flex-1">
             <Button variant="ghost" size="icon" className="text-white/70 hover:text-white shrink-0" onClick={(e) => { e.stopPropagation(); goBack(); }}>
