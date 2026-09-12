@@ -20,7 +20,7 @@ async function details(id: string): Promise<MangaDetail> {
   const slug = slugFromId(id);
   const response = await http.get<string>(`${BASE}/series/${encodeURIComponent(slug)}`);
   const $ = cheerio.load(response.data);
-  const title = $(".first h1, h1").first().text().trim() || slug;
+  const title = $("h1").first().text().trim() || $("title").text().replace(/^Watch\s+|\s+Episodes.*$/gi, "").trim() || slug;
   const info = $(".infoami").map((_i, el) => $(el).text().trim()).get().join(" ");
   const status = /completed|finished/i.test(info) ? "Completed" : "Ongoing";
   const thumbnail = $(".media-object").first().attr("src") || $("meta[property='og:image']").attr("content") || "";
