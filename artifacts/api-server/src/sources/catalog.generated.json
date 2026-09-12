@@ -16296,7 +16296,7 @@
       "extClass": ".AnimeGG",
       "themePkg": null,
       "baseUrl": "https://www.animegg.org",
-      "icon": null
+      "icon": "en.animegg.svg"
     }
   ]
 }
