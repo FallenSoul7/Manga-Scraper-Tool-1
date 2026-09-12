@@ -5,6 +5,33 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* The reader's inline transform controls its visibility. Only extend the
+   toolbar background into the standalone status-area; never override that
+   transform or move the controls. */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .reader-top-bar::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: env(safe-area-inset-top, 0px);
+    background: #000;
+    pointer-events: none;
+  }
+
+  .novel-reader-toolbar::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: env(safe-area-inset-top, 0px);
+    background: inherit;
+    pointer-events: none;
+  }
+}
+
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
