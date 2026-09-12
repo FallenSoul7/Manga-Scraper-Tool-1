@@ -33,7 +33,12 @@ async function listing(path: string, page: number): Promise<MangaListResponse> {
 }
 
 function fallbackListing(page: number): MangaListResponse {
-  return { page, hasNextPage: false, items: BROWSE_FALLBACK.map(([id, title]) => ({ id, title, thumbnail: "", type: "Anime", isNsfw: false, mediaType: "anime" as const })) };
+  return { page, hasNextPage: false, items: BROWSE_FALLBACK.map(([id, title]) => ({ id, title, thumbnail: "/public/source-icons/en.animegg.svg", type: "Anime", isNsfw: false, mediaType: "anime" as const })) };
+}
+
+function fallbackDetail(slug: string): MangaDetail {
+  const title = slug.split("-").map(word => word ? word[0].toUpperCase() + word.slice(1) : word).join(" ");
+  return { id: slug, title, author: "", artist: "", synopsis: "AnimeGG is temporarily unavailable while its upstream server is protected by Cloudflare. Try again shortly.", altTitles: [], status: "Unknown", type: "Anime", isNsfw: false, rating: 0, thumbnail: "", genres: [], score: "", scorePosition: "none", mediaType: "anime" };
 }
 
 async function search(query: string, opts: ListOptions): Promise<MangaListResponse> {
@@ -46,7 +51,12 @@ async function search(query: string, opts: ListOptions): Promise<MangaListRespon
 
 async function details(id: string): Promise<MangaDetail> {
   const slug = slugFromId(id);
-  const response = await http.get<string>(`${BASE}/series/${encodeURIComponent(slug)}`);
+  let response;
+  try {
+    response = await http.get<string>(`${BASE}/series/${encodeURIComponent(slug)}`, { timeout: 8000 });
+  } catch {
+    return fallbackDetail(slug);
+  }
   const $ = cheerio.load(response.data);
   const title = $("h1").first().text().trim() || $("title").text().replace(/^Watch\s+|\s+Episodes.*$/gi, "").trim() || slug;
   const info = $(".infoami").map((_i, el) => $(el).text().trim()).get().join(" ");
@@ -60,7 +70,12 @@ async function details(id: string): Promise<MangaDetail> {
 
 async function chapters(id: string): Promise<ChapterListResponse> {
   const slug = slugFromId(id);
-  const response = await http.get<string>(`${BASE}/series/${encodeURIComponent(slug)}`);
+  let response;
+  try {
+    response = await http.get<string>(`${BASE}/series/${encodeURIComponent(slug)}`, { timeout: 8000 });
+  } catch {
+    return { items: [] };
+  }
   const $ = cheerio.load(response.data);
   const items = $("ul.newmanga li").toArray().flatMap((el) => {
     const link = $(el).find("a.anm_det_pop").first();
@@ -75,7 +90,7 @@ async function chapters(id: string): Promise<ChapterListResponse> {
 
 async function pages(chapterId: string): Promise<PageListResponse> {
   const episodeUrl = absolute(decodeURIComponent(chapterId));
-  const response = await http.get<string>(episodeUrl);
+  const response = await http.get<string>(episodeUrl, { timeout: 8000 });
   const $ = cheerio.load(response.data);
   const iframe = $("iframe.video").filter((_i, el) => /subbed/i.test($(el).closest(".tab-pane").attr("id") || "")).first().attr("src") || $("iframe.video").first().attr("src");
   if (!iframe) throw new Error(`AnimeGG has no playable embed for ${episodeUrl}`);
