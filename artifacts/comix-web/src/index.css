@@ -5,20 +5,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* In standalone PWAs the viewport starts below the status area, but the
-   reader toolbar also reserves that inset itself. Move the whole toolbar up
-   by that inset instead of removing its padding; this keeps the controls and
-   the toolbar's bottom edge aligned with normal browser mode. */
-@media (display-mode: standalone), (display-mode: fullscreen) {
-  .reader-top-bar {
-    transform: translateY(calc(-1 * env(safe-area-inset-top, 0px))) !important;
-  }
-
-  .novel-reader-toolbar {
-    top: calc(-1 * env(safe-area-inset-top, 0px)) !important;
-  }
-}
-
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
