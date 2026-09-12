@@ -226,7 +226,11 @@ export const ResetScansSource: MangaSource = {
   },
 
   async chapters(mangaId: string): Promise<ChapterListResponse> {
-    const firstPage = await fetchResetScansHtml(mangaId);
+    // The chapter list and its load-more nonce are present in the normal
+    // HTML response. Do not route this page through the optional bypass
+    // service: some bypass responses omit the inline load-more config,
+    // which silently leaves the adapter with only the first 10 chapters.
+    const firstPage = await fetchHtml(http, mangaId);
     const items: ChapterSummary[] = [];
     const seen = new Set<string>();
     parseChapterItems(firstPage.$, items, seen);
@@ -240,7 +244,9 @@ export const ResetScansSource: MangaSource = {
         const body = new URLSearchParams({ action: "mangaverse_load_more", nonce, page: String(page), type: "series", category_id: categoryId, order, lang: "en" });
         const response = await http.post("/wp-admin/admin-ajax.php", body.toString(), { headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", Referer: chapterPathFromId(mangaId) } });
         const result = response.data as { success?: boolean; data?: { html?: string; has_more?: boolean } };
-        if (!result.success || !result.data?.html) break;
+        if (!result.success || !result.data?.html) {
+          throw new Error(`Reset Scans chapter pagination failed on page ${page}`);
+        }
         parseChapterItems(cheerio.load(result.data.html), items, seen);
         hasMore = result.data.has_more === true;
       }
