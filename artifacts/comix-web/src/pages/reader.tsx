@@ -424,8 +424,7 @@ export default function Reader() {
     const novelDark = novelBackground === "dark";
     return (
       <div className={`min-h-[100dvh] ${novelDark ? "bg-[#171717] text-[#e7e5e4]" : "bg-[#f4f1ea] text-[#27231f]"}`} onClick={(e) => e.stopPropagation()}>
-        <div className={`novel-reader-toolbar sticky top-0 z-20 border-b backdrop-blur px-3 py-3 sm:px-6 ${novelDark ? "border-white/10 bg-[#171717]/95" : "border-black/10 bg-[#f4f1ea]/95"}`}>
-          <div className="standalone-toolbar-extension" aria-hidden="true" />
+        <div className={`sticky top-0 z-20 border-b backdrop-blur px-3 py-3 sm:px-6 ${novelDark ? "border-white/10 bg-[#171717]/95" : "border-black/10 bg-[#f4f1ea]/95"}`}>
           <div className="mx-auto flex max-w-3xl items-center gap-3">
             <Button variant="ghost" size="icon" className={novelDark ? "text-white/80 hover:text-white" : ""} onClick={goBack} aria-label="Go back"><ChevronLeft className="h-5 w-5" /></Button>
             <div className="min-w-0 flex-1">
@@ -482,7 +481,7 @@ export default function Reader() {
     <div className={`min-h-[100dvh] ${bgClass} relative select-none`} onClick={handlePageClick}>
       {/* Top Bar */}
       <div
-        className="reader-top-bar fixed inset-x-0 top-0 z-50 bg-black/90 backdrop-blur transition-transform duration-300"
+        className="fixed inset-x-0 top-0 z-50 bg-black/90 backdrop-blur transition-transform duration-300"
         style={{
           paddingTop: "env(safe-area-inset-top, 0px)",
           transform: showControls
@@ -490,7 +489,6 @@ export default function Reader() {
             : "translateY(calc(-100% - env(safe-area-inset-top, 0px)))",
         }}
       >
-        <div className="standalone-toolbar-extension" aria-hidden="true" />
         <div className="border-b border-white/10 text-white flex items-center justify-between p-2 sm:px-4 h-14">
           <div className="flex items-center gap-2 overflow-hidden flex-1">
             <Button variant="ghost" size="icon" className="text-white/70 hover:text-white shrink-0" onClick={(e) => { e.stopPropagation(); goBack(); }}>
