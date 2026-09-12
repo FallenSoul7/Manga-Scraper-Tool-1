@@ -546,6 +546,15 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
       iconUrl: allMangaCatalogEntry?.iconUrl ?? null,
       supported: true,
     },
+    {
+      id: "en.animegg",
+      name: catalog?.extensions.find(e => e.id === "en.animegg")?.name ?? "AnimeGG",
+      lang: catalog?.extensions.find(e => e.id === "en.animegg")?.lang ?? "en",
+      isNsfw: false,
+      description: "Anime episodes from AnimeGG",
+      iconUrl: catalog?.extensions.find(e => e.id === "en.animegg")?.iconUrl ?? null,
+      supported: true,
+    },
   ];
 
   return (
