@@ -54,7 +54,7 @@ const langLabel = (code: string) => LANG_LABELS[code] ?? code.toUpperCase();
 // accidentally shown as an unsupported "Coming soon" extension.
 const ALLMANGA_SOURCE_ID = "en.allmanga";
 const ALLMANGA_CATALOG_ID = "en.allanime";
-const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga", ALLMANGA_SOURCE_ID]);
+const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga", ALLMANGA_SOURCE_ID, "en.anikai"]);
 
 // Keep extension availability labels in one place so installed-source rows and
 // the extension browser always show the same status.
@@ -528,6 +528,15 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
 
   // Hardcoded discoverable anime extensions (always visible for install)
   const ANIME_EXTENSIONS = [
+    {
+      id: "en.anikai",
+      name: "Anime Kai",
+      lang: "en",
+      isNsfw: false,
+      description: "Anime episodes and video streaming",
+      iconUrl: null,
+      supported: true,
+    },
     {
       id: "video.hentaiyoga",
       name: "Hentai Yoga",
