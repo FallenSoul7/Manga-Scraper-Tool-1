@@ -11,7 +11,7 @@ import type {
   PageInfo,
   SourceTag,
 } from "./types";
-import { absUrl, fetchHtml, imgAttr, makeHttp } from "./scraper-utils";
+import { absUrl, fetchHtml, fetchHtmlWithBypass, imgAttr, makeHttp } from "./scraper-utils";
 import * as cheerio from "cheerio";
 
 export interface MangaThemesiaOptions {
@@ -22,6 +22,8 @@ export interface MangaThemesiaOptions {
   isNsfw?: boolean;
   /** default "/manga" */
   mangaUrlDirectory?: string;
+  /** Use the configured browser fallback when the site blocks Render requests. */
+  useBypass?: boolean;
 }
 
 function parseStatus(text: string): string {
@@ -45,6 +47,12 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
   const baseUrl = opts.baseUrl.replace(/\/+$/, "");
   const dir = (opts.mangaUrlDirectory || "/manga").replace(/^\/?/, "/");
   const http = makeHttp(baseUrl);
+
+  async function fetchPage(url: string, config: Parameters<typeof fetchHtml>[2] = {}) {
+    return opts.useBypass
+      ? fetchHtmlWithBypass(http, url, config, { referer: `${baseUrl}/`, waitFor: "dom_loaded" })
+      : fetchHtml(http, url, config);
+  }
 
   // Cache scraped tags so we don't hit the site on every filter request.
   let cachedTags: SourceTag[] | null = null;
@@ -91,7 +99,7 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
     }
     sp.set("page", String(page));
     const url = `${baseUrl}${dir}/?${sp.toString()}`;
-    const { $ } = await fetchHtml(http, url);
+    const { $ } = await fetchPage(url);
     const items: MangaSummary[] = [];
     listSelector($).each((_i, el) => {
       const s = buildSummary($, el);
@@ -124,7 +132,7 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
       if (cachedTags) return cachedTags;
 
       try {
-        const { $ } = await fetchHtml(http, `${baseUrl}${dir}/`);
+        const { $ } = await fetchPage(`${baseUrl}${dir}/`);
         const tags: SourceTag[] = [];
         const seen = new Set<string>();
 
@@ -161,7 +169,7 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
         if (tags.length === 0) {
           for (const path of ["/genre/", "/tags/", "/genres/"]) {
             try {
-              const { $ } = await fetchHtml(http, `${baseUrl}${path}`);
+              const { $ } = await fetchPage(`${baseUrl}${path}`);
               $("a[href]").each((_i, el) => {
                 const $el = $(el);
                 const href = $el.attr("href") || "";
@@ -192,7 +200,7 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
     async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
       const path = decodeURIComponent(id);
       const url = `${baseUrl}/${path}/`;
-      const { $ } = await fetchHtml(http, url);
+      const { $ } = await fetchPage(url);
       const root = $("div.bigcontent, div.animefull, div.main-info, div.postbody").first();
       const title = root.find("h1.entry-title").first().text().trim();
       const thumb = imgAttr(root.find(".thumb img, .ts-post-image").first());
@@ -248,7 +256,7 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
     async chapters(mangaId: string, _dedupe: boolean): Promise<ChapterListResponse> {
       const path = decodeURIComponent(mangaId);
       const url = `${baseUrl}/${path}/`;
-      const { $ } = await fetchHtml(http, url);
+      const { $ } = await fetchPage(url);
       const items: ChapterSummary[] = [];
       const seen = new Set<string>();
       $("#chapterlist li, div.eplister li, .clstyle li").each((_i, el) => {
@@ -277,7 +285,7 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
     async pages(chapterId: string): Promise<PageListResponse> {
       const path = decodeURIComponent(chapterId);
       const url = `${baseUrl}/${path}/`;
-      const { $, html } = await fetchHtml(http, url);
+      const { $, html } = await fetchPage(url);
       const pages: PageInfo[] = [];
 
       // Strategy 1: parse ts_reader.run({...}) with brace-counting so nested

@@ -98,6 +98,7 @@ register(createMangaThemesiaSource({
   name: "Elf Toon",
   baseUrl: "https://elftoon.com",
   lang: "en",
+  useBypass: true,
 }));
 // Thunder Scans uses /comics (not /manga) and the MangaThemesiaAlt variant
 register(createMangaThemesiaSource({
