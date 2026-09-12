@@ -9,7 +9,7 @@
    The existing toolbar transform then hides the entire combined bar. */
 @media (display-mode: standalone), (display-mode: fullscreen) {
   .reader-top-bar {
-    padding-top: 0 !important;
+    top: calc(-1 * env(safe-area-inset-top, 0px)) !important;
   }
 
   .standalone-toolbar-extension {
@@ -17,9 +17,13 @@
     height: env(safe-area-inset-top, 0px);
     min-height: env(safe-area-inset-top, 0px);
     width: 100vw;
-    margin: -0.75rem 0 0 calc((100% - 100vw) / 2);
+    margin: 0 0 0 calc((100% - 100vw) / 2);
     background: #000;
     pointer-events: none;
+  }
+
+  .novel-reader-toolbar {
+    top: calc(-1 * env(safe-area-inset-top, 0px)) !important;
   }
 
   .novel-reader-toolbar .standalone-toolbar-extension {
