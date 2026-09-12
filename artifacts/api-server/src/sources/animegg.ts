@@ -5,7 +5,10 @@ import type { ChapterListResponse, DetailOptions, ListOptions, MangaDetail, Mang
 const BASE = "https://www.animegg.org";
 const http = axios.create({ timeout: 25000, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36", Accept: "text/html,application/json;q=0.9,*/*;q=0.8", Referer: `${BASE}/` } });
 
-function absolute(value: string): string { return value.startsWith("http") ? value : `${BASE}${value.startsWith("/") ? "" : "/"}${value}`; }
+function absolute(value: string): string {
+  if (value.startsWith("//")) return `https:${value}`;
+  return value.startsWith("http") ? value : `${BASE}${value.startsWith("/") ? "" : "/"}${value}`;
+}
 function slugFromId(id: string): string { return decodeURIComponent(id).replace(/^\/series\//, "").replace(/\/$/, ""); }
 
 async function search(query: string, opts: ListOptions): Promise<MangaListResponse> {

@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'comihub-static-v9';
+const STATIC_CACHE = 'comihub-static-v10';
 const API_CACHE    = 'comihub-api-v4';
 const IMAGE_CACHE  = 'comihub-images-v1';
 const OFFLINE_IMAGE_CACHE = 'comihub-offline-v1';
@@ -58,19 +58,31 @@ function isHtml(request, url) {
   return request.mode === 'navigate' || (url.pathname === '/' || url.pathname === '/index.html');
 }
 
+// Cache API responses under the selected extension as well as the URL. Cache
+// matching otherwise ignores the X-Source header and can return another
+// extension's detail response for the same manga ID.
+function sourceCacheKey(request) {
+  const source = request.headers.get('X-Source');
+  if (!source) return request;
+  const url = new URL(request.url);
+  url.searchParams.set('__comihub_source', source);
+  return new Request(url.toString(), { method: 'GET' });
+}
+
 async function networkFirst(request, cacheName, maxAgeSecs) {
   const cache = await caches.open(cacheName);
+  const key = sourceCacheKey(request);
   try {
     const res = await fetch(request.clone());
     if (res.ok) {
       const headers = new Headers(res.headers);
       headers.set('sw-cached-at', Date.now().toString());
       const cloned = new Response(await res.clone().arrayBuffer(), { status: res.status, headers });
-      cache.put(request, cloned);
+      cache.put(key, cloned);
     }
     return res;
   } catch {
-    const cached = await cache.match(request);
+    const cached = await cache.match(key);
     if (cached) {
       const cachedAt = parseInt(cached.headers.get('sw-cached-at') || '0');
       if (!maxAgeSecs || Date.now() - cachedAt < maxAgeSecs * 1000) return cached;
