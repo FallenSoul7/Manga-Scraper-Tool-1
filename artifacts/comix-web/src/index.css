@@ -5,21 +5,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* The reader's inline transform controls its visibility. Only extend the
-   toolbar background into the standalone status-area; never override that
-   transform or move the controls. */
+/* In standalone mode, extend the toolbar upward into the status-area. This
+   is a child of the toolbar, so the existing toolbar transform hides the
+   original bar and this added upper section together as one strip. */
 @media (display-mode: standalone), (display-mode: fullscreen) {
-  .reader-top-bar::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 100%;
-    height: env(safe-area-inset-top, 0px);
-    background: #000;
-    pointer-events: none;
-  }
-
+  .reader-top-bar::before,
   .novel-reader-toolbar::before {
     content: "";
     position: absolute;
