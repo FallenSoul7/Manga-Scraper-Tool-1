@@ -9,6 +9,10 @@
    there is no browser chrome above the viewport, so hide the entire toolbar
    at its fixed position instead of leaving its translated edge visible. */
 @media (display-mode: standalone), (display-mode: fullscreen) {
+  .reader-top-bar {
+    top: calc(-1 * env(safe-area-inset-top, 0px)) !important;
+  }
+
   .standalone-toolbar-safe-area {
     display: block;
     height: env(safe-area-inset-top, 0px);
