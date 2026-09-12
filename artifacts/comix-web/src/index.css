@@ -5,6 +5,17 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Browser mode keeps the original translate-up behavior. In standalone mode
+   there is no browser chrome above the viewport, so hide the entire toolbar
+   at its fixed position instead of leaving its translated edge visible. */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .reader-controls-hidden-standalone {
+    opacity: 0 !important;
+    pointer-events: none;
+    transform: translateY(0) !important;
+  }
+}
+
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));

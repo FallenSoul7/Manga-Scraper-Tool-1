@@ -481,7 +481,7 @@ export default function Reader() {
     <div className={`min-h-[100dvh] ${bgClass} relative select-none`} onClick={handlePageClick}>
       {/* Top Bar */}
       <div
-        className="fixed inset-x-0 top-0 z-50 bg-black/90 backdrop-blur transition-transform duration-300"
+        className={`reader-top-bar fixed inset-x-0 top-0 z-50 bg-black/90 backdrop-blur transition-[transform,opacity] duration-300 ${showControls ? "" : "reader-controls-hidden-standalone"}`}
         style={{
           paddingTop: "env(safe-area-inset-top, 0px)",
           transform: showControls
