@@ -5,6 +5,7 @@ const raw: string = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
 export const API_BASE: string = raw.replace(/\/+$/, "");
 
 export function apiUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
   // Ensure path starts with /
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   return `${API_BASE}${cleanPath}`;
