@@ -154,6 +154,21 @@ function chapterPathFromId(id: string): string {
   return id.startsWith("http") ? id : absUrl(BASE, id);
 }
 
+function parseChapterItems($: cheerio.CheerioAPI, items: ChapterSummary[], seen: Set<string>) {
+  $(".chapters-list .chapter-item, .chapter-list .chapter-item, .wp-manga-chapter, .listing-chapters_wrap li, .chapter-list li, .chapters-list li").each((_i, el) => {
+    const root = $(el);
+    const link = root.find("a.chapter-link, a[href*='/chapter/'], a[href]").first();
+    const href = link.attr("href");
+    if (!href || (!/chapter/i.test(href) && !/chapter/i.test(link.text()))) return;
+    const id = href.replace(BASE, "");
+    if (seen.has(id)) return;
+    seen.add(id);
+    const title = (root.find(".chapter-title").text() || link.text()).replace(/\s+/g, " ").trim();
+    if (!title) return;
+    items.push({ id, number: numberFrom(title), title, scanlator: "Reset Scans", date: parseDate(root.find("time, .chapter-date, .chapter-release-date").first().attr("datetime") || "") });
+  });
+}
+
 async function fetchResetScansHtml(
   url: string,
   config: Parameters<typeof fetchHtml>[2] = {},
@@ -187,9 +202,9 @@ export const ResetScansSource: MangaSource = {
     const { $ } = await fetchResetScansHtml(id);
     const title = $(".series-title, h1.entry-title").first().text().trim();
     const description = $(".series-description, .entry-content").first().text().replace(/\s+/g, " ").trim();
-    const thumbnail = backgroundImage(
+    const thumbnail = imgAttr($(".series-header-thumbnail img, .manga-hero-header img, .profile-manga img").first()) || backgroundImage(
       $(".series-header-thumbnail, .manga-hero-header, .series-header, .manga-hero, .profile-manga").first(),
-    ) || imgAttr($(".series-header-thumbnail img, .manga-hero-header img, .profile-manga img").first());
+    );
     const genres = $(".manga-genres a, .genres a, .cat-links a").map((_i, el) => $(el).text().trim()).get().filter(Boolean);
 
     return {
@@ -211,28 +226,25 @@ export const ResetScansSource: MangaSource = {
   },
 
   async chapters(mangaId: string): Promise<ChapterListResponse> {
-    const { $ } = await fetchResetScansHtml(mangaId);
+    const firstPage = await fetchResetScansHtml(mangaId);
     const items: ChapterSummary[] = [];
     const seen = new Set<string>();
+    parseChapterItems(firstPage.$, items, seen);
 
-    $(".chapters-list .chapter-item, .chapter-list .chapter-item, .wp-manga-chapter, .listing-chapters_wrap li, .chapter-list li, .chapters-list li").each((_i, el) => {
-      const root = $(el);
-      const link = root.find("a.chapter-link, a[href*='/chapter/'], a[href]").first();
-      const href = link.attr("href");
-      if (!href || !/chapter/i.test(href) && !/chapter/i.test(link.text())) return;
-      const id = href.replace(BASE, "");
-      if (seen.has(id)) return;
-      seen.add(id);
-      const title = (root.find(".chapter-title").text() || link.text()).replace(/\s+/g, " ").trim();
-      if (!title) return;
-      items.push({
-        id,
-        number: numberFrom(title),
-        title,
-        scanlator: "Reset Scans",
-        date: parseDate(root.find("time, .chapter-date, .chapter-release-date").first().attr("datetime") || ""),
-      });
-    });
+    const categoryId = firstPage.$(".chapters-list").attr("data-category");
+    const loadMore = firstPage.$("#load-more-series").length > 0;
+    if (categoryId && loadMore) {
+      const nonce = getLoadMoreNonce(firstPage.html);
+      const order = firstPage.$(".series-chapter-order .sort-trigger.active").attr("data-sort") || "desc";
+      for (let page = 2, hasMore = true; page <= 50 && hasMore; page++) {
+        const body = new URLSearchParams({ action: "mangaverse_load_more", nonce, page: String(page), type: "series", category_id: categoryId, order, lang: "en" });
+        const response = await http.post("/wp-admin/admin-ajax.php", body.toString(), { headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", Referer: chapterPathFromId(mangaId) } });
+        const result = response.data as { success?: boolean; data?: { html?: string; has_more?: boolean } };
+        if (!result.success || !result.data?.html) break;
+        parseChapterItems(cheerio.load(result.data.html), items, seen);
+        hasMore = result.data.has_more === true;
+      }
+    }
 
     return { items };
   },

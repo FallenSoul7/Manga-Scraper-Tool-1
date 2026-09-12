@@ -65,6 +65,7 @@ export default function Reader() {
   }, [sourceId]);
 
   const readerSettings = useStore(s => s.reader);
+  const [novelBackground, setNovelBackground] = useState<"dark" | "light">("dark");
   const sourceReaderDirections = useStore(s => s.sourceReaderDirections);
   const isRule34 = sourceId === "en.rule34";
   // Rule34 defaults to LTR (single-image posts look terrible in webtoon mode).
@@ -420,21 +421,37 @@ export default function Reader() {
   if (textPage?.text) {
     const novelTitle = effectiveMangaData?.title ?? "Novel";
     const chapterTitle = textPage.title || effectiveChapterData.find(c => String(c.id) === chapterId)?.title || "Chapter";
+    const novelDark = novelBackground === "dark";
     return (
-      <div className="min-h-[100dvh] bg-[#f4f1ea] text-[#27231f]" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 z-20 border-b border-black/10 bg-[#f4f1ea]/95 backdrop-blur px-3 py-3 sm:px-6">
+      <div className={`min-h-[100dvh] ${novelDark ? "bg-[#171717] text-[#e7e5e4]" : "bg-[#f4f1ea] text-[#27231f]"}`} onClick={(e) => e.stopPropagation()}>
+        <div className={`sticky top-0 z-20 border-b backdrop-blur px-3 py-3 sm:px-6 ${novelDark ? "border-white/10 bg-[#171717]/95" : "border-black/10 bg-[#f4f1ea]/95"}`}>
           <div className="mx-auto flex max-w-3xl items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={goBack} aria-label="Go back"><ChevronLeft className="h-5 w-5" /></Button>
+            <Button variant="ghost" size="icon" className={novelDark ? "text-white/80 hover:text-white" : ""} onClick={goBack} aria-label="Go back"><ChevronLeft className="h-5 w-5" /></Button>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-xs text-black/50">{novelTitle}</div>
+              <div className={`truncate text-xs ${novelDark ? "text-white/50" : "text-black/50"}`}>{novelTitle}</div>
               <div className="truncate text-sm font-semibold">{chapterTitle}</div>
             </div>
-            <Button variant="ghost" size="icon" disabled={!prevChapter} onClick={() => prevChapter && navigateToChapter(prevChapter.id)} aria-label="Previous chapter"><ChevronLeft className="h-5 w-5" /></Button>
-            <Button variant="ghost" size="icon" disabled={!nextChapter} onClick={() => nextChapter && navigateToChapter(nextChapter.id)} aria-label="Next chapter"><ChevronRight className="h-5 w-5" /></Button>
+            <Button variant="ghost" size="icon" className={novelDark ? "text-white/80 hover:text-white" : ""} disabled={!prevChapter} onClick={() => prevChapter && navigateToChapter(prevChapter.id)} aria-label="Previous chapter"><ChevronLeft className="h-5 w-5" /></Button>
+            <Button variant="ghost" size="icon" className={novelDark ? "text-white/80 hover:text-white" : ""} disabled={!nextChapter} onClick={() => nextChapter && navigateToChapter(nextChapter.id)} aria-label="Next chapter"><ChevronRight className="h-5 w-5" /></Button>
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className={novelDark ? "text-white/80 hover:text-white" : ""} aria-label="Novel reader settings"><Settings className="h-5 w-5" /></Button>
+              </SheetTrigger>
+              <SheetContent className="w-[300px] sm:w-[400px]" onClick={(e) => e.stopPropagation()}>
+                <SheetHeader><SheetTitle>Novel reader settings</SheetTitle></SheetHeader>
+                <div className="mt-6 space-y-3">
+                  <Label>Page theme</Label>
+                  <RadioGroup value={novelBackground} onValueChange={(value) => setNovelBackground(value as "dark" | "light")}>
+                    <div className="flex items-center gap-2"><RadioGroupItem value="dark" id="novel-theme-dark" /><Label htmlFor="novel-theme-dark">Dark</Label></div>
+                    <div className="flex items-center gap-2"><RadioGroupItem value="light" id="novel-theme-light" /><Label htmlFor="novel-theme-light">Light</Label></div>
+                  </RadioGroup>
+                </div>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
         <article
-          className="prose prose-stone mx-auto max-w-3xl px-5 py-8 sm:px-8 sm:py-12 prose-p:leading-8 prose-headings:font-semibold"
+          className={`mx-auto max-w-3xl px-5 py-8 sm:px-8 sm:py-12 prose-p:leading-8 prose-headings:font-semibold ${novelDark ? "prose-invert" : "prose-stone"}`}
           dangerouslySetInnerHTML={{ __html: textPage.text }}
         />
       </div>
