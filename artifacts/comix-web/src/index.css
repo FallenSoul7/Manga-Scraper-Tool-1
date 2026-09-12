@@ -5,18 +5,19 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Browser mode keeps the original translate-up behavior. In standalone mode
-   there is no browser chrome above the viewport, so hide the entire toolbar
-   at its fixed position instead of leaving its translated edge visible. */
+/* Browser mode keeps the original toolbar placement. In standalone mode the
+   browser chrome is gone, so include a dark top section inside the animated
+   toolbar. This keeps the extra PWA space dark while controls are visible and
+   hides it with the controls when the toolbar collapses. */
 @media (display-mode: standalone), (display-mode: fullscreen) {
   .reader-top-bar {
-    top: calc(-1 * env(safe-area-inset-top, 0px)) !important;
+    top: 0 !important;
   }
 
   .standalone-toolbar-safe-area {
     display: block;
-    height: env(safe-area-inset-top, 0px);
-    min-height: env(safe-area-inset-top, 0px);
+    height: max(env(safe-area-inset-top, 0px), 3.5rem);
+    min-height: max(env(safe-area-inset-top, 0px), 3.5rem);
     width: 100%;
     background: #000;
     pointer-events: none;
