@@ -120,6 +120,7 @@ router.get("/", async (req, res) => {
   }
 
   try {
+    const range = req.headers.range;
     const upstream = await axios.get(targetUrl, {
       responseType: "stream",
       timeout: 20000,
@@ -127,7 +128,8 @@ router.get("/", async (req, res) => {
       headers: {
         "User-Agent": DEFAULT_UA,
         Referer: referer,
-        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        ...(range ? { Range: range } : {}),
+        Accept: "video/*,image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
       },
       validateStatus: (s) => s < 500,
@@ -174,10 +176,14 @@ router.get("/", async (req, res) => {
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "public, max-age=86400");
     res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Accept-Ranges", "bytes");
 
     const contentLength = upstream.headers["content-length"];
     if (contentLength) res.setHeader("Content-Length", String(contentLength));
+    const contentRange = upstream.headers["content-range"];
+    if (contentRange) res.setHeader("Content-Range", String(contentRange));
 
+    res.status(upstream.status === 206 ? 206 : 200);
     (upstream.data as NodeJS.ReadableStream).pipe(res);
   } catch (err) {
     if (!res.headersSent) {

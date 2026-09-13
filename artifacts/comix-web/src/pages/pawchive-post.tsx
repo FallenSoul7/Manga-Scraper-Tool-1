@@ -44,6 +44,7 @@ export default function PawchivePostPage() {
   const [isFavorite, setIsFavorite] = useState(() => {
     try { return localStorage.getItem(favoriteKey) === "1"; } catch { return false; }
   });
+  const [videoFallbacks, setVideoFallbacks] = useState<Set<string>>(() => new Set());
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState("");
 
@@ -54,6 +55,19 @@ export default function PawchivePostPage() {
       if (next) localStorage.setItem(favoriteKey, "1");
       else localStorage.removeItem(favoriteKey);
     } catch { /* local storage may be unavailable in private browsing */ }
+  }
+
+  function videoSource(url: string): string {
+    return videoFallbacks.has(url) ? mediaUrl(url) : videoUrl(url);
+  }
+
+  function useVideoFallback(url: string) {
+    setVideoFallbacks(current => {
+      if (current.has(url)) return current;
+      const next = new Set(current);
+      next.add(url);
+      return next;
+    });
   }
 
   const pages = useQuery<PagesResponse>({
@@ -119,7 +133,12 @@ export default function PawchivePostPage() {
         </div>
       ) : allVideo ? (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-black p-3">
-           <video src={videoUrl(media[0].url)} controls playsInline preload="metadata" autoPlay className="max-h-[calc(100vh-5rem)] w-full max-w-5xl rounded-xl" />
+           <video
+             src={videoSource(media[0].url)}
+             onError={() => useVideoFallback(media[0].url)}
+             controls playsInline preload="metadata" autoPlay
+             className="max-h-[calc(100vh-5rem)] w-full max-w-5xl rounded-xl"
+           />
         </div>
       ) : media.length === 1 && !isVideo(media[0].url) ? (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-black p-3">
@@ -128,7 +147,13 @@ export default function PawchivePostPage() {
       ) : (
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-3 p-3 sm:grid-cols-2">
            {media.map(page => isVideo(page.url) ? (
-             <video key={page.index} src={videoUrl(page.url)} controls playsInline preload="metadata" className="w-full rounded-xl bg-black" />
+             <video
+               key={page.index}
+               src={videoSource(page.url)}
+               onError={() => useVideoFallback(page.url)}
+               controls playsInline preload="metadata"
+               className="w-full rounded-xl bg-black"
+             />
           ) : (
              <img key={page.index} src={mediaUrl(page.url)} alt={`Attachment ${page.index + 1}`} loading="lazy" className="w-full rounded-xl object-contain" />
           ))}
