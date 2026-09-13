@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useRoute, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
-import { ArrowLeft, Download, FileImage, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, FileImage, Heart, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { proxyImage } from "@/lib/utils";
 import { saveChapterToFile } from "@/lib/save-to-file";
@@ -30,9 +30,25 @@ export default function PawchivePostPage() {
   const [, setLocation] = useLocation();
   const search = useSearch();
   const postId = decodeRoutePart(params?.postId);
-  const creatorId = new URLSearchParams(search).get("creatorId") ?? "";
+  const searchParams = useMemo(() => new URLSearchParams(search), [search]);
+  const creatorId = searchParams.get("creatorId") ?? "";
+  const postTitle = searchParams.get("postTitle") ?? "Pawchive post";
+  const creatorTitle = searchParams.get("creatorTitle") ?? "Pawchive";
+  const favoriteKey = `comihub:pawchive-favorite:${postId}`;
+  const [isFavorite, setIsFavorite] = useState(() => {
+    try { return localStorage.getItem(favoriteKey) === "1"; } catch { return false; }
+  });
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState("");
+
+  function toggleFavorite() {
+    const next = !isFavorite;
+    setIsFavorite(next);
+    try {
+      if (next) localStorage.setItem(favoriteKey, "1");
+      else localStorage.removeItem(favoriteKey);
+    } catch { /* local storage may be unavailable in private browsing */ }
+  }
 
   const pages = useQuery<PagesResponse>({
     queryKey: ["pawchive-post", postId],
@@ -71,9 +87,12 @@ export default function PawchivePostPage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate font-semibold">Pawchive post</h1>
-          <p className="text-xs text-white/50">{media.length} attachment{media.length === 1 ? "" : "s"}</p>
+          <h1 className="truncate font-semibold">{postTitle}</h1>
+          <p className="truncate text-xs text-white/50">{creatorTitle} · {media.length} attachment{media.length === 1 ? "" : "s"}</p>
         </div>
+        <Button variant="ghost" size="icon" onClick={toggleFavorite} className="text-white hover:bg-white/10" aria-label={isFavorite ? "Remove favorite" : "Favorite post"} aria-pressed={isFavorite}>
+          <Heart className={`h-5 w-5 ${isFavorite ? "fill-red-500 text-red-500" : ""}`} />
+        </Button>
         <Button variant="ghost" size="icon" onClick={download} disabled={downloadProgress !== null} className="text-white hover:bg-white/10" aria-label="Download post">
           {downloadProgress !== null ? <span className="text-[10px] font-bold">{Math.round(downloadProgress)}%</span> : <Download className="h-5 w-5" />}
         </Button>
