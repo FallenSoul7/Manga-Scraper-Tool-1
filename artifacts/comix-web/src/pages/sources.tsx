@@ -87,6 +87,7 @@ function SourceStatusTag({ sourceId, supported = true }: { sourceId: string; sup
 const HIDDEN_FROM_DEFAULT_BROWSE = new Set([
   "en.ninehentai",        // NineHentai
   "all.danbooru",         // Danbooru
+  "all.pawchive",         // Pawchive
   "local.koofr",          // K-Cafe
   "en.mangafreak",        // Mangafreak
   "all.hentaifox",        // HentaiFox
