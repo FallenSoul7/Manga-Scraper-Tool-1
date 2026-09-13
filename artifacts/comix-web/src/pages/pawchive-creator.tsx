@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
-import { ArrowLeft, Calendar, Film, Image as ImageIcon, Loader2, Search, X } from "lucide-react";
+import { ArrowLeft, Calendar, Image as ImageIcon, Loader2, Search, X, Youtube } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { proxyImage } from "@/lib/utils";
@@ -145,7 +145,9 @@ export default function PawchiveCreatorPage() {
                     className="h-full w-full object-cover transition group-hover:scale-105"
                   />
                   <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white">
-                    {post.mediaType === "video" ? <Film className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
+                    {post.mediaType === "video" || post.mediaType === "mixed"
+                      ? <Youtube className="h-3 w-3 text-white/80" />
+                      : <ImageIcon className="h-3 w-3 text-white/80" />}
                     {post.attachmentCount ?? 1}
                   </div>
                 </div>
