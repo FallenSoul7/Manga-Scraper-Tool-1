@@ -95,18 +95,35 @@ function thumbnailUrl(file: MediaFile | undefined): string {
   return `${THUMBS}${file.path}`;
 }
 
-function creatorSummary(creator: Creator): MangaSummary {
+function creatorSummary(creator: Creator, thumbnail = SOURCE_ICON): MangaSummary {
   const service = String(creator.service ?? "unknown");
   const user = String(creator.id);
   return {
     id: idFor(service, user),
     title: String(creator.name ?? `${service} creator ${user}`),
-    // Pawchive's creator endpoint has no avatar field. Use the real source
-    // mark instead of making every creator request a remote logo image.
-    thumbnail: SOURCE_ICON,
+    thumbnail,
     type: `Creator · ${service}`,
     isNsfw: false,
   };
+}
+
+async function creatorSummaries(items: Creator[]): Promise<MangaSummary[]> {
+  // The creator index has no avatar/image field. Enrich only the current page
+  // so each group gets a representative attachment without downloading the
+  // entire creator index or changing the source's pagination behavior.
+  return Promise.all(items.map(async creator => {
+    const service = String(creator.service ?? "unknown");
+    const user = String(creator.id);
+    try {
+      const posts = await creatorPosts(service, user);
+      const firstImage = posts
+        .flatMap(post => [post.file, ...(post.attachments ?? [])])
+        .find(file => !!file?.path && IMAGE_EXT.test(file.name ?? file.path ?? ""));
+      return creatorSummary(creator, thumbnailUrl(firstImage));
+    } catch {
+      return creatorSummary(creator);
+    }
+  }));
 }
 
 function postDate(post: Post): number {
@@ -148,7 +165,7 @@ export const PawchiveSource: MangaSource = {
     const all = (await creators()).sort((a, b) => Number(b.favorited ?? 0) - Number(a.favorited ?? 0));
     const start = ((opts.page ?? 1) - 1) * PAGE_SIZE;
     return {
-      items: all.slice(start, start + PAGE_SIZE).map(creatorSummary),
+      items: await creatorSummaries(all.slice(start, start + PAGE_SIZE)),
       page: opts.page ?? 1,
       hasNextPage: start + PAGE_SIZE < all.length,
     };
@@ -158,7 +175,7 @@ export const PawchiveSource: MangaSource = {
     const all = (await creators()).sort((a, b) => Number(b.updated ?? 0) - Number(a.updated ?? 0));
     const start = ((opts.page ?? 1) - 1) * PAGE_SIZE;
     return {
-      items: all.slice(start, start + PAGE_SIZE).map(creatorSummary),
+      items: await creatorSummaries(all.slice(start, start + PAGE_SIZE)),
       page: opts.page ?? 1,
       hasNextPage: start + PAGE_SIZE < all.length,
     };
@@ -171,7 +188,7 @@ export const PawchiveSource: MangaSource = {
     );
     const start = ((opts.page ?? 1) - 1) * PAGE_SIZE;
     return {
-      items: all.slice(start, start + PAGE_SIZE).map(creatorSummary),
+      items: await creatorSummaries(all.slice(start, start + PAGE_SIZE)),
       page: opts.page ?? 1,
       hasNextPage: start + PAGE_SIZE < all.length,
     };
