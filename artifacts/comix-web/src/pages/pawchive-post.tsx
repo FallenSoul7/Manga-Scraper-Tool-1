@@ -20,9 +20,15 @@ function decodeRoutePart(value: string | undefined): string {
 }
 
 function mediaUrl(url: string): string {
-  // Images and videos both go through the same SSRF-safe proxy. Direct file
-  // URLs are hotlink-protected and also fail on the deployed web origin.
+  // Images still use the SSRF-safe proxy because Pawchive's CDN can hotlink-
+  // protect image requests and the proxy supplies the source referer.
   return proxyImage(url, "all.pawchive");
+}
+
+function videoUrl(url: string): string {
+  // Keep video bytes off Render: the browser downloads and decodes the media
+  // on the user's device instead of making the backend buffer a long file.
+  return url;
 }
 
 export default function PawchivePostPage() {
@@ -113,7 +119,7 @@ export default function PawchivePostPage() {
         </div>
       ) : allVideo ? (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-black p-3">
-           <video src={mediaUrl(media[0].url)} controls playsInline autoPlay className="max-h-[calc(100vh-5rem)] w-full max-w-5xl rounded-xl" />
+           <video src={videoUrl(media[0].url)} controls playsInline preload="metadata" autoPlay className="max-h-[calc(100vh-5rem)] w-full max-w-5xl rounded-xl" />
         </div>
       ) : media.length === 1 && !isVideo(media[0].url) ? (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-black p-3">
@@ -122,7 +128,7 @@ export default function PawchivePostPage() {
       ) : (
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-3 p-3 sm:grid-cols-2">
            {media.map(page => isVideo(page.url) ? (
-             <video key={page.index} src={mediaUrl(page.url)} controls playsInline className="w-full rounded-xl bg-black" />
+             <video key={page.index} src={videoUrl(page.url)} controls playsInline preload="metadata" className="w-full rounded-xl bg-black" />
           ) : (
              <img key={page.index} src={mediaUrl(page.url)} alt={`Attachment ${page.index + 1}`} loading="lazy" className="w-full rounded-xl object-contain" />
           ))}
