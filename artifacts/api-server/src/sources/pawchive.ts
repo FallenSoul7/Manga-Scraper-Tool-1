@@ -27,7 +27,7 @@ type Creator = {
   favorited?: number;
 };
 
-type MediaFile = { name?: string; path?: string };
+type MediaFile = { name?: string; path?: string; preview_only?: boolean };
 type Post = {
   id: string | number;
   user?: string | number;
@@ -86,6 +86,11 @@ function decodePostId(id: string) {
 function fileUrl(file: MediaFile | undefined): string | null {
   if (!file?.path) return null;
   if (/^https?:\/\//i.test(file.path)) return file.path;
+  // Pawchive marks many multi-image strip attachments as preview_only. Their
+  // file URL returns 404, while the thumbnail CDN serves the image reliably.
+  // Keep full-resolution files for normal attachments and use the working
+  // thumbnail endpoint only for preview-only images.
+  if (file.preview_only && IMAGE_EXT.test(file.name ?? file.path)) return thumbnailUrl(file);
   return `${FILES}${file.path}${file.name ? `?f=${encodeURIComponent(file.name)}` : ""}`;
 }
 
