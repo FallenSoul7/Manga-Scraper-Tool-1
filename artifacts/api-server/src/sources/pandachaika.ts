@@ -88,10 +88,11 @@ function searchUrl(params: Record<string, string>): string {
 
 // ── Source ────────────────────────────────────────────────────────────────────
 export const PandaChaikaSource: MangaSource = {
-  id:     "en.pandachaika",
+  id:     "all.pandachaika",
   name:   "Panda Chaika",
   lang:   "en",
   isNsfw: true,
+  imageReferer: `${BASE}/`,
 
   popularSorts: [
     { value: "rating",      label: "Top Rated"  },

@@ -60,6 +60,8 @@ register(ResetScansSource);
 register(XkcdSource);
 register(HentaiYogaSource);
 register(PandaChaikaSource);
+// Preserve IDs created by the earlier pre-catalog implementation.
+SOURCES_BY_ID.set("en.pandachaika", PandaChaikaSource);
 register(KoofrSource);
 register(Rule34Source);
 register(PawchiveSource);
@@ -100,6 +102,13 @@ register(createMangaThemesiaSource({
   name: "Elf Toon",
   baseUrl: "https://elftoon.com",
   lang: "en",
+}));
+register(createMangaThemesiaSource({
+  id: "en.ravenscans",
+  name: "Raven Scans",
+  baseUrl: "https://ravenscans.org",
+  lang: "en",
+  isNsfw: true,
 }));
 // Thunder Scans uses /comics (not /manga) and the MangaThemesiaAlt variant
 register(createMangaThemesiaSource({
