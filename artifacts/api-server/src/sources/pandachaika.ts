@@ -8,7 +8,7 @@ import type {
   PageListResponse,
   MangaSummary,
 } from "./types";
-import { makeHttp, fetchJson } from "./scraper-utils";
+import { makeHttp, fetchHtml, fetchJson } from "./scraper-utils";
 
 const BASE = "https://panda.chaika.moe";
 
@@ -86,6 +86,13 @@ function searchUrl(params: Record<string, string>): string {
   return `/search/?${q}`;
 }
 
+const TAG_SCOPES = ["language", "artist", "group", "parody", "female", "male", "mixed", "other"];
+let cachedTags: Array<{ id: string; name: string; group: string }> | null = null;
+
+function tagParams(o: ListOptions): Record<string, string> {
+  return o.tagIds?.length ? { tags: o.tagIds.join(",") } : {};
+}
+
 // ── Source ────────────────────────────────────────────────────────────────────
 export const PandaChaikaSource: MangaSource = {
   id:     "all.pandachaika",
@@ -102,21 +109,42 @@ export const PandaChaikaSource: MangaSource = {
 
   async popular(o: ListOptions): Promise<MangaListResponse> {
     const sort = o.sort || "rating";
-    const data = await fetchJson<SearchResponse>(http, searchUrl({ sort, page: String(o.page) }));
+    const data = await fetchJson<SearchResponse>(http, searchUrl({ sort, page: String(o.page), ...tagParams(o) }));
     return { items: data.archives.map(archiveToSummary), page: o.page, hasNextPage: data.hasNext };
   },
 
   async latest(o: ListOptions): Promise<MangaListResponse> {
-    const data = await fetchJson<SearchResponse>(http, searchUrl({ sort: "public_date", page: String(o.page) }));
+    const data = await fetchJson<SearchResponse>(http, searchUrl({ sort: "public_date", page: String(o.page), ...tagParams(o) }));
     return { items: data.archives.map(archiveToSummary), page: o.page, hasNextPage: data.hasNext };
   },
 
   async search(query: string, o: ListOptions): Promise<MangaListResponse> {
     const data = await fetchJson<SearchResponse>(
       http,
-      searchUrl({ title: query.trim(), sort: "rating", page: String(o.page) }),
+      searchUrl({ title: query.trim(), sort: "rating", page: String(o.page), ...tagParams(o) }),
     );
     return { items: data.archives.map(archiveToSummary), page: o.page, hasNextPage: data.hasNext };
+  },
+
+  async tags() {
+    if (cachedTags) return cachedTags;
+    const groups = await Promise.all(TAG_SCOPES.map(async scope => {
+      try {
+        const { $ } = await fetchHtml(http, `/tag-autocomplete/?q=${scope}`);
+        const tags: Array<{ id: string; name: string; group: string }> = [];
+        $("a.choice[data-value]").each((_i, el) => {
+          const value = $(el).attr("data-value")?.trim();
+          if (!value) return;
+          tags.push({ id: value, name: value.replace(/_/g, " "), group: scope[0].toUpperCase() + scope.slice(1) });
+        });
+        return tags;
+      } catch {
+        return [];
+      }
+    }));
+    const seen = new Set<string>();
+    cachedTags = groups.flat().filter(tag => !seen.has(tag.id) && seen.add(tag.id));
+    return cachedTags;
   },
 
   async details(id: string, _opts: DetailOptions): Promise<MangaDetail> {
