@@ -1,6 +1,6 @@
 {
   "generatedAt": 1777351232738,
-  "count": 1357,
+  "count": 1360,
   "extensions": [
     {
       "id": "en.royalroad",
@@ -545,7 +545,7 @@
     {
       "id": "pt.apenasumafa",
       "slug": "apenasumafa",
-      "name": "Apenas Uma F\u00e3",
+      "name": "Apenas Uma Fã",
       "lang": "pt",
       "isNsfw": false,
       "versionCode": 0,
@@ -1529,7 +1529,7 @@
     {
       "id": "pt.cafecomyaoi",
       "slug": "cafecomyaoi",
-      "name": "Caf\u00e9 com Yaoi",
+      "name": "Café com Yaoi",
       "lang": "pt",
       "isNsfw": true,
       "versionCode": 0,
@@ -1553,7 +1553,7 @@
     {
       "id": "tr.caprazmanga",
       "slug": "caprazmanga",
-      "name": "\u00c7aprazManga",
+      "name": "ÇaprazManga",
       "lang": "tr",
       "isNsfw": false,
       "versionCode": 0,
@@ -2405,7 +2405,7 @@
     {
       "id": "en.dankefurslesen",
       "slug": "dankefurslesen",
-      "name": "Danke f\u00fcrs Lesen",
+      "name": "Danke fürs Lesen",
       "lang": "en",
       "isNsfw": true,
       "versionCode": 0,
@@ -3989,7 +3989,7 @@
     {
       "id": "tr.golgebahcesi",
       "slug": "golgebahcesi",
-      "name": "G\u00f6lge Bah\u00e7esi",
+      "name": "Gölge Bahçesi",
       "lang": "tr",
       "isNsfw": false,
       "versionCode": 0,
@@ -7301,7 +7301,7 @@
     {
       "id": "tr.mangasehri",
       "slug": "mangasehri",
-      "name": "Manga \u015eehri",
+      "name": "Manga Şehri",
       "lang": "tr",
       "isNsfw": true,
       "versionCode": 0,
@@ -7313,7 +7313,7 @@
     {
       "id": "tr.mangasehrinet",
       "slug": "mangasehrinet",
-      "name": "Manga \u015eehri.net",
+      "name": "Manga Şehri.net",
       "lang": "tr",
       "isNsfw": true,
       "versionCode": 0,
@@ -12857,7 +12857,7 @@
     {
       "id": "tr.ruyamanga",
       "slug": "ruyamanga",
-      "name": "R\u00fcya Manga",
+      "name": "Rüya Manga",
       "lang": "tr",
       "isNsfw": false,
       "versionCode": 0,
@@ -12869,7 +12869,7 @@
     {
       "id": "tr.ruyamanganet",
       "slug": "ruyamanganet",
-      "name": "R\u00fcya Manga.net",
+      "name": "Rüya Manga.net",
       "lang": "tr",
       "isNsfw": false,
       "versionCode": 0,
@@ -12929,7 +12929,7 @@
     {
       "id": "pt.sakuramangas",
       "slug": "sakuramangas",
-      "name": "Sakura Mang\u00e1s",
+      "name": "Sakura Mangás",
       "lang": "pt",
       "isNsfw": true,
       "versionCode": 4,
@@ -13301,7 +13301,7 @@
     {
       "id": "tr.shadowceviri",
       "slug": "shadowceviri",
-      "name": "Shadow \u00c7eviri",
+      "name": "Shadow Çeviri",
       "lang": "tr",
       "isNsfw": false,
       "versionCode": 0,
@@ -13889,7 +13889,7 @@
     {
       "id": "pt.taiyo",
       "slug": "taiyo",
-      "name": "Taiy\u014d",
+      "name": "Taiyō",
       "lang": "pt",
       "isNsfw": true,
       "versionCode": 8,
@@ -14069,7 +14069,7 @@
     {
       "id": "pt.temakimangas",
       "slug": "temakimangas",
-      "name": "Temaki mang\u00e1s",
+      "name": "Temaki mangás",
       "lang": "pt",
       "isNsfw": true,
       "versionCode": 0,
@@ -14609,7 +14609,7 @@
     {
       "id": "pt.traducoesdolipe",
       "slug": "traducoesdolipe",
-      "name": "Tradu\u00e7\u00f5es do Lipe",
+      "name": "Traduções do Lipe",
       "lang": "pt",
       "isNsfw": false,
       "versionCode": 0,
@@ -14765,7 +14765,7 @@
     {
       "id": "pt.tsundokutraducoes",
       "slug": "tsundokutraducoes",
-      "name": "Tsundoku Tradu\u00e7\u00f5es",
+      "name": "Tsundoku Traduções",
       "lang": "pt",
       "isNsfw": true,
       "versionCode": 0,
@@ -14789,7 +14789,7 @@
     {
       "id": "tr.turkcemangaoku",
       "slug": "turkcemangaoku",
-      "name": "T\u00fcrk\u00e7e Manga Oku",
+      "name": "Türkçe Manga Oku",
       "lang": "tr",
       "isNsfw": false,
       "versionCode": 0,
@@ -15917,7 +15917,7 @@
     {
       "id": "pt.yomumangas",
       "slug": "yomumangas",
-      "name": "Yomu Mang\u00e1s",
+      "name": "Yomu Mangás",
       "lang": "pt",
       "isNsfw": true,
       "versionCode": 4,
@@ -16001,7 +16001,7 @@
     {
       "id": "pt.yugenmangas",
       "slug": "yugenmangas",
-      "name": "Yugen Mang\u00e1s",
+      "name": "Yugen Mangás",
       "lang": "pt",
       "isNsfw": false,
       "versionCode": 50,
@@ -16297,6 +16297,30 @@
       "themePkg": null,
       "baseUrl": "https://www.animegg.org",
       "icon": "en.animegg.svg"
+    },
+    {
+      "id": "en.novelfull",
+      "slug": "novelfull",
+      "name": "NovelFull",
+      "lang": "en",
+      "isNsfw": false,
+      "versionCode": 1,
+      "extClass": "NovelFullSource",
+      "themePkg": null,
+      "baseUrl": "https://novelfull.com",
+      "icon": null
+    },
+    {
+      "id": "en.novelhall",
+      "slug": "novelhall",
+      "name": "NovelHall",
+      "lang": "en",
+      "isNsfw": false,
+      "versionCode": 1,
+      "extClass": "NovelHallSource",
+      "themePkg": null,
+      "baseUrl": "https://www.novelhall.com",
+      "icon": null
     }
   ]
 }
