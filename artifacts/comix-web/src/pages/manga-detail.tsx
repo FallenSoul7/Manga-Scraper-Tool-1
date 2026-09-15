@@ -216,6 +216,10 @@ export default function MangaDetail() {
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [categoryDialogIsNewAdd, setCategoryDialogIsNewAdd] = useState(false);
+  const [lastCategoryId, setLastCategoryId] = useState<string | null>(() => {
+    try { return localStorage.getItem("comix:last-category-id"); } catch { return null; }
+  });
+  const categoryDialogInitializedRef = useRef(false);
   const [coverZoomOpen, setCoverZoomOpen] = useState(false);
   const [downloadTarget, setDownloadTarget] = useState<{
     chapters: Array<{ id: number; number: number; title: string }>;
@@ -499,9 +503,23 @@ export default function MangaDetail() {
     if (!savedManga) return;
     const current = new Set(savedManga.categoryIds);
     if (current.has(catId)) current.delete(catId); else current.add(catId);
-    if (current.size === 0) current.add('default');
+    if (categoryDialogIsNewAdd && current.has(catId)) {
+      setLastCategoryId(catId);
+      try { localStorage.setItem("comix:last-category-id", catId); } catch { /* storage may be unavailable */ }
+    }
+    if (current.size === 0 && !categoryDialogIsNewAdd) current.add('default');
     storeActions.setMangaCategories(savedManga.id, Array.from(current));
   };
+
+  useEffect(() => {
+    if (!isCategoryDialogOpen || !categoryDialogIsNewAdd || categoryDialogInitializedRef.current || !savedManga || !categories.length) return;
+    const remembered = lastCategoryId && categories.some(cat => cat.id === lastCategoryId) ? lastCategoryId : null;
+    const nextIds = categories.length === 1 ? [categories[0].id] : remembered ? [remembered] : [];
+    categoryDialogInitializedRef.current = true;
+    if (savedManga.categoryIds.join(",") !== nextIds.join(",")) {
+      storeActions.setMangaCategories(savedManga.id, nextIds);
+    }
+  }, [isCategoryDialogOpen, categoryDialogIsNewAdd, savedManga, categories, lastCategoryId]);
 
 
   const showLoading = !sourceReady || (online && mangaLoading);
@@ -642,6 +660,7 @@ export default function MangaDetail() {
               if (inLibrary) {
                 storeActions.removeFromLibrary(manga.id);
               } else {
+                categoryDialogInitializedRef.current = false;
                 handleToggleLibrary();
                 setCategoryDialogIsNewAdd(true);
                 setIsCategoryDialogOpen(true);
@@ -1150,7 +1169,10 @@ export default function MangaDetail() {
             storeActions.removeFromLibrary(manga.id);
           }
           setIsCategoryDialogOpen(open);
-          if (!open) setCategoryDialogIsNewAdd(false);
+          if (!open) {
+            categoryDialogInitializedRef.current = false;
+            setCategoryDialogIsNewAdd(false);
+          }
         }}>
         <DialogContent className="w-[260px] max-w-[260px] p-0 gap-0 rounded-2xl overflow-hidden [&>button]:hidden">
           <div className="px-5 pt-5 pb-2 flex items-center justify-between">
