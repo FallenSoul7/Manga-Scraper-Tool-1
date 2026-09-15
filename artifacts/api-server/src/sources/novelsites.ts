@@ -96,10 +96,10 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
     },
     async details(id: string, _o: DetailOptions): Promise<MangaDetail> {
       const { $ } = await fetchPage(novelPath(id));
-      const title = clean($("h1, #bookname, .novel-title, .book-title").first().text()) || id;
-      const synopsis = clean($(".summary, .description, .desc, .novel-detail .content, [itemprop='description']").first().text());
-      const author = clean($("#author, .author, [itemprop='author'], .info a[href*='author']").first().text());
-      const thumbnail = $(".novel-cover img, .book-cover img, img[itemprop='image'], .cover img").first().attr("src") || "";
+      const title = clean($("#bookname, .desc h3.title, .novel-title, .book-title, h1").filter((_i, el) => !$(el).closest(".breadcrumb").length).first().text()) || id;
+      const synopsis = clean($(".intro, .summary, .description, .desc-text, .novel-detail .content, [itemprop='description'], meta[name='description']").first().attr("content") || $(".intro, .summary, .description, .desc-text, .novel-detail .content, [itemprop='description']").first().text());
+      const author = clean($("#author, .info a[href*='/author/'], .author, [itemprop='author']").first().text());
+      const thumbnail = $(".books img, .novel-cover img, .book-cover img, img[itemprop='image'], .cover img, meta[name='image']").first().attr("src") || $("meta[name='image']").first().attr("content") || "";
       const genres = $(".genres a, .genre a, .categories a, a[href*='genre']").map((_i, el) => clean($(el).text())).get().filter(Boolean);
       const status = clean($(".status, [itemprop='status']").first().text()) || "Unknown";
       return { id, title, author, artist: "", synopsis, altTitles: [], status, type: "Novel", isNsfw: false, rating: 0, thumbnail: absUrl(base, thumbnail), genres, score: "", scorePosition: "none" };
