@@ -87,6 +87,7 @@ function SourceStatusTag({ sourceId, supported = true }: { sourceId: string; sup
 // through the search box, so they don't sit at the top of the browse list.
 const HIDDEN_FROM_DEFAULT_BROWSE = new Set([
   "en.ninehentai",        // NineHentai
+  "all.pandachaika",      // PandaChaika
   "all.danbooru",         // Danbooru
   "all.pawchive",         // Pawchive
   "local.koofr",          // K-Cafe
