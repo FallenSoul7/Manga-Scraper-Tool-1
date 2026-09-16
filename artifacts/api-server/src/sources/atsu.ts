@@ -49,11 +49,15 @@ const tagsFor = (manga: AtsuManga) => [
   ...(manga.genres || []).map(tag => ({ name: clean(tag.name), group: "Genre" })),
   ...(manga.tags || []).map(tag => ({ name: clean(tag.name), group: "Tag" })),
 ].filter(tag => tag.name);
+const mediaType = (manga: AtsuManga) =>
+  clean(manga.medium).toLowerCase() === "novel"
+    ? "Novel"
+    : (clean(manga.type || manga.medium) || "Manga").replace(/^Manwha$/i, "Manhwa");
 const summary = (manga: AtsuManga): MangaSummary => ({
   id: manga.id,
   title: clean(manga.title || manga.englishTitle) || manga.id,
   thumbnail: posterUrl(manga.poster, manga.posterMedium || manga.posterSmall),
-  type: (clean(manga.type || manga.medium) || "Manga").replace(/^Manwha$/i, "Manhwa"),
+  type: mediaType(manga),
   isNsfw: !!manga.isAdult,
 });
 
@@ -88,7 +92,7 @@ export const AtsuSource: MangaSource = {
       synopsis: clean(manga.synopsis),
       altTitles: [],
       status: clean(manga.status) || "Unknown",
-      type: (clean(manga.type || manga.medium) || "Manga").replace(/^Manwha$/i, "Manhwa"),
+      type: mediaType(manga),
       isNsfw: !!manga.isAdult,
       rating: Number(manga.avgRating || 0),
       thumbnail: posterUrl(manga.poster, manga.posterMedium || manga.posterSmall),
@@ -109,7 +113,7 @@ export const AtsuSource: MangaSource = {
       seen.add(chapter.id);
       const scanlatorId = (chapter.scanlationMangaId || "").trim();
       items.push({
-        id: `${mangaId}|${chapter.id}|${scanlatorId}`,
+        id: `${mangaId}|${chapter.id}|${scanlatorId}|${clean(page.mangaPage?.medium).toLowerCase() === "novel" ? "novel" : "comic"}`,
         number: Number(chapter.number ?? chapter.index ?? items.length + 1),
         title: clean(chapter.title) || `Chapter ${chapter.number ?? items.length + 1}`,
         scanlator: scanlatorNames.get(scanlatorId) || scanlatorId || "Atsu",
@@ -121,8 +125,27 @@ export const AtsuSource: MangaSource = {
     return { items };
   },
   async pages(chapterKey: string): Promise<PageListResponse> {
-    const [mangaId, chapterId] = chapterKey.split("|");
+    const [mangaId, chapterId, _scanlatorId, medium] = chapterKey.split("|");
     if (!mangaId || !chapterId) throw new Error("Invalid Atsu chapter identifier");
+    if (medium === "novel") {
+      const data = await fetchJson<{ readNovelChapter?: { id: string; title?: string; paragraphs?: string[] } }>(
+        http,
+        `/api/read/novelChapter?mangaId=${encodeURIComponent(mangaId)}&chapterId=${encodeURIComponent(chapterId)}`,
+      );
+      const chapter = data.readNovelChapter;
+      if (!chapter) throw new Error(`Atsu novel chapter ${chapterId} was not found`);
+      return {
+        chapterId: chapterKey,
+        pages: [{
+          index: 0,
+          url: "",
+          title: clean(chapter.title) || "Chapter",
+          text: (chapter.paragraphs || [])
+            .map(paragraph => `<p>${paragraph.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`)
+            .join(""),
+        }],
+      };
+    }
     const data = await fetchJson<AtsuChapterResponse>(http, `/api/read/chapter?mangaId=${encodeURIComponent(mangaId)}&chapterId=${encodeURIComponent(chapterId)}`);
     const chapter = data.readChapter;
     if (!chapter) throw new Error(`Atsu chapter ${chapterId} was not found`);
