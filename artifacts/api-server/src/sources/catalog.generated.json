@@ -1,6 +1,6 @@
 {
   "generatedAt": 1777351232738,
-  "count": 1360,
+  "count": 1361,
   "extensions": [
     {
       "id": "en.royalroad",
@@ -16320,6 +16320,18 @@
       "extClass": "NovelHallSource",
       "themePkg": null,
       "baseUrl": "https://www.novelhall.com",
+      "icon": null
+    },
+    {
+      "id": "all.atsu",
+      "slug": "atsu",
+      "name": "Atsu",
+      "lang": "all",
+      "isNsfw": false,
+      "versionCode": 1,
+      "extClass": "AtsuSource",
+      "themePkg": null,
+      "baseUrl": "https://atsu.moe",
       "icon": null
     }
   ]
