@@ -99,10 +99,22 @@ export interface ChapterListResponse {
 export interface PageInfo {
   index: number;
   url: string;
+  /** Optional selectable audio/subtitle variants for video pages. */
+  videoTracks?: VideoTrack[];
   /** Optional rendered HTML content for text-based novel sources. */
   text?: string;
   /** Optional chapter title for text-based sources. */
   title?: string;
+}
+
+export interface VideoTrack {
+  id: string;
+  label: string;
+  url: string;
+  available?: boolean;
+  audioLanguage?: string;
+  subtitleLanguage?: string;
+  kind: "original" | "dub" | "sub";
 }
 
 export interface PageListResponse {

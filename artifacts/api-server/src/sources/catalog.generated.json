@@ -12,7 +12,7 @@
       "extClass": "RoyalRoadSource",
       "themePkg": null,
       "baseUrl": "https://www.royalroad.com",
-      "icon": null
+      "icon": "en.royalroad.svg"
     },
     {
       "id": "all.pawchive",
@@ -16308,7 +16308,7 @@
       "extClass": "NovelFullSource",
       "themePkg": null,
       "baseUrl": "https://novelfull.com",
-      "icon": null
+      "icon": "en.novelfull.svg"
     },
     {
       "id": "en.novelhall",
@@ -16320,7 +16320,7 @@
       "extClass": "NovelHallSource",
       "themePkg": null,
       "baseUrl": "https://www.novelhall.com",
-      "icon": null
+      "icon": "en.novelhall.svg"
     },
     {
       "id": "all.atsu",

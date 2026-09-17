@@ -16,7 +16,7 @@ import { apiUrl } from "@/lib/api-url";
 // ── Keep this import ─────────────────────────────────────────────────────
 import { getProxiedImageUrl } from "@/lib/vpn";
 import { getClientSourceAdapter } from "@/lib/client-sources";
-import VideoPlayer from "@/pages/video-player";
+import VideoPlayer, { type VideoTrack } from "@/pages/video-player";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
@@ -147,7 +147,7 @@ export default function Reader() {
   const pagesError = clientPagesQuery.error ?? (!clientAdapter?.pages ? serverPagesQuery.error : null);
 
   // Unified pages array: offline IndexedDB data OR live API data
-  const effectivePages: ChapterPage[] =
+  const effectivePages: Array<ChapterPage & { videoTracks?: VideoTrack[] }> =
     (isOfflineMode && offlinePages) ? offlinePages : (pagesData?.pages ?? []);
   const effectiveLoading = isOfflineMode ? offlineLoading : pagesLoading;
   const effectiveError = isOfflineMode ? null : pagesError;
@@ -417,6 +417,7 @@ export default function Reader() {
   // bypass the manga strip entirely and show the full-screen video player.
   if (effectivePages.length > 0 && effectivePages.some(p => isVideoUrl(p.url))) {
     const videoUrl = effectivePages[0].url;
+    const videoTracks = effectivePages[0].videoTracks;
     const mangaTitle = effectiveMangaData?.title ?? "Video";
     const chObj = effectiveChapterData.find(c => String(c.id) === chapterId);
     const chapterTitle = chObj
@@ -425,6 +426,7 @@ export default function Reader() {
     return (
       <VideoPlayer
         url={videoUrl}
+        tracks={videoTracks}
         title={mangaTitle}
         subtitle={chapterTitle}
         onBack={goBack}

@@ -6,15 +6,29 @@ const Plyr = (PlyrModule as unknown as { default?: typeof import("plyr") }).defa
 import "plyr/dist/plyr.css";
 import { apiUrl } from "@/lib/api-url";
 
+export interface VideoTrack {
+  id: string;
+  label: string;
+  url: string;
+  available?: boolean;
+  audioLanguage?: string;
+  subtitleLanguage?: string;
+  kind: "original" | "dub" | "sub";
+}
+
 export interface VideoPlayerProps {
   url: string;
   title: string;
   subtitle?: string;
+  tracks?: VideoTrack[];
   onBack: () => void;
 }
 
-export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlayerProps) {
-  const isEmbed = /animegg\.org\/embed\//i.test(url);
+export default function VideoPlayer({ url, title, subtitle, tracks = [], onBack }: VideoPlayerProps) {
+  const [selectedTrackId, setSelectedTrackId] = useState(tracks[0]?.id || "");
+  const selectedTrack = tracks.find(track => track.id === selectedTrackId) || tracks[0];
+  const playUrl = selectedTrack?.url || url;
+  const isEmbed = /animegg\.org\/embed\//i.test(playUrl);
   const videoRef = useRef<HTMLVideoElement>(null);
   const plyrRef = useRef<Plyr | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -22,7 +36,7 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [controlsVisible, setControlsVisible] = useState(true);
-  const resumeKey = `comix-video-progress:${url}`;
+  const resumeKey = `comix-video-progress:${playUrl}`;
   const resumeTimeRef = useRef(0);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -34,6 +48,10 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
       resumeTimeRef.current = 0;
     }
   }, [resumeKey]);
+
+  useEffect(() => {
+    setSelectedTrackId(tracks[0]?.id || "");
+  }, [url, tracks]);
 
   useEffect(() => {
     if (isEmbed) {
@@ -107,7 +125,7 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
       plyrRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, isEmbed]);
+  }, [playUrl, isEmbed]);
 
   function retry() {
     setHasError(false);
@@ -182,7 +200,7 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
           controlsVisible ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
-        <div className="flex items-center gap-3 px-3 h-16 sm:px-5">
+          <div className="flex items-center gap-3 px-3 h-16 sm:px-5">
           <button
             className="shrink-0 h-10 w-10 flex items-center justify-center rounded-full bg-black/50 backdrop-blur border border-white/15 text-white hover:bg-black/70 active:scale-90 transition-all"
             onClick={onBack}
@@ -195,6 +213,21 @@ export default function VideoPlayer({ url, title, subtitle, onBack }: VideoPlaye
               <p className="text-white/55 text-xs leading-tight truncate mt-0.5">{subtitle}</p>
             )}
           </div>
+          {tracks.length > 0 && (
+            <label className="shrink-0 flex items-center gap-2 text-xs text-white/80">
+              <span className="hidden sm:inline">Audio / subtitles</span>
+              <select
+                value={selectedTrack?.id || ""}
+                onChange={event => setSelectedTrackId(event.target.value)}
+                className="max-w-[170px] rounded-lg border border-white/20 bg-black/70 px-2 py-2 text-xs text-white outline-none"
+                aria-label="Choose audio and subtitle track"
+              >
+                {tracks.map(track => (
+                  <option key={track.id} value={track.id} disabled={track.available === false}>{track.label}</option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
       </div>
 

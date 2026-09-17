@@ -1,6 +1,6 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
-import type { ChapterListResponse, DetailOptions, ListOptions, MangaDetail, MangaListResponse, MangaSource, PageListResponse } from "./types";
+import type { ChapterListResponse, DetailOptions, ListOptions, MangaDetail, MangaListResponse, MangaSource, PageListResponse, VideoTrack } from "./types";
 
 const BASE = "https://www.animegg.org";
 const BROWSE_FALLBACK = [["one-piece", "One Piece"], ["naruto-shippuden", "Naruto Shippuden"], ["detectiveconan", "Detective Conan"], ["bleach", "Bleach"]] as const;
@@ -92,9 +92,29 @@ async function pages(chapterId: string): Promise<PageListResponse> {
   const episodeUrl = absolute(decodeURIComponent(chapterId));
   const response = await http.get<string>(episodeUrl, { timeout: 8000 });
   const $ = cheerio.load(response.data);
-  const iframe = $("iframe.video").filter((_i, el) => /subbed/i.test($(el).closest(".tab-pane").attr("id") || "")).first().attr("src") || $("iframe.video").first().attr("src");
-  if (!iframe) throw new Error(`AnimeGG has no playable embed for ${episodeUrl}`);
-  return { chapterId, pages: [{ index: 0, url: absolute(iframe) }] };
+  const tracks: VideoTrack[] = $("#videos a[data-toggle='tab']").toArray().flatMap((el) => {
+    const version = ($(el).attr("data-version") || "").toLowerCase();
+    const href = $(el).attr("href") || "";
+    const iframe = $(".tab-pane" + href).find("iframe.video").attr("src") || "";
+    if (!iframe || !version) return [];
+    const isDub = version === "dubbed";
+    const track = {
+      id: `${version}-${$(el).attr("data-id") || iframe}`,
+      label: isDub ? "English dub" : "Original Japanese audio · subtitles",
+      url: absolute(iframe),
+      available: true,
+      audioLanguage: isDub ? "English" : "Japanese",
+      subtitleLanguage: isDub ? undefined : "English",
+      kind: isDub ? "dub" : "sub",
+    } satisfies VideoTrack;
+    return [track, ...(!isDub ? [{ id: "original-no-subtitles", label: "Original Japanese audio · no subtitles (unavailable)", url: absolute(iframe), available: false, audioLanguage: "Japanese", kind: "original" as const }] : [])];
+  });
+  if (!tracks.length) {
+    const iframe = $("iframe.video").first().attr("src");
+    if (iframe) tracks.push({ id: "default", label: "Original / unavailable track details", url: absolute(iframe), kind: "original" });
+  }
+  if (!tracks.length) throw new Error(`AnimeGG has no playable embed for ${episodeUrl}`);
+  return { chapterId, pages: [{ index: 0, url: tracks[0].url, videoTracks: tracks }] };
 }
 
 const AnimeGGSource: MangaSource = {

@@ -65,7 +65,6 @@ const NOT_WORKING_SOURCE_IDS = new Set([
   "en.manhuaplus",
   "en.elftoon",
   "en.allmanga",
-  "en.animegg",
 ]);
 
 function SourceStatusTag({ sourceId, supported = true }: { sourceId: string; supported?: boolean }) {
@@ -385,9 +384,13 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
     [installed, catalogIconMap],
   );
 
-  const pinnedSources = withIcon.filter(s => s.isPinned).sort((a, b) => a.name.localeCompare(b.name));
+  const sourceSort = (a: InstalledSource, b: InstalledSource) => {
+    const workingDelta = Number(NOT_WORKING_SOURCE_IDS.has(a.id)) - Number(NOT_WORKING_SOURCE_IDS.has(b.id));
+    return workingDelta || a.name.localeCompare(b.name);
+  };
+  const pinnedSources = withIcon.filter(s => s.isPinned).sort(sourceSort);
   const lastUsed      = withIcon.find(s => s.id === activeId && !s.isPinned);
-  const rest          = withIcon.filter(s => !s.isPinned && s.id !== activeId).sort((a, b) => a.name.localeCompare(b.name));
+  const rest          = withIcon.filter(s => !s.isPinned && s.id !== activeId).sort(sourceSort);
 
   function SourceRow({ src }: { src: InstalledSource }) {
     const isPinned = !!src.isPinned;
