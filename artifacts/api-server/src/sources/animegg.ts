@@ -4,6 +4,7 @@ import type { ChapterListResponse, DetailOptions, ListOptions, MangaDetail, Mang
 
 const BASE = "https://www.animegg.org";
 const BROWSE_FALLBACK = [["one-piece", "One Piece"], ["naruto-shippuden", "Naruto Shippuden"], ["detectiveconan", "Detective Conan"], ["bleach", "Bleach"]] as const;
+const ANIME_GENRES = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Sports", "Thriller", "Supernatural", "Historical", "School", "Shounen", "Shoujo", "Music", "Military", "Psychological"];
 const http = axios.create({ timeout: 25000, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36", Accept: "text/html,application/json;q=0.9,*/*;q=0.8", Referer: `${BASE}/` } });
 
 function absolute(value: string): string {
@@ -32,6 +33,11 @@ async function listing(path: string, page: number): Promise<MangaListResponse> {
   return parseListing(cheerio.load(response.data), page);
 }
 
+function genrePath(opts: ListOptions): string | null {
+  const genre = opts.tagIds?.find(Boolean);
+  return genre ? `/genre/${encodeURIComponent(genre.toLowerCase())}` : null;
+}
+
 function fallbackListing(page: number): MangaListResponse {
   return { page, hasNextPage: false, items: BROWSE_FALLBACK.map(([id, title]) => ({ id, title, thumbnail: "/public/source-icons/en.animegg.svg", type: "Anime", isNsfw: false, mediaType: "anime" as const })) };
 }
@@ -42,6 +48,8 @@ function fallbackDetail(slug: string): MangaDetail {
 }
 
 async function search(query: string, opts: ListOptions): Promise<MangaListResponse> {
+  const genre = genrePath(opts);
+  if (!query.trim() && genre) return listing(genre, opts.page).catch(() => fallbackListing(opts.page));
   if (!query.trim()) return listing("/popular-series", opts.page).catch(() => fallbackListing(opts.page));
   const response = await http.get<Array<{ id: number; name: string; url: string; thumbnailUrl?: string }>>(`${BASE}/search/auto/`, { params: { q: query } });
   const all = response.data ?? [];
@@ -119,13 +127,13 @@ async function pages(chapterId: string): Promise<PageListResponse> {
 
 const AnimeGGSource: MangaSource = {
   id: "en.animegg", name: "AnimeGG", lang: "en", isNsfw: false,
-  popular: opts => listing("/popular-series", opts.page).catch(() => fallbackListing(opts.page)),
-  latest: opts => listing("/releases", opts.page).catch(() => fallbackListing(opts.page)),
+  popular: opts => listing(genrePath(opts) || "/popular-series", opts.page).catch(() => fallbackListing(opts.page)),
+  latest: opts => listing(genrePath(opts) || "/releases", opts.page).catch(() => fallbackListing(opts.page)),
   search,
   details: (id, _opts: DetailOptions) => details(id),
   chapters: id => chapters(id),
   pages,
-  tags: async () => [{ id: "anime", name: "Anime", group: "Media" }],
+  tags: async () => ANIME_GENRES.map(name => ({ id: name.toLowerCase(), name, group: "Genre" })),
 };
 
 export { AnimeGGSource };
