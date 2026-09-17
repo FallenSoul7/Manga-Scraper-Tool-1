@@ -13,7 +13,7 @@ const LOCKOUT_MS = 15000;
 // Module-level flag — NOT persisted, so any reload re-locks the app.
 let unlockedThisSession = false;
 
-export const LOCK_DISCORD_URL = "https://discord.gg/ChdA4sxkX";
+export const LOCK_DISCORD_URL = "https://discord.gg/QTWMVZs5s";
 
 export interface LockModes {
   browser: boolean;
