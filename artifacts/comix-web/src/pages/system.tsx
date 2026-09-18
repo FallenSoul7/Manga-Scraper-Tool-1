@@ -118,40 +118,10 @@ const blocks: SystemBlock[] = [
     icon: Lock,
   },
   {
-    href: "/about",
     label: "About",
-    description: "Learn about ComiHub, its reader, and supported content hub features.",
+    description: "Version, changelog, credits.",
     icon: Info,
-  },
-  {
-    href: "/terms",
-    label: "Terms of Service",
-    description: "Read ComiHub’s terms of use and service conditions.",
-    icon: Info,
-  },
-  {
-    href: "/privacy",
-    label: "Privacy Policy",
-    description: "How ComiHub handles storage, cookies, advertising, and privacy requests.",
-    icon: Shield,
-  },
-  {
-    href: "/advertising",
-    label: "Advertising",
-    description: "Learn how third-party advertising partners and ad choices work.",
-    icon: BarChart3,
-  },
-  {
-    href: "/contact",
-    label: "Contact Support",
-    description: "Get help, report a problem, or contact ComiHub support.",
-    icon: LogIn,
-  },
-  {
-    href: "/dmca",
-    label: "DMCA / Copyright",
-    description: "Submit a copyright or rights-holder notice for review.",
-    icon: Shield,
+    comingSoon: true,
   },
 ];
 
@@ -169,6 +139,14 @@ export default function SystemPage() {
           <Block key={b.label} block={b} />
         ))}
       </div>
+      <nav aria-label="System information links" className="mt-8 flex flex-wrap justify-center gap-x-5 gap-y-2 border-t pt-6 text-sm text-muted-foreground">
+        <Link href="/privacy" className="transition-colors hover:text-foreground hover:underline">Privacy</Link>
+        <Link href="/terms" className="transition-colors hover:text-foreground hover:underline">Terms</Link>
+        <Link href="/advertising" className="transition-colors hover:text-foreground hover:underline">Advertising</Link>
+        <Link href="/about" className="transition-colors hover:text-foreground hover:underline">About</Link>
+        <Link href="/contact" className="transition-colors hover:text-foreground hover:underline">Contact</Link>
+        <Link href="/dmca" className="transition-colors hover:text-foreground hover:underline">DMCA / Copyright</Link>
+      </nav>
     </main>
   );
 }
