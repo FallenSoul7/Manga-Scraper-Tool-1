@@ -118,16 +118,40 @@ const blocks: SystemBlock[] = [
     icon: Lock,
   },
   {
+    href: "/about",
     label: "About",
-    description: "Version, changelog, credits.",
+    description: "Learn about ComiHub, its reader, and supported content hub features.",
     icon: Info,
-    comingSoon: true,
   },
   {
     href: "/terms",
     label: "Terms of Service",
     description: "Read ComiHub’s terms of use and service conditions.",
     icon: Info,
+  },
+  {
+    href: "/privacy",
+    label: "Privacy Policy",
+    description: "How ComiHub handles storage, cookies, advertising, and privacy requests.",
+    icon: Shield,
+  },
+  {
+    href: "/advertising",
+    label: "Advertising",
+    description: "Learn how third-party advertising partners and ad choices work.",
+    icon: BarChart3,
+  },
+  {
+    href: "/contact",
+    label: "Contact Support",
+    description: "Get help, report a problem, or contact ComiHub support.",
+    icon: LogIn,
+  },
+  {
+    href: "/dmca",
+    label: "DMCA / Copyright",
+    description: "Submit a copyright or rights-holder notice for review.",
+    icon: Shield,
   },
 ];
 

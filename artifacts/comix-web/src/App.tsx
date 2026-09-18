@@ -5,7 +5,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PwaProvider } from "@/lib/pwa-context";
 import { Header } from "@/components/header";
-import { Footer } from "@/components/footer";
 import { InstallBanner } from "@/components/install-banner";
 import { WelcomeOverlay } from "@/components/welcome-overlay";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -293,7 +292,6 @@ function AppContent() {
               <Route component={NotFound} />
             </Switch>
           </div>
-          <Footer />
         </Route>
       </Switch>
     </div>
