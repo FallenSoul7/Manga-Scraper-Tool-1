@@ -3,7 +3,6 @@ import { Library } from "lucide-react";
 
 const links = [
   ["Privacy", "/privacy"],
-  ["Terms", "/terms"],
   ["Advertising", "/advertising"],
   ["About", "/about"],
   ["Contact", "/contact"],
@@ -28,4 +27,3 @@ export function Footer() {
 }
 
 export default Footer;
-

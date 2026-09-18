@@ -123,6 +123,12 @@ const blocks: SystemBlock[] = [
     icon: Info,
     comingSoon: true,
   },
+  {
+    href: "/terms",
+    label: "Terms of Service",
+    description: "Read ComiHub’s terms of use and service conditions.",
+    icon: Info,
+  },
 ];
 
 export default function SystemPage() {
