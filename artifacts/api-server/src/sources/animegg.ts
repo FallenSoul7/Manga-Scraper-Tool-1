@@ -6,6 +6,49 @@ const BASE = "https://www.animegg.org";
 const BROWSE_FALLBACK = [["one-piece", "One Piece"], ["naruto-shippuden", "Naruto Shippuden"], ["detectiveconan", "Detective Conan"], ["bleach", "Bleach"]] as const;
 const ANIME_GENRES = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Sports", "Thriller", "Supernatural", "Historical", "School", "Shounen", "Shoujo", "Music", "Military", "Psychological"];
 const http = axios.create({ timeout: 25000, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36", Accept: "text/html,application/json;q=0.9,*/*;q=0.8", Referer: `${BASE}/` } });
+const HTML_CACHE_TTL_MS = 2 * 60 * 1000;
+const htmlCache = new Map<string, { expiresAt: number; data: string }>();
+const htmlInFlight = new Map<string, Promise<string>>();
+const JSON_CACHE_TTL_MS = 2 * 60 * 1000;
+const jsonCache = new Map<string, { expiresAt: number; data: unknown }>();
+const jsonInFlight = new Map<string, Promise<unknown>>();
+const MAX_CACHE_ENTRIES = 250;
+
+function trimCache<T>(cache: Map<string, T>): void {
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
+async function getHtml(url: string, timeout: number): Promise<string> {
+  const cached = htmlCache.get(url);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const pending = htmlInFlight.get(url);
+  if (pending) return pending;
+  const request = http.get<string>(url, { timeout }).then(response => {
+    htmlCache.set(url, { expiresAt: Date.now() + HTML_CACHE_TTL_MS, data: response.data });
+    trimCache(htmlCache);
+    return response.data;
+  }).finally(() => htmlInFlight.delete(url));
+  htmlInFlight.set(url, request);
+  return request;
+}
+
+async function getJson<T>(url: string, timeout: number): Promise<T> {
+  const cached = jsonCache.get(url);
+  if (cached && cached.expiresAt > Date.now()) return cached.data as T;
+  const pending = jsonInFlight.get(url);
+  if (pending) return pending as Promise<T>;
+  const request = http.get<T>(url, { timeout }).then(response => {
+    jsonCache.set(url, { expiresAt: Date.now() + JSON_CACHE_TTL_MS, data: response.data });
+    trimCache(jsonCache);
+    return response.data;
+  }).finally(() => jsonInFlight.delete(url));
+  jsonInFlight.set(url, request as Promise<unknown>);
+  return request;
+}
 
 function absolute(value: string): string {
   if (value.startsWith("//")) return `https:${value}`;
@@ -29,8 +72,8 @@ function parseListing(document: cheerio.CheerioAPI, page: number): MangaListResp
 }
 
 async function listing(path: string, page: number): Promise<MangaListResponse> {
-  const response = await http.get<string>(`${BASE}${path}${path.includes("?") ? "&" : "?"}page=${page}`, { timeout: 8000 });
-  return parseListing(cheerio.load(response.data), page);
+  const html = await getHtml(`${BASE}${path}${path.includes("?") ? "&" : "?"}page=${page}`, 8000);
+  return parseListing(cheerio.load(html), page);
 }
 
 function genrePath(opts: ListOptions): string | null {
@@ -51,17 +94,17 @@ async function search(query: string, opts: ListOptions): Promise<MangaListRespon
   const genre = genrePath(opts);
   if (!query.trim() && genre) return listing(genre, opts.page).catch(() => fallbackListing(opts.page));
   if (!query.trim()) return listing("/popular-series", opts.page).catch(() => fallbackListing(opts.page));
-  const response = await http.get<Array<{ id: number; name: string; url: string; thumbnailUrl?: string }>>(`${BASE}/search/auto/`, { params: { q: query } });
-  const all = response.data ?? [];
+  const searchUrl = `${BASE}/search/auto/?q=${encodeURIComponent(query.trim())}`;
+  const all = await getJson<Array<{ id: number; name: string; url: string; thumbnailUrl?: string }>>(searchUrl, 8000);
   const pageItems = all.slice((opts.page - 1) * 20, opts.page * 20).map(item => ({ id: slugFromId(item.url), title: item.name, thumbnail: item.thumbnailUrl ? absolute(item.thumbnailUrl) : "", type: "Anime", isNsfw: false, mediaType: "anime" as const }));
   return { items: pageItems, page: opts.page, hasNextPage: all.length > opts.page * 20 };
 }
 
 async function details(id: string): Promise<MangaDetail> {
   const slug = slugFromId(id);
-  let response;
+  let response: { data: string };
   try {
-    response = await http.get<string>(`${BASE}/series/${encodeURIComponent(slug)}`, { timeout: 8000 });
+    response = { data: await getHtml(`${BASE}/series/${encodeURIComponent(slug)}`, 8000) };
   } catch {
     return fallbackDetail(slug);
   }
@@ -78,9 +121,9 @@ async function details(id: string): Promise<MangaDetail> {
 
 async function chapters(id: string): Promise<ChapterListResponse> {
   const slug = slugFromId(id);
-  let response;
+  let response: { data: string };
   try {
-    response = await http.get<string>(`${BASE}/series/${encodeURIComponent(slug)}`, { timeout: 8000 });
+    response = { data: await getHtml(`${BASE}/series/${encodeURIComponent(slug)}`, 8000) };
   } catch {
     return { items: [] };
   }
@@ -98,7 +141,7 @@ async function chapters(id: string): Promise<ChapterListResponse> {
 
 async function pages(chapterId: string): Promise<PageListResponse> {
   const episodeUrl = absolute(decodeURIComponent(chapterId));
-  const response = await http.get<string>(episodeUrl, { timeout: 8000 });
+  const response = { data: await getHtml(episodeUrl, 8000) };
   const $ = cheerio.load(response.data);
   const tracks: VideoTrack[] = $("#videos a[data-toggle='tab']").toArray().flatMap((el) => {
     const version = ($(el).attr("data-version") || "").toLowerCase();
