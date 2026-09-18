@@ -1,0 +1,3 @@
+# ComiHub ads.txt
+# Paste ad network publisher lines below (Google AdSense, Monetag, Adsterra, etc.)
+

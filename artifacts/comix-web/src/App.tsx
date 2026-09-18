@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PwaProvider } from "@/lib/pwa-context";
 import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
 import { InstallBanner } from "@/components/install-banner";
 import { WelcomeOverlay } from "@/components/welcome-overlay";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -36,6 +37,12 @@ const CachePage            = lazy(() => import("@/pages/cache"));
 const InstallPage          = lazy(() => import("@/pages/install"));
 const LoginPage            = lazy(() => import("@/pages/login"));
 const ProfilePage          = lazy(() => import("@/pages/profile"));
+const AboutPage            = lazy(() => import("@/pages/about"));
+const ContactPage          = lazy(() => import("@/pages/contact"));
+const DmcaPage             = lazy(() => import("@/pages/dmca"));
+const PrivacyPage          = lazy(() => import("@/pages/legal").then(({ PrivacyPage }) => ({ default: PrivacyPage })));
+const TermsPage            = lazy(() => import("@/pages/legal").then(({ TermsPage }) => ({ default: TermsPage })));
+const AdvertisingPage     = lazy(() => import("@/pages/legal").then(({ AdvertisingPage }) => ({ default: AdvertisingPage })));
 const LockPage             = lazy(() => import("@/pages/lock"));
 const PrivacyPolicyPage    = lazy(() => import("@/pages/legal").then(({ PrivacyPolicyPage }) => ({ default: PrivacyPolicyPage })));
 const TermsPage             = lazy(() => import("@/pages/legal").then(({ TermsPage }) => ({ default: TermsPage })));
@@ -111,6 +118,7 @@ function LockGate({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [locked, setLocked] = useState(() => !isUnlockedThisSession() && shouldLockCurrentMode());
   const onLockRoute = location === "/lock";
+  const isPublicComplianceRoute = ["/privacy", "/terms", "/advertising", "/about", "/contact", "/dmca"].includes(location);
 
   // Initial check — also cover logged-in users whose PIN lives on the server
   // (fresh device with no local cache). Skip when already unlocked.
@@ -148,7 +156,7 @@ function LockGate({ children }: { children: React.ReactNode }) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (locked && !onLockRoute) {
+  if (locked && !onLockRoute && !isPublicComplianceRoute) {
     return (
       <ErrorBoundary>
         <Suspense fallback={<LockLoading />}>
@@ -273,12 +281,31 @@ function AppContent() {
               <Route path="/profile">
                 <Lazy><ProfilePage /></Lazy>
               </Route>
+              <Route path="/about">
+                <Lazy><AboutPage /></Lazy>
+              </Route>
+              <Route path="/contact">
+                <Lazy><ContactPage /></Lazy>
+              </Route>
+              <Route path="/dmca">
+                <Lazy><DmcaPage /></Lazy>
+              </Route>
+              <Route path="/privacy">
+                <Lazy><PrivacyPage /></Lazy>
+              </Route>
+              <Route path="/terms">
+                <Lazy><TermsPage /></Lazy>
+              </Route>
+              <Route path="/advertising">
+                <Lazy><AdvertisingPage /></Lazy>
+              </Route>
               <Route path="/lock">
                 <Lazy><LockPage /></Lazy>
               </Route>
               <Route component={NotFound} />
             </Switch>
           </div>
+          <Footer />
         </Route>
       </Switch>
     </div>
