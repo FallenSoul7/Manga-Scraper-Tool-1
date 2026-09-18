@@ -684,7 +684,7 @@ export default function Reader() {
                     </div>
                   ) : (
                     <img
-                      src={getProxiedImageUrl(imageUrlWithRetry(page.url, idx), sourceId ?? "")}
+                      src={getProxiedImageUrl(imageUrlWithRetry(page.url, idx), sourceId ?? "", "chapter")}
                       alt={`Page ${page.index}`}
                       loading={loadStrategy}
                       decoding="async"
@@ -726,7 +726,7 @@ export default function Reader() {
                     </div>
                   ) : (
                     <img
-                      src={getProxiedImageUrl(imageUrlWithRetry(page.url, idx), sourceId ?? "")}
+                      src={getProxiedImageUrl(imageUrlWithRetry(page.url, idx), sourceId ?? "", "chapter")}
                       alt={`Page ${page.index}`}
                       className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
                       loading={loadStrategy}
@@ -772,7 +772,7 @@ export default function Reader() {
                     isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full mb-8'
                   }`}>
                   <img
-                    src={getProxiedImageUrl(page.url, sourceId ?? "")}
+                    src={getProxiedImageUrl(page.url, sourceId ?? "", "chapter")}
                     alt={`Ch${ch.number} Page ${page.index}`}
                     loading="lazy"
                     decoding="async"

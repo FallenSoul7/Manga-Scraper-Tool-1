@@ -1,6 +1,7 @@
 const STATIC_CACHE = 'comihub-static-v10';
 const API_CACHE    = 'comihub-api-v4';
 const IMAGE_CACHE  = 'comihub-images-v1';
+const CHAPTER_IMAGE_CACHE = 'comihub-chapter-images-v1';
 const OFFLINE_IMAGE_CACHE = 'comihub-offline-v1';
 const OFFLINE_PAGES_CACHE = 'comihub-offline-pages-v1';
 
@@ -8,11 +9,12 @@ const OWNED_CACHES = [
   STATIC_CACHE,
   API_CACHE,
   IMAGE_CACHE,
+  CHAPTER_IMAGE_CACHE,
   OFFLINE_IMAGE_CACHE,
   OFFLINE_PAGES_CACHE,
 ];
 
-const API_PATTERNS = ['/api/sources/catalog', '/api/popular', '/api/latest', '/api/search', '/api/tags', '/api/details', '/api/chapters', '/api/pages'];
+const API_PATTERNS = ['/api/sources/catalog', '/api/popular', '/api/latest', '/api/search', '/api/tags', '/api/details', '/api/chapters', '/api/pages', '/api/manga', '/api/chapter'];
 const IMAGE_PATTERNS = ['/api/image'];
 
 self.addEventListener('install', (event) => {
@@ -127,9 +129,23 @@ async function offlineImageFirst(request) {
   return cacheFirst(request, IMAGE_CACHE, 30 * 24 * 3600);
 }
 
+function isChapterImage(url) {
+  return url.searchParams.get('cache') === 'chapter';
+}
+
+async function permanentImageFirst(request) {
+  const url = new URL(request.url);
+  const offlineCache = await caches.open(OFFLINE_IMAGE_CACHE);
+  const offline = await offlineCache.match(request);
+  if (offline) return offline;
+  const cacheName = isChapterImage(url) ? CHAPTER_IMAGE_CACHE : IMAGE_CACHE;
+  return cacheFirst(request, cacheName, null);
+}
+
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
-  const cached = await cache.match(request) ||
+  const key = sourceCacheKey(request);
+  const cached = await cache.match(key) ||
     (request.mode === 'navigate' ? await cache.match('/') : undefined);
 
   const update = fetch(request.clone()).then((res) => {
@@ -137,7 +153,7 @@ async function staleWhileRevalidate(request, cacheName) {
       const headers = new Headers(res.headers);
       headers.set('sw-cached-at', Date.now().toString());
       const cloned = new Response(res.clone().body, { status: res.status, headers });
-      cache.put(request, cloned);
+      cache.put(key, cloned);
     }
     return res;
   }).catch(() => null);
@@ -168,8 +184,8 @@ self.addEventListener('fetch', (event) => {
   if (isImageRequest(url)) {
     event.respondWith(
       url.origin === self.location.origin
-        ? offlineImageFirst(event.request)
-        : cacheFirst(event.request, IMAGE_CACHE, 30 * 24 * 3600),
+        ? permanentImageFirst(event.request)
+        : permanentImageFirst(event.request),
     );
     return;
   }
@@ -177,18 +193,18 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (isApiRequest(url)) {
-    event.respondWith(networkFirst(event.request, API_CACHE, 3600));
+    event.respondWith(staleWhileRevalidate(event.request, API_CACHE));
   } else if (isHashedAsset(url) || isCodeAsset(url)) {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, null));
   } else if (isStaticAsset(url)) {
-    event.respondWith(cacheFirst(event.request, STATIC_CACHE, 7 * 24 * 3600));
+    event.respondWith(cacheFirst(event.request, STATIC_CACHE, null));
   } else if (isHtml(event.request, url)) {
     event.respondWith(staleWhileRevalidate(event.request, STATIC_CACHE));
   }
 });
 
 async function getCacheSizes() {
-  const names = [STATIC_CACHE, API_CACHE, IMAGE_CACHE];
+  const names = [STATIC_CACHE, API_CACHE, IMAGE_CACHE, CHAPTER_IMAGE_CACHE, OFFLINE_IMAGE_CACHE, OFFLINE_PAGES_CACHE];
   const result = {};
   for (const name of names) {
     const cache = await caches.open(name);
@@ -204,6 +220,17 @@ async function getCacheSizes() {
     result[name] = bytes;
   }
   return result;
+}
+
+const CACHE_TIERS = {
+  important: [STATIC_CACHE, API_CACHE],
+  images: [IMAGE_CACHE],
+  chapterImages: [CHAPTER_IMAGE_CACHE, OFFLINE_IMAGE_CACHE, OFFLINE_PAGES_CACHE],
+};
+
+async function clearCacheTier(tier) {
+  const names = CACHE_TIERS[tier] || [];
+  await Promise.all(names.map((name) => caches.delete(name)));
 }
 
 async function clearAllCaches() {
@@ -281,5 +308,9 @@ self.addEventListener('message', async (event) => {
   if (event.data === 'CLEAR_ALL_CACHES') {
     await clearAllCaches();
     event.source.postMessage({ type: 'CACHES_CLEARED' });
+  }
+  if (event.data?.type === 'CLEAR_CACHE_TIER') {
+    await clearCacheTier(event.data.tier);
+    event.source.postMessage({ type: 'CACHE_TIER_CLEARED', tier: event.data.tier });
   }
 });

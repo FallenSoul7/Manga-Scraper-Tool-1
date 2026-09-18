@@ -1,7 +1,7 @@
 import { apiUrl } from "@/lib/api-url";
 import { isClientSource } from "@/lib/client-sources";
 
-export function getProxiedImageUrl(originalUrl: string, sourceId: string): string {
+export function getProxiedImageUrl(originalUrl: string, sourceId: string, cacheKind?: "chapter"): string {
   if (!originalUrl) return "";
 
   // Client adapters already fetched the page/media URL in the browser. Keep
@@ -30,5 +30,6 @@ export function getProxiedImageUrl(originalUrl: string, sourceId: string): strin
   const referer = referers[sourceId] ?? "";
   const encodedUrl = encodeURIComponent(originalUrl);
   const encodedReferer = referer ? `&referer=${encodeURIComponent(referer)}` : "";
-  return apiUrl(`/api/image-proxy?url=${encodedUrl}${encodedReferer}`);
+  const cacheParam = cacheKind ? `&cache=${cacheKind}` : "";
+  return apiUrl(`/api/image-proxy?url=${encodedUrl}${encodedReferer}${cacheParam}`);
 }
