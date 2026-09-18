@@ -96,7 +96,9 @@ const HIDDEN_FROM_DEFAULT_BROWSE = new Set([
   "en.rule34",            // Rule34
 ]);
 
-function SourceAvatar({ src, size = 44 }: { src: { name: string; iconUrl: string | null }; size?: number }) {
+// Mirrors Mihon's BrowseIcons defaultModifier: a fixed square icon slot with
+// proportional fitting so wide/tall source icons remain fully visible.
+function SourceAvatar({ src, size = 40 }: { src: { name: string; iconUrl: string | null }; size?: number }) {
   const [errored, setErrored] = useState(false);
   const resolvedIcon = resolveIconUrl(src.iconUrl);
   if (resolvedIcon && !errored) {
@@ -104,7 +106,7 @@ function SourceAvatar({ src, size = 44 }: { src: { name: string; iconUrl: string
       <img
         src={resolvedIcon} alt="" width={size} height={size} loading="lazy"
         onError={() => setErrored(true)}
-        className="rounded-xl bg-muted shrink-0 object-contain p-1"
+        className="shrink-0 object-contain"
         style={{ width: size, height: size, aspectRatio: "1 / 1" }}
       />
     );
@@ -402,7 +404,7 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}`); } }}
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/40 active:bg-muted/60 transition-colors"
       >
-        <SourceAvatar src={src} size={44} />
+        <SourceAvatar src={src} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="font-semibold text-sm text-foreground truncate">{src.name}</p>
@@ -501,7 +503,7 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}${src.id === ALLMANGA_SOURCE_ID ? "?media=anime" : ""}`); } }}
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/40 active:bg-muted/60 transition-colors"
       >
-        <SourceAvatar src={src} size={44} />
+        <SourceAvatar src={src} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="font-semibold text-sm text-foreground truncate">{src.name}</p>
@@ -584,7 +586,7 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
         const isInstalled = animeSources.some(s => s.id === ext.id);
         return (
           <div key={ext.id} className="flex items-center gap-3 px-4 py-3">
-            <SourceAvatar src={{ name: ext.name, iconUrl: ext.iconUrl }} size={44} />
+            <SourceAvatar src={{ name: ext.name, iconUrl: ext.iconUrl }} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <p className="font-semibold text-sm text-foreground truncate">{ext.name}</p>
@@ -737,7 +739,7 @@ function BrowseTab({
           const isInstalled = !!installedMap[canonicalId];
           return (
             <div key={ext.id} className="flex items-center gap-3 px-4 py-3">
-              <SourceAvatar src={ext} size={44} />
+              <SourceAvatar src={ext} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-semibold text-sm truncate">{ext.name}</span>
