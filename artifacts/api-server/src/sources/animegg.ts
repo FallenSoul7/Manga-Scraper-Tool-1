@@ -56,23 +56,32 @@ function absolute(value: string): string {
 }
 function slugFromId(id: string): string { return decodeURIComponent(id).replace(/^\/series\//, "").replace(/\/$/, ""); }
 
+function toSummary($: cheerio.CheerioAPI, root: any) {
+  const link = $(root).find("a[href^='/series/']").first().length
+    ? $(root).find("a[href^='/series/']").first()
+    : $(root).closest("a[href^='/series/']").first();
+  const href = link.attr("href") || "";
+  const title = $(root).find(".rightpop a[href^='/series/'], .releaseLink, h2").first().text().trim() || link.text().trim();
+  if (!href || !title) return null;
+  const thumbnail = $(root).find("img").first().attr("src") || $(root).find("img").first().attr("data-src") || "";
+  return { id: slugFromId(href), title, thumbnail: absolute(thumbnail), type: "Anime", isNsfw: false, mediaType: "anime" as const };
+}
+
 function parseListing(document: cheerio.CheerioAPI, page: number): MangaListResponse {
   const $ = document;
   const seen = new Set<string>();
   const items = $("li.fea").toArray().flatMap((el) => {
-    const link = $(el).find("a[href^='/series/']").first();
-    const href = link.attr("href") || "";
-    const title = $(el).find(".rightpop a[href^='/series/'], .releaseLink").first().text().trim() || link.text().trim();
-    if (!href || !title || seen.has(href)) return [];
-    seen.add(href);
-    const thumbnail = $(el).find("img").first().attr("src") || "";
-    return [{ id: slugFromId(href), title, thumbnail: absolute(thumbnail), type: "Anime", isNsfw: false, mediaType: "anime" as const }];
+    const item = toSummary($, el);
+    if (!item || seen.has(item.id)) return [];
+    seen.add(item.id);
+    return [item];
   });
-  return { items, page, hasNextPage: items.length > 0 };
+  return { items, page, hasNextPage: $("ul.pagination a").toArray().some(el => $(el).text().trim().toLowerCase() === "next") };
 }
 
 async function listing(path: string, page: number): Promise<MangaListResponse> {
-  const html = await getHtml(`${BASE}${path}${path.includes("?") ? "&" : "?"}page=${page}`, 8000);
+  const separator = path.includes("?") ? "&" : "?";
+  const html = await getHtml(`${BASE}${path}${separator}limit=25&start=${(page - 1) * 25}`, 8000);
   return parseListing(cheerio.load(html), page);
 }
 
@@ -94,10 +103,19 @@ async function search(query: string, opts: ListOptions): Promise<MangaListRespon
   const genre = genrePath(opts);
   if (!query.trim() && genre) return listing(genre, opts.page).catch(() => fallbackListing(opts.page));
   if (!query.trim()) return listing("/popular-series", opts.page).catch(() => fallbackListing(opts.page));
-  const searchUrl = `${BASE}/search/auto/?q=${encodeURIComponent(query.trim())}`;
-  const all = await getJson<Array<{ id: number; name: string; url: string; thumbnailUrl?: string }>>(searchUrl, 8000);
-  const pageItems = all.slice((opts.page - 1) * 20, opts.page * 20).map(item => ({ id: slugFromId(item.url), title: item.name, thumbnail: item.thumbnailUrl ? absolute(item.thumbnailUrl) : "", type: "Anime", isNsfw: false, mediaType: "anime" as const }));
-  return { items: pageItems, page: opts.page, hasNextPage: all.length > opts.page * 20 };
+  const searchPath = `/search/?q=${encodeURIComponent(query.trim())}&limit=25&start=${(opts.page - 1) * 25}`;
+  const html = await getHtml(`${BASE}${searchPath}`, 8000);
+  const $ = cheerio.load(html);
+  const seen = new Set<string>();
+  const items = $(".media.searchre").toArray().flatMap(el => {
+    const item = toSummary($, el);
+    if (!item || seen.has(item.id)) return [];
+    seen.add(item.id);
+    return [item];
+  });
+  // AnimeGG’s search page does not consistently render a pagination control;
+  // continue while a window returns results and stop on the first empty page.
+  return { items, page: opts.page, hasNextPage: items.length > 0 };
 }
 
 async function details(id: string): Promise<MangaDetail> {
