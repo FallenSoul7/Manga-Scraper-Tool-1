@@ -5,14 +5,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Browser mode keeps the original translate-up behavior. In standalone mode
-   there is no browser chrome above the viewport, so hide the entire toolbar
-   at its fixed position instead of leaving its translated edge visible. */
+/* Browser mode keeps the original translate-up behavior. In standalone mode,
+   the safe-area section is part of the toolbar and the whole unit stays at the
+   viewport top so it can be hidden without leaving a translated edge visible. */
 @media (display-mode: standalone), (display-mode: fullscreen) {
-  .reader-top-bar {
-    top: calc(-1 * env(safe-area-inset-top, 0px)) !important;
-  }
-
   .standalone-toolbar-safe-area {
     display: block;
     height: env(safe-area-inset-top, 0px);
