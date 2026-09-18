@@ -288,6 +288,8 @@ router.post("/register", async (req, res) => {
   const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
   const username = typeof req.body.username === "string" ? req.body.username.trim() : "";
   const password = typeof req.body.password === "string" ? req.body.password : "";
+  const consentAccepted = req.body.consentAccepted === true;
+  const consentVersion = typeof req.body.consentVersion === "string" ? req.body.consentVersion : "";
 
   console.log("--- REGISTRATION ATTEMPT ---");
   console.log("Email:", `"${email}"`, `(Length: ${email.length})`);
@@ -304,11 +306,15 @@ router.post("/register", async (req, res) => {
     res.status(400).json({ error: "Please provide a valid email address." });
     return;
   }
+  if (!consentAccepted || !consentVersion) {
+    res.status(400).json({ error: "You must accept the Terms of Service and Privacy Policy before creating an account." });
+    return;
+  }
   try {
     const { data, error } = await sb.auth.signUp({
       email,
       password,
-      options: { data: { username: username } },
+      options: { data: { username, consentAcceptedAt: new Date().toISOString(), consentVersion } },
     });
     if (error) {
       console.log("❌ SUPABASE REJECTED:", error.message);

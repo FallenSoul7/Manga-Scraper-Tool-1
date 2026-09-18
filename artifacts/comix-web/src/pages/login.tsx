@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [consentAccepted, setConsentAccepted] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -33,12 +34,16 @@ export default function LoginPage() {
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isLoginMode && !consentAccepted) {
+      setError("Please agree to the Terms of Service and Privacy Policy to create an account.");
+      return;
+    }
     setIsLoading(true);
     setError("");
 
     try {
       const endpoint = isLoginMode ? "/api/auth/login" : "/api/auth/register";
-      const bodyData = isLoginMode ? { email, password } : { email, username, password };
+      const bodyData = isLoginMode ? { email, password } : { email, username, password, consentAccepted: true, consentVersion: "2026-09-18" };
 
       const res = await fetch(`${API}${endpoint}`, {
         method: "POST",
@@ -166,6 +171,12 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
+              {!isLoginMode && (
+                <label className="flex items-start gap-2 text-xs text-muted-foreground leading-relaxed">
+                  <input type="checkbox" className="mt-0.5" checked={consentAccepted} onChange={(e) => setConsentAccepted(e.target.checked)} />
+                  <span>I agree to the <a href="/terms" target="_blank" rel="noreferrer" className="text-primary underline">Terms of Service</a> and acknowledge the <a href="/privacy" target="_blank" rel="noreferrer" className="text-primary underline">Privacy Policy</a>, including essential storage and the planned advertising disclosures.</span>
+                </label>
+              )}
               <button
                 type="submit"
                 disabled={isLoading}
