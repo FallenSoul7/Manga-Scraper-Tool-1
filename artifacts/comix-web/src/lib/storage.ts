@@ -34,6 +34,9 @@ const SavedMangaSchema = z.object({
   categoryIds: z.array(z.string()),
   lastChapterCountSeen: z.number(),
   pendingUpdates: z.array(PendingChapterSchema).default([]),
+  updatesEnabled: z.boolean().default(false),
+  updatesInitialized: z.boolean().default(false),
+  trackedChapterIds: z.array(z.string()).default([]),
 });
 export type SavedManga = z.infer<typeof SavedMangaSchema>;
 
@@ -377,14 +380,33 @@ export const storeActions = {
     if (!manga) return;
     saveState({
       ...memoryState,
-      library: {
-        ...memoryState.library,
-        [mangaId]: { ...manga, lastChapterCountSeen: totalChapterCount, pendingUpdates: [] }
-      }
+      library: { ...memoryState.library, [mangaId]: { ...manga, lastChapterCountSeen: totalChapterCount, pendingUpdates: [] } }
     });
   },
 
-  recordDiscoveredUpdates(mangaId: string, newChapters: PendingChapter[], totalCount: number) {
+  setUpdatesEnabled(mangaId: string, enabled: boolean) {
+    const manga = memoryState.library[mangaId];
+    if (!manga) return;
+    saveState({
+      ...memoryState,
+      library: {
+        ...memoryState.library,
+        [mangaId]: { ...manga, updatesEnabled: enabled, updatesInitialized: enabled && !manga.updatesEnabled ? false : manga.updatesInitialized, pendingUpdates: enabled ? manga.pendingUpdates : [] },
+      },
+    });
+  },
+
+  setUpdatesForMany(mangaIds: string[], enabled: boolean) {
+    const ids = new Set(mangaIds);
+    const library = { ...memoryState.library };
+    for (const id of ids) {
+      const manga = library[id];
+      if (manga) library[id] = { ...manga, updatesEnabled: enabled, updatesInitialized: enabled && !manga.updatesEnabled ? false : manga.updatesInitialized, pendingUpdates: enabled ? manga.pendingUpdates : [] };
+    }
+    saveState({ ...memoryState, library });
+  },
+
+  recordDiscoveredUpdates(mangaId: string, newChapters: PendingChapter[], totalCount: number, trackedChapterIds?: string[]) {
     const manga = memoryState.library[mangaId];
     if (!manga) return;
     const existingIds = new Set((manga.pendingUpdates ?? []).map(c => c.id));
@@ -396,7 +418,7 @@ export const storeActions = {
       ...memoryState,
       library: {
         ...memoryState.library,
-        [mangaId]: { ...manga, lastChapterCountSeen: totalCount, pendingUpdates: merged }
+        [mangaId]: { ...manga, lastChapterCountSeen: totalCount, pendingUpdates: merged, ...(trackedChapterIds ? { trackedChapterIds, updatesInitialized: true } : {}) }
       }
     });
   },
@@ -404,11 +426,13 @@ export const storeActions = {
   clearPendingUpdates(mangaId: string) {
     const manga = memoryState.library[mangaId];
     if (!manga) return;
+    const tracked = new Set(manga.trackedChapterIds ?? []);
+    for (const chapter of manga.pendingUpdates ?? []) tracked.add(String(chapter.id));
     saveState({
       ...memoryState,
       library: {
         ...memoryState.library,
-        [mangaId]: { ...manga, pendingUpdates: [] }
+        [mangaId]: { ...manga, pendingUpdates: [], trackedChapterIds: [...tracked] }
       }
     });
   },
@@ -416,7 +440,9 @@ export const storeActions = {
   clearAllPendingUpdates() {
     const newLib = { ...memoryState.library };
     for (const id in newLib) {
-      newLib[id] = { ...newLib[id], pendingUpdates: [] };
+      const tracked = new Set(newLib[id].trackedChapterIds ?? []);
+      for (const chapter of newLib[id].pendingUpdates ?? []) tracked.add(String(chapter.id));
+      newLib[id] = { ...newLib[id], pendingUpdates: [], trackedChapterIds: [...tracked] };
     }
     saveState({ ...memoryState, library: newLib });
   },

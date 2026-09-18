@@ -340,7 +340,17 @@ export default function MangaDetail() {
     didRecordRef.current = true;
     const seen = savedManga?.lastChapterCountSeen ?? 0;
     const total = allChapters.length;
-    if (total > seen) {
+    if (savedManga?.updatesEnabled) {
+      const chapterIds = allChapters.map((ch: any) => String(ch.id));
+      if (!savedManga.updatesInitialized) {
+        storeActions.recordDiscoveredUpdates(id, [], total, chapterIds);
+      } else {
+        const known = new Set(savedManga.trackedChapterIds ?? []);
+        const fresh = allChapters.filter((ch: any) => !known.has(String(ch.id)));
+        const stubs: PendingChapter[] = fresh.map((ch: any) => ({ id: ch.id as number, number: ch.number as number, title: (ch.title as string) ?? "", date: ch.date as number }));
+        storeActions.recordDiscoveredUpdates(id, stubs, total, chapterIds);
+      }
+    } else if (total > seen) {
       const fresh = allChapters.slice(0, total - seen);
       const stubs: PendingChapter[] = fresh.map((ch: any) => ({ id: ch.id as number, number: ch.number as number, title: (ch.title as string) ?? "", date: ch.date as number }));
       storeActions.recordDiscoveredUpdates(id, stubs, total);
@@ -494,7 +504,7 @@ export default function MangaDetail() {
         type: manga.type, isNsfw: manga.isNsfw, author: manga.author || manga.artist,
         status: manga.status, sourceId: sourceContext ?? activeSourceId,
         addedAt: Date.now(), categoryIds: ['default'],
-        lastChapterCountSeen: visibleChapters.length || 0, pendingUpdates: [],
+        lastChapterCountSeen: visibleChapters.length || 0, pendingUpdates: [], updatesEnabled: false, updatesInitialized: false, trackedChapterIds: [],
       });
     }
   };
