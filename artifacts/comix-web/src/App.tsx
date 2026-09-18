@@ -44,9 +44,6 @@ const PrivacyPage          = lazy(() => import("@/pages/legal").then(({ PrivacyP
 const TermsPage            = lazy(() => import("@/pages/legal").then(({ TermsPage }) => ({ default: TermsPage })));
 const AdvertisingPage     = lazy(() => import("@/pages/legal").then(({ AdvertisingPage }) => ({ default: AdvertisingPage })));
 const LockPage             = lazy(() => import("@/pages/lock"));
-const PrivacyPolicyPage    = lazy(() => import("@/pages/legal").then(({ PrivacyPolicyPage }) => ({ default: PrivacyPolicyPage })));
-const TermsPage             = lazy(() => import("@/pages/legal").then(({ TermsPage }) => ({ default: TermsPage })));
-const AdvertisingPage      = lazy(() => import("@/pages/legal").then(({ AdvertisingPage }) => ({ default: AdvertisingPage })));
 const LockScreen           = lazy(() => import("@/components/lock-screen").then(({ LockScreen }) => ({ default: LockScreen })));
 
 import { useActiveSourceId, applyActiveSource, registerQueryClient } from "@/lib/source";
@@ -268,15 +265,6 @@ function AppContent() {
               </Route>
               <Route path="/login">
                 <Lazy><LoginPage /></Lazy>
-              </Route>
-              <Route path="/privacy">
-                <Lazy><PrivacyPolicyPage /></Lazy>
-              </Route>
-              <Route path="/terms">
-                <Lazy><TermsPage /></Lazy>
-              </Route>
-              <Route path="/advertising">
-                <Lazy><AdvertisingPage /></Lazy>
               </Route>
               <Route path="/profile">
                 <Lazy><ProfilePage /></Lazy>
