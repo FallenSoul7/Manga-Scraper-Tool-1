@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { useStore, storeActions, type InstalledSource } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
+import { useSettings } from "@/hooks/use-settings";
+import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 import { getCachedSourceCatalog, saveOfflineSourceCatalog, useOfflineCatalog, useOnlineStatus } from "@/lib/offline-catalog";
 
 interface CatalogExtension {
@@ -221,12 +223,15 @@ export default function SourcesPage() {
   const offlineCatalog = useOfflineCatalog();
   const installedMap = useStore(s => s.installedSources);
   const activeId     = useStore(s => s.activeSourceId);
+  const { settings } = useSettings();
   const searchString = useSearch();
   const [, setLocation] = useLocation();
 
   const installed = useMemo(
-    () => Object.values(installedMap).sort((a, b) => a.name.localeCompare(b.name)),
-    [installedMap],
+    () => Object.values(installedMap)
+      .filter(source => !source.isNsfw || (!settings.hideNsfw && hasAdultAccessConsent()))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [installedMap, settings.hideNsfw],
   );
 
   const urlQ = new URLSearchParams(searchString).get("q") ?? "";
@@ -478,6 +483,8 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
 function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null; online: boolean }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const { settings } = useSettings();
+  const adultAccess = !settings.hideNsfw && hasAdultAccessConsent();
 
   const catalogIconMap = useMemo(() => {
     const map: Record<string, string | null> = {};
@@ -488,9 +495,10 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
   const animeSources = useMemo(
     () => installed
       .filter(s => ANIME_SOURCE_IDS.has(s.id))
+      .filter(s => !s.isNsfw || adultAccess)
       .map(s => ({ ...s, iconUrl: s.iconUrl ?? catalogIconMap[s.id] ?? null }))
       .sort((a, b) => a.name.localeCompare(b.name)),
-    [installed, catalogIconMap],
+    [installed, catalogIconMap, adultAccess],
   );
 
   function AnimeRow({ src }: { src: InstalledSource }) {
@@ -582,7 +590,7 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
       <div className="px-4 pt-5 pb-2">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Available Extensions</p>
       </div>
-      {ANIME_EXTENSIONS.map(ext => {
+      {ANIME_EXTENSIONS.filter(ext => !ext.isNsfw || adultAccess).map(ext => {
         const isInstalled = animeSources.some(s => s.id === ext.id);
         return (
           <div key={ext.id} className="flex items-center gap-3 px-4 py-3">
@@ -646,6 +654,8 @@ function BrowseTab({
   onRetry: () => void;
 }) {
   const { toast } = useToast();
+  const { settings } = useSettings();
+  const adultAccess = !settings.hideNsfw && hasAdultAccessConsent();
 
   const [search, setSearch]               = useState("");
   const [lang, setLang]                   = useState<string>("all-langs");
@@ -670,13 +680,14 @@ function BrowseTab({
       // The 18+ toggle acts as an "NSFW only" filter: off (default) shows all
       // extensions (18+ and non-18+ alike), on shows only 18+ sources.
       .filter(e => !showNsfw || e.isNsfw)
+      .filter(e => !e.isNsfw || (adultAccess && (showNsfw || q.length > 0)))
       .filter(e => supportedOnly ? e.supported : true)
       // Keep the curated "hidden" sources out of the default list; they only
       // show up once the user is actively searching for them.
       .filter(e => q ? true : !HIDDEN_FROM_DEFAULT_BROWSE.has(e.id))
       .filter(e => q ? e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) || e.slug.toLowerCase().includes(q) : true)
       .sort(SUPPORTED_FIRST);
-  }, [catalog, search, lang, showNsfw, supportedOnly]);
+  }, [catalog, search, lang, showNsfw, supportedOnly, adultAccess]);
 
   const visible = filtered.slice(0, visibleCount);
 
@@ -710,6 +721,9 @@ function BrowseTab({
   return (
     <div>
       <div className="px-4 pt-4 pb-3 space-y-2">
+        <p className="text-xs leading-5 text-muted-foreground">
+          Extensions are optional. Adding one is your choice; ComiHub does not require you to install or use any particular extension. Mature extensions stay hidden until you separately enable 18+ content in Settings.
+        </p>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search extensions…" className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />

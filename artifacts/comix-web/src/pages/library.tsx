@@ -15,6 +15,8 @@ import {
   FolderEdit, Globe, X,
 } from "lucide-react";
 import { useRegisterHeaderSearch } from "@/lib/header-search";
+import { useSettings } from "@/hooks/use-settings";
+import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 
 const FALLBACK_TAB = "default";
 
@@ -80,6 +82,7 @@ const SelectableCard = memo(function SelectableCard({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function LibraryPage() {
+  const { settings } = useSettings();
   const online = useOnlineStatus();
   const library   = useStore(s => s.library);
   const categories = useStore(s => s.categories);
@@ -276,8 +279,9 @@ export default function LibraryPage() {
     const q = sourceFilter.trim().toLowerCase();
     return exts
       .filter(e => e.supported)
+      .filter(e => !e.isNsfw || (!settings.hideNsfw && hasAdultAccessConsent()))
       .filter(e => (q ? (e.name as string).toLowerCase().includes(q) : true));
-  }, [catalogData, sourceFilter]);
+  }, [catalogData, sourceFilter, settings.hideNsfw]);
 
   const assignSource = useCallback((sourceId: string) => {
     storeActions.batchPatchLibrary(

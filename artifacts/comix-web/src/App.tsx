@@ -7,6 +7,7 @@ import { PwaProvider } from "@/lib/pwa-context";
 import { Header } from "@/components/header";
 import { InstallBanner } from "@/components/install-banner";
 import { WelcomeOverlay } from "@/components/welcome-overlay";
+import { FirstUseConsent } from "@/components/first-use-consent";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { LockLoading } from "@/components/lock-loading";
 import { Loader2 } from "lucide-react";
@@ -309,6 +310,7 @@ function App() {
               <AppContent />
             </LockGate>
           </WouterRouter>
+          <FirstUseConsent />
           <Toaster />
         </PwaProvider>
       </TooltipProvider>

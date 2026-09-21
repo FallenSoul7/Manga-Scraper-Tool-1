@@ -3,7 +3,7 @@ export default function DmcaPage() {
     <main className="container mx-auto max-w-3xl px-4 py-10 sm:py-16">
       <p className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-primary">Copyright</p>
       <h1 className="font-serif text-4xl font-bold tracking-tight">DMCA and copyright notices</h1>
-      <p className="mt-5 leading-7 text-muted-foreground">ComiHub respects intellectual-property rights. ComiHub is a reader interface and content hub; it does not claim ownership of third-party works made available by independent sources or extensions.</p>
+      <p className="mt-5 leading-7 text-muted-foreground">ComiHub respects intellectual-property rights. ComiHub is an independent reader interface; it does not claim ownership of third-party works made available by optional independent sources or extensions. ComiHub does not force users to install or use any extension, and optional installation does not establish that a work is authorized.</p>
 
       <div className="prose prose-neutral mt-10 max-w-none dark:prose-invert">
         <h2>Submit a notice</h2>
@@ -18,7 +18,7 @@ export default function DmcaPage() {
           <li>Your physical or electronic signature.</li>
         </ul>
         <h2>Review and response</h2>
-        <p>We review complete notices and may remove or restrict links, source listings, or other access while investigating. Because ComiHub relies on independent third-party sources, you may also need to contact the source or hosting provider directly. We may request additional information before acting on an incomplete or misdirected report.</p>
+        <p>We review complete notices and may remove or restrict links, source listings, optional extensions, or other access while investigating. We may also disable ComiHub-controlled proxy or cache paths where applicable. Because ComiHub relies on independent third-party sources, you may also need to contact the source or hosting provider directly. We may request additional information before acting on an incomplete or misdirected report.</p>
         <h2>Good-faith reports</h2>
         <p>Please do not submit knowingly inaccurate or abusive notices. This page describes a contact process and does not create a guarantee that every third-party source will be available or that every request can be resolved by ComiHub.</p>
       </div>
@@ -27,4 +27,3 @@ export default function DmcaPage() {
 }
 
 export { DmcaPage };
-

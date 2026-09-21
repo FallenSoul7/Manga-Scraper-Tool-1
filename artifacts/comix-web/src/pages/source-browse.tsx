@@ -20,6 +20,7 @@ import {
 import type { SourceTag } from "@/lib/header-search";
 import { useOnlineStatus } from "@/lib/offline-catalog";
 import { getClientSourceAdapter } from "@/lib/client-sources";
+import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -248,6 +249,11 @@ export default function SourceBrowsePage() {
     applyActiveSource(sourceId);
     if (installedSource) storeActions.setActiveSource(sourceId);
   }, [sourceId, installedSource]);
+
+  useEffect(() => {
+    const adultBlocked = Boolean(source?.isNsfw && (settings.hideNsfw || !hasAdultAccessConsent()));
+    if (adultBlocked) setLocation("/sources");
+  }, [source?.isNsfw, settings.hideNsfw, sourceId, setLocation]);
 
   useEffect(() => {
     if (isFirstMountRef.current) {

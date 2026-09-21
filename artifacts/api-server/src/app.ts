@@ -11,6 +11,7 @@ import * as fs from "fs";
 import * as nodePath from "path";
 import axios from "axios";
 import { getKoofrCover, koofrStream, koofrThumbnail, isProxySafe, CACHE_ROOT as KOOFR_CACHE_ROOT } from "./sources/koofr.js";
+import { isSafeUrl } from "./lib/safe-fetch-url.js";
 
 const app: Express = express();
 app.set("trust proxy", 1);
@@ -90,31 +91,62 @@ app.get("/public/koofr-video-cover.svg", (_req, res) => {
 </svg>`);
 });
 
-// 🚀 ADDED: Direct proxy interceptor to beat hotlink protections
+const LEGACY_PROXY_MAX_BYTES = 25 * 1024 * 1024;
+
+// Compatibility proxy for existing source adapters. It preserves the public URL
+// shape while applying the same SSRF and response limits as the newer proxy.
 app.get("/api/image-proxy", async (req, res) => {
-  const targetUrl = req.query.url as string;
-  const refererUrl = (req.query.referer as string) || "https://comickfan.com/";
+  let targetUrl = String(req.query.url ?? "");
+  const requestedReferer = String(req.query.referer ?? "");
+  const refererUrl = /^https?:\/\//i.test(requestedReferer) && requestedReferer.length <= 2048
+    ? requestedReferer
+    : "https://comickfan.com/";
 
   if (!targetUrl) {
     return res.status(400).send("Missing target image url parameter.");
   }
 
   try {
-    const response = await axios.get(targetUrl, {
-      responseType: "arraybuffer", 
-      headers: {
-        "Referer": refererUrl, 
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      },
-      timeout: 15000,
-    });
+    for (let redirectCount = 0; redirectCount <= 3; redirectCount++) {
+      const safety = await isSafeUrl(targetUrl);
+      if (!safety.safe) return res.status(400).send(`Blocked proxy target: ${safety.reason}`);
 
-    res.set("Content-Type", String(response.headers["content-type"] || "image/jpeg"));
-    res.set("Cache-Control", "public, max-age=86400"); 
-    
-    return res.send(Buffer.from(response.data));
+      const response = await axios.get(targetUrl, {
+        responseType: "arraybuffer",
+        maxContentLength: LEGACY_PROXY_MAX_BYTES,
+        maxBodyLength: LEGACY_PROXY_MAX_BYTES,
+        maxRedirects: 0,
+        headers: {
+          Referer: refererUrl,
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        },
+        timeout: 15000,
+        validateStatus: (status) => status < 500,
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.location;
+        if (!location || redirectCount === 3) return res.status(502).send("Too many proxy redirects.");
+        targetUrl = new URL(location, targetUrl).toString();
+        continue;
+      }
+
+      if (response.status >= 400) return res.status(response.status).end();
+      const contentType = String(response.headers["content-type"] || "image/jpeg").toLowerCase();
+      const contentLength = Number(response.headers["content-length"] || 0);
+      if (contentLength > LEGACY_PROXY_MAX_BYTES) return res.status(413).send("Proxy response is too large.");
+      if (!contentType.startsWith("image/") && !contentType.startsWith("video/") && !contentType.startsWith("audio/")) {
+        return res.status(415).send("Proxy response type is not supported.");
+      }
+
+      res.set("Content-Type", contentType);
+      res.set("Cache-Control", "public, max-age=86400");
+      res.set("X-Content-Type-Options", "nosniff");
+      return res.send(Buffer.from(response.data));
+    }
+    return res.status(502).send("Failed to retrieve proxy asset data.");
   } catch (error: any) {
-    logger.error({ err: error.message, url: targetUrl }, "Image proxy routing failure");
+    logger.error({ err: error?.message ?? "request failed", targetHost: (() => { try { return new URL(targetUrl).hostname; } catch { return "invalid"; } })() }, "Image proxy routing failure");
     return res.status(500).send("Failed to retrieve proxy asset data.");
   }
 });

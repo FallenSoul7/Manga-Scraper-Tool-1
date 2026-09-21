@@ -1,86 +1,14 @@
 import { Router } from "express";
 import axios from "axios";
 import { getSourceOrNull } from "../sources/registry";
-import { lookup } from "dns/promises";
-import { isIP } from "net";
+import { isSafeUrl } from "../lib/safe-fetch-url.js";
 
 const router = Router();
 
 const DEFAULT_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-function isPrivateOrLoopback(ip: string): boolean {
-  const v4 = isIP(ip) === 4;
-  const v6 = isIP(ip) === 6;
-
-  if (v4) {
-    const parts = ip.split(".").map(Number);
-    const [a, b] = parts;
-    if (a === 127) return true;
-    if (a === 10) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 0) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
-    return false;
-  }
-
-  if (v6) {
-    const lower = ip.toLowerCase();
-    if (lower === "::1") return true;
-    if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
-    if (lower.startsWith("fe80")) return true;
-    if (lower === "::" || lower === "0:0:0:0:0:0:0:0") return true;
-    if (lower.startsWith("::ffff:")) {
-      const embedded = lower.slice(7);
-      return isPrivateOrLoopback(embedded);
-    }
-    return false;
-  }
-
-  return true;
-}
-
-async function isSafeUrl(raw: string): Promise<{ safe: boolean; reason?: string }> {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return { safe: false, reason: "invalid URL" };
-  }
-
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return { safe: false, reason: "scheme not allowed" };
-  }
-
-  const hostname = url.hostname;
-
-  if (isIP(hostname)) {
-    if (isPrivateOrLoopback(hostname)) {
-      return { safe: false, reason: "private IP not allowed" };
-    }
-    return { safe: true };
-  }
-
-  const blockedHosts = ["localhost", "metadata.google.internal", "169.254.169.254"];
-  if (blockedHosts.includes(hostname.toLowerCase())) {
-    return { safe: false, reason: "blocked hostname" };
-  }
-
-  try {
-    const addresses = await lookup(hostname, { all: true });
-    for (const { address } of addresses) {
-      if (isPrivateOrLoopback(address)) {
-        return { safe: false, reason: "resolves to private IP" };
-      }
-    }
-  } catch {
-    return { safe: false, reason: "DNS resolution failed" };
-  }
-
-  return { safe: true };
-}
+const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
 
 router.get("/", async (req, res) => {
   const rawUrl = req.query.url as string | undefined;
@@ -125,6 +53,8 @@ router.get("/", async (req, res) => {
       responseType: "stream",
       timeout: 20000,
       maxRedirects: 0,
+      maxContentLength: MAX_MEDIA_BYTES,
+      maxBodyLength: MAX_MEDIA_BYTES,
       headers: {
         "User-Agent": DEFAULT_UA,
         Referer: referer,
@@ -157,6 +87,12 @@ router.get("/", async (req, res) => {
 
     const contentType =
       (upstream.headers["content-type"] as string | undefined) ?? "image/jpeg";
+    const contentLength = Number(upstream.headers["content-length"] || 0);
+    if (contentLength > MAX_MEDIA_BYTES) {
+      upstream.data?.destroy?.();
+      res.status(413).json({ error: "Response is too large" });
+      return;
+    }
 
     // This route is also used by the offline downloader for Pawchive and
     // other media sources. Keep the existing image behavior but allow media
@@ -178,8 +114,8 @@ router.get("/", async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Accept-Ranges", "bytes");
 
-    const contentLength = upstream.headers["content-length"];
-    if (contentLength) res.setHeader("Content-Length", String(contentLength));
+    const declaredLength = upstream.headers["content-length"];
+    if (declaredLength) res.setHeader("Content-Length", String(declaredLength));
     const contentRange = upstream.headers["content-range"];
     if (contentRange) res.setHeader("Content-Range", String(contentRange));
 

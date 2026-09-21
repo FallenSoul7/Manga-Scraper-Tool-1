@@ -7,10 +7,15 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase";
 import { getDb } from "../db";
 import { users } from "../schema";
 import { eq } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 
 const router = Router();
 
-const SESSION_SECRET = process.env["SESSION_SECRET"] ?? "comihub-dev-secret-change-in-prod";
+const configuredSessionSecret = process.env["SESSION_SECRET"]?.trim();
+if (process.env["NODE_ENV"] === "production" && (!configuredSessionSecret || configuredSessionSecret.length < 32)) {
+  throw new Error("SESSION_SECRET must be configured with at least 32 characters in production");
+}
+const SESSION_SECRET = configuredSessionSecret ?? randomBytes(32).toString("hex");
 const SESSION_MAX_AGE = 90 * 24 * 3600 * 1000;
 
 function getFrontendURL() {
@@ -291,11 +296,7 @@ router.post("/register", async (req, res) => {
   const consentAccepted = req.body.consentAccepted === true;
   const consentVersion = typeof req.body.consentVersion === "string" ? req.body.consentVersion : "";
 
-  console.log("--- REGISTRATION ATTEMPT ---");
-  console.log("Email:", `"${email}"`, `(Length: ${email.length})`);
-  console.log("Username:", `"${username}"`, `(Length: ${username.length})`);
-  console.log("Password:", `"${password}"`, `(Length: ${password.length})`);
-  console.log("----------------------------");
+  console.log("Registration attempt received");
 
   const sb = getSupabaseAdmin();
   if (!sb) {
@@ -317,17 +318,17 @@ router.post("/register", async (req, res) => {
       options: { data: { username, consentAcceptedAt: new Date().toISOString(), consentVersion } },
     });
     if (error) {
-      console.log("❌ SUPABASE REJECTED:", error.message);
+      console.warn("Registration rejected by authentication provider");
       res.status(400).json({ error: error.message });
       return;
     }
-    console.log("✅ SUPABASE ACCEPTED!");
+    console.log("Registration accepted by authentication provider");
     res.status(200).json({
       message: "Check your email to verify your account!",
       user: data.user,
     });
-  } catch (err: any) {
-    console.error("Register Error:", err);
+  } catch {
+    console.error("Registration request failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

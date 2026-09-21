@@ -10,8 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Download, Upload, AlertTriangle, ArrowLeft, Check, Shield } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useRef, useState } from "react";
+import { acceptAdultAccessConsent, hasAdultAccessConsent } from "@/lib/compliance-consent";
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -47,9 +49,27 @@ export default function SettingsPage() {
   const [isVpnEnabled, setIsVpnEnabled] = useState(
     () => localStorage.getItem("builtin_vpn_enabled") === "true"
   );
+  const [adultDialogOpen, setAdultDialogOpen] = useState(false);
+  const [adultConfirmed, setAdultConfirmed] = useState(false);
   const toggleVpn = (val: boolean) => {
     setIsVpnEnabled(val);
     localStorage.setItem("builtin_vpn_enabled", String(val));
+  };
+
+  const handleMatureContentChange = (showMature: boolean) => {
+    if (showMature && !hasAdultAccessConsent()) {
+      setAdultConfirmed(false);
+      setAdultDialogOpen(true);
+      return;
+    }
+    updateSettings({ hideNsfw: !showMature });
+  };
+
+  const confirmMatureContent = () => {
+    if (!adultConfirmed) return;
+    acceptAdultAccessConsent();
+    updateSettings({ hideNsfw: false });
+    setAdultDialogOpen(false);
   };
 
   const handleExport = () => {
@@ -229,7 +249,7 @@ export default function SettingsPage() {
               <SettingRow label="Hide Mature Content" description="Filter 18+ titles from feeds">
                 <Switch
                   checked={settings.hideNsfw}
-                  onCheckedChange={(checked) => updateSettings({ hideNsfw: checked })}
+                  onCheckedChange={(checked) => handleMatureContentChange(!checked)}
                 />
               </SettingRow>
               <Separator />
@@ -262,7 +282,7 @@ export default function SettingsPage() {
           <Section title="Network">
             <SettingRow
               label="Built-in Image Proxy"
-              description="Route images through the server to bypass regional blocks"
+              description="Route supported media through the server when the source permits it"
             >
               <Switch
                 checked={isVpnEnabled}
@@ -328,6 +348,25 @@ export default function SettingsPage() {
           </Section>
         </div>
       </div>
+
+      <AlertDialog open={adultDialogOpen} onOpenChange={setAdultDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm mature-content access</AlertDialogTitle>
+            <AlertDialogDescription>
+              Mature sources are optional third-party sources. ComiHub does not force you to install or use them. Confirm that you are at least 18 years old, or the age of majority where you live, before showing 18+ titles.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <label className="flex items-start gap-3 text-sm leading-5">
+            <Checkbox checked={adultConfirmed} onCheckedChange={(value) => setAdultConfirmed(value === true)} className="mt-0.5" />
+            <span>I confirm that I am eligible to access mature content in my location and choose to enable its display.</span>
+          </label>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setAdultConfirmed(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={!adultConfirmed} onClick={confirmMatureContent}>Enable 18+ content</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <p className="text-xs text-center text-muted-foreground mt-8">ComiHub — your personal reading library</p>
     </main>
