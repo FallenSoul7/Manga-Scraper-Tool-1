@@ -71,17 +71,13 @@ Object.defineProperty(getSnapshot(), 'paused', {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Route a raw CDN image URL through the backend image proxy so that
- * hotlink-protection headers (Referer, etc.) are set server-side.
- * URLs that are already local API paths are left as-is.
- */
-function buildProxiedUrl(rawUrl: string, sourceId: string): string {
+/** Resolve local application assets without relaying external source media. */
+function buildMediaUrl(rawUrl: string): string {
   if (!rawUrl) return rawUrl;
   if (rawUrl.startsWith('/api/') || rawUrl.startsWith('/public/')) {
     return apiUrl(rawUrl);
   }
-  return apiUrl(`/api/image?url=${encodeURIComponent(rawUrl)}&source=${encodeURIComponent(sourceId)}`);
+  return rawUrl;
 }
 
 function getItem(id: string): QueueItem | undefined {
@@ -193,8 +189,8 @@ async function runDownload(id: string): Promise<void> {
       } catch { /* caches unavailable (dev/HTTP) — continue */ }
     }
 
-    // ── Step 2: fetch & cache each page image via proxy ─────────────────────
-    // Using the backend image proxy for every image ensures hotlink-protection
+    // ── Step 2: fetch fetch & cache each page image via proxy cache each page image directly ─────────────────────
+    // Using direct source URLs avoids server-side media relaying
     // headers (Referer etc.) are set correctly — direct CDN fetches get 403.
     //
     // Rolling worker pool (POOL_SIZE in flight) replaces the old chunk-barrier
@@ -204,19 +200,17 @@ async function runDownload(id: string): Promise<void> {
     let totalBytes = 0;
 
     const imageCache = await caches.open('comihub-offline-v1').catch(() => null);
-    const sid = item.sourceId ?? '';
-
-    // Build proxied URLs once — these become the stable cache keys AND the
+    // Build media URLs once — these become the stable cache keys AND the
     // URLs stored in IndexedDB so the reader can hit the cache offline.
-    const proxiedUrls = pageUrls.map(u => buildProxiedUrl(u, sid));
+    const mediaUrls = pageUrls.map(buildMediaUrl);
 
     // For 'file' mode, collect blobs for ZIP packing
     const fileBlobs: { blob: Blob; ext: string }[] = [];
 
     await rollingPool(
-      proxiedUrls,
+      mediaUrls,
       POOL_SIZE,
-      async (proxiedUrl, idx) => {
+      async (mediaUrl, idx) => {
         if (handle.cancelled) return;
 
         // Respect per-item pause
@@ -235,28 +229,28 @@ async function runDownload(id: string): Promise<void> {
         // If the page is already in the offline cache (from a previous download),
         // skip re-fetching and reuse it. Huge win for re-downloads.
         if (imageCache) {
-          const cached = await imageCache.match(proxiedUrl);
+          const cached = await imageCache.match(mediaUrl);
           if (cached) {
             if (item.mode === 'file') {
               const buf = await cached.arrayBuffer();
               totalBytes += buf.byteLength;
               const ct = cached.headers.get('Content-Type') || 'image/jpeg';
-              fileBlobs[idx] = { blob: new Blob([buf], { type: ct }), ext: guessExt(proxiedUrl, ct) };
+              fileBlobs[idx] = { blob: new Blob([buf], { type: ct }), ext: guessExt(mediaUrl, ct) };
             } else {
               totalBytes += (await cached.clone().arrayBuffer()).byteLength;
             }
             downloaded++;
             mutateItem(id, {
               pagesDownloaded: downloaded,
-              progress: Math.round((downloaded / proxiedUrls.length) * 100),
+              progress: Math.round((downloaded / mediaUrls.length) * 100),
             });
             return;
           }
         }
 
-        // ── Fetch via proxy ─────────────────────────────────────────────────
+        // ── Fetch direct source media ─────────────────────────────────────────────────
         try {
-          const res = await fetch(proxiedUrl);
+          const res = await fetch(mediaUrl);
           if (res.ok) {
             const buf = await res.arrayBuffer();
             totalBytes += buf.byteLength;
@@ -264,13 +258,13 @@ async function runDownload(id: string): Promise<void> {
 
             if (item.mode === 'offline' && imageCache) {
               await imageCache.put(
-                proxiedUrl,
+                mediaUrl,
                 new Response(buf, { headers: { 'Content-Type': ct, 'sw-cached-at': Date.now().toString() } }),
               );
             }
 
             if (item.mode === 'file') {
-              fileBlobs[idx] = { blob: new Blob([buf], { type: ct }), ext: guessExt(proxiedUrl, ct) };
+              fileBlobs[idx] = { blob: new Blob([buf], { type: ct }), ext: guessExt(mediaUrl, ct) };
             }
           }
         } catch { /* skip failed images — progress continues */ }
@@ -278,7 +272,7 @@ async function runDownload(id: string): Promise<void> {
         downloaded++;
         mutateItem(id, {
           pagesDownloaded: downloaded,
-          progress: Math.round((downloaded / proxiedUrls.length) * 100),
+          progress: Math.round((downloaded / mediaUrls.length) * 100),
         });
       },
       () => handle.cancelled,
@@ -288,7 +282,7 @@ async function runDownload(id: string): Promise<void> {
 
     // ── Step 3: finalize based on mode ──────────────────────────────────────
     const finalItem = getItem(id);
-    if (!finalItem || downloaded < proxiedUrls.length) return;
+    if (!finalItem || downloaded < mediaUrls.length) return;
 
     if (item.mode === 'offline') {
       // Persist metadata to IndexedDB for offline reading
@@ -300,7 +294,7 @@ async function runDownload(id: string): Promise<void> {
         sourceId:       finalItem.sourceId ?? '',
         chapterNumber:  finalItem.chapterNumber,
         chapterTitle:   finalItem.chapterTitle,
-        pageUrls:       proxiedUrls,
+        pageUrls:       mediaUrls,
         downloadedAt:   Date.now(),
         sizeBytes:      totalBytes,
       });

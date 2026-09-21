@@ -11,10 +11,8 @@ import {
   customFetch,
   type ChapterPage,
 } from "@workspace/api-client-react";
-import { proxyImage, readerUrl } from "@/lib/utils";
+import { mediaImage, readerUrl } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
-// ── Keep this import ─────────────────────────────────────────────────────
-import { getProxiedImageUrl } from "@/lib/vpn";
 import { getClientSourceAdapter } from "@/lib/client-sources";
 import VideoPlayer, { type VideoTrack } from "@/pages/video-player";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu, RefreshCw } from "lucide-react";
@@ -27,6 +25,10 @@ import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+
+function resolveReaderMediaUrl(url: string): string {
+  return url.startsWith("/") ? apiUrl(url) : url;
+}
 
 export default function Reader() {
   const [, params] = useRoute("/reader/:chapterId");
@@ -684,7 +686,7 @@ export default function Reader() {
                     </div>
                   ) : (
                     <img
-                      src={getProxiedImageUrl(imageUrlWithRetry(page.url, idx), sourceId ?? "", "chapter")}
+                      src={resolveReaderMediaUrl(imageUrlWithRetry(page.url, idx))}
                       alt={`Page ${page.index}`}
                       loading={loadStrategy}
                       decoding="async"
@@ -726,7 +728,7 @@ export default function Reader() {
                     </div>
                   ) : (
                     <img
-                      src={getProxiedImageUrl(imageUrlWithRetry(page.url, idx), sourceId ?? "", "chapter")}
+                      src={resolveReaderMediaUrl(imageUrlWithRetry(page.url, idx))}
                       alt={`Page ${page.index}`}
                       className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
                       loading={loadStrategy}
@@ -772,7 +774,7 @@ export default function Reader() {
                     isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full mb-8'
                   }`}>
                   <img
-                    src={getProxiedImageUrl(page.url, sourceId ?? "", "chapter")}
+                    src={resolveReaderMediaUrl(page.url)}
                     alt={`Ch${ch.number} Page ${page.index}`}
                     loading="lazy"
                     decoding="async"

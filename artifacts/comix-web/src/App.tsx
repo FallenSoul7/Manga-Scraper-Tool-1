@@ -32,7 +32,6 @@ const CategoriesPage       = lazy(() => import("@/pages/categories"));
 const DownloadsPage        = lazy(() => import("@/pages/downloads"));
 const DownloadsLibraryPage = lazy(() => import("@/pages/downloads-library"));
 const ComiAIPage           = lazy(() => import("@/pages/comi-ai"));
-const VpnPage              = lazy(() => import("@/pages/vpn"));
 const CachePage            = lazy(() => import("@/pages/cache"));
 const InstallPage          = lazy(() => import("@/pages/install"));
 const LoginPage            = lazy(() => import("@/pages/login"));
@@ -209,11 +208,6 @@ function AppContent() {
         {/* Comi AI: own header, no global nav */}
         <Route path="/comi-ai">
           <Lazy><ComiAIPage /></Lazy>
-        </Route>
-
-        {/* VPN: own header, no global nav */}
-        <Route path="/vpn">
-          <Lazy><VpnPage /></Lazy>
         </Route>
 
         {/* Everything else: global header + bottom nav */}

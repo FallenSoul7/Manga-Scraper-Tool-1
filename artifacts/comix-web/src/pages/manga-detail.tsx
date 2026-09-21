@@ -9,7 +9,7 @@ import {
   customFetch,
 } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
-import { proxyImage, readerUrl } from "@/lib/utils";
+import { mediaImage, readerUrl } from "@/lib/utils";
 import { applyActiveSource } from "@/lib/source";
 import {
   Loader2, ArrowLeft, Star, ChevronDown, ChevronUp,
@@ -548,7 +548,7 @@ export default function MangaDetail() {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-5 px-6">
         <img
-          src={proxyImage(savedManga!.thumbnail, savedManga!.sourceId)}
+          src={mediaImage(savedManga!.thumbnail, savedManga!.sourceId)}
           alt={savedManga!.title}
           className="h-36 w-26 rounded-xl object-cover shadow-lg"
         />
@@ -576,7 +576,7 @@ export default function MangaDetail() {
           {/* Blurred background — extends behind the floating top buttons */}
           <div className="absolute inset-0 overflow-hidden">
             <img
-              src={proxyImage(manga.thumbnail, sourceContext ?? undefined)}
+              src={mediaImage(manga.thumbnail, sourceContext ?? undefined)}
               alt=""
               style={{ filter: "blur(24px)", objectFit: "cover", width: "100%", height: "100%" }}
             />
@@ -605,7 +605,7 @@ export default function MangaDetail() {
               title="Tap to zoom"
             >
               <img
-                src={proxyImage(manga.thumbnail, sourceContext ?? undefined)}
+                src={mediaImage(manga.thumbnail, sourceContext ?? undefined)}
                 alt={manga.title}
                 className="w-full h-full object-cover"
               />
@@ -1068,7 +1068,7 @@ export default function MangaDetail() {
             <X className="h-5 w-5 text-white" />
           </button>
           <img
-            src={proxyImage(manga.thumbnail, sourceContext ?? undefined)}
+            src={mediaImage(manga.thumbnail, sourceContext ?? undefined)}
             alt={manga.title}
             className="max-h-[85dvh] max-w-[85vw] rounded-xl shadow-2xl object-contain"
             onClick={e => e.stopPropagation()}
@@ -1087,7 +1087,7 @@ export default function MangaDetail() {
             {/* Manga info */}
             <div className="flex items-start gap-3 mb-5">
               <img
-                src={proxyImage(downloadTarget.thumbnail, downloadTarget.sourceId)}
+                src={mediaImage(downloadTarget.thumbnail, downloadTarget.sourceId)}
                 alt={downloadTarget.mangaTitle}
                 className="h-14 w-10 rounded-lg object-cover shrink-0"
               />

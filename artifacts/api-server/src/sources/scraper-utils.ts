@@ -1,14 +1,5 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from "axios";
 import * as cheerio from "cheerio";
-import {
-  fetchHtmlViaBypass,
-  fetchImagesViaBypass,
-  isBypassAvailable,
-} from "../lib/bypass-client";
-
-// Re-export bypass functions so source extensions can import them
-// from scraper-utils without reaching into the lib layer directly.
-export { fetchImagesViaBypass, isBypassAvailable };
 
 const DEFAULT_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -23,7 +14,7 @@ export function makeHttp(baseURL: string, extraHeaders: Record<string, string> =
     headers: {
       "User-Agent": DEFAULT_UA,
       Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
       "Accept-Language": "en-US,en;q=0.9",
       Referer: baseURL.endsWith("/") ? baseURL : `${baseURL}/`,
       ...extraHeaders,
@@ -59,77 +50,6 @@ export async function fetchJson<T>(
   return res.data as T;
 }
 
-/**
- * Detect whether an HTML response is a Cloudflare challenge page
- * rather than the actual content we requested.
- */
-function isCloudflareChallenge(html: string): boolean {
-  const lower = html.toLowerCase();
-  return (
-    lower.includes("cf-challenge") ||
-    lower.includes("cf-turnstile") ||
-    lower.includes("just a moment") ||
-    lower.includes("cf-browser-verification") ||
-    (lower.includes("cloudflare") && lower.includes("challenge")) ||
-    (lower.includes("ray id") && lower.includes("cloudflare") && html.length < 5000)
-  );
-}
-
-/**
- * Fetch HTML with automatic Cloudflare bypass fallback.
- *
- * Tries a normal HTTP request first. If the response is a Cloudflare
- * challenge page, a 403, or the request throws, it falls back to the
- * Python Scrapling bypass server (StealthyFetcher with headless Chromium).
- *
- * This is the main entry point for sources that may be Cloudflare-protected.
- */
-export async function fetchHtmlWithBypass(
-  http: AxiosInstance,
-  url: string,
-  config: AxiosRequestConfig = {},
-  bypassOptions?: { referer?: string; waitFor?: "network_idle" | "dom_loaded" | "none" },
-): Promise<{ $: CheerioRoot; finalUrl: string; html: string }> {
-  // Try normal HTTP first
-  try {
-    const res = await http.get(url, { responseType: "text", ...config });
-    if (res.status < 400) {
-      const html = typeof res.data === "string" ? res.data : String(res.data);
-      if (!isCloudflareChallenge(html)) {
-        return {
-          $: cheerio.load(html),
-          finalUrl: res.request?.res?.responseUrl || url,
-          html,
-        };
-      }
-    }
-    // Fall through to bypass on 403 or Cloudflare challenge
-  } catch {
-    // Fall through to bypass on network error
-  }
-
-  // Fallback: use the Python Scrapling bypass server
-  const bypassAvailable = await isBypassAvailable();
-  if (!bypassAvailable) {
-    // No bypass server — re-throw with a helpful message
-    throw new Error(
-      `Request to ${url} failed and no bypass server is running. ` +
-      `Start it with: cd artifacts/bypass-server && python main.py`,
-    );
-  }
-
-  // Resolve full URL if it's relative
-  const baseURL = (http.defaults.baseURL || "").replace(/\/+$/, "");
-  const fullUrl = url.startsWith("http") ? url : `${baseURL}${url.startsWith("/") ? "" : "/"}${url}`;
-
-  const html = await fetchHtmlViaBypass(fullUrl, {
-    referer: bypassOptions?.referer ?? baseURL,
-    waitFor: bypassOptions?.waitFor ?? "network_idle",
-  });
-
-  return { $: cheerio.load(html), finalUrl: fullUrl, html };
-}
-
 /** Resolve a possibly-relative href against a base URL. */
 export function absUrl(base: string, href: string | undefined | null): string {
   if (!href) return "";
@@ -156,6 +76,7 @@ export function slugFromUrl(url: string): string {
 export function packId(...parts: string[]): string {
   return parts.map((p) => encodeURIComponent(p)).join(":");
 }
+
 export function unpackId(id: string): string[] {
   return id.split(":").map(decodeURIComponent);
 }
@@ -169,7 +90,7 @@ export function imgAttr($el: cheerio.Cheerio<any>): string {
   return "";
 }
 
-/** Hash a string into a stable signed 32-bit integer ID */
+/** Hash a string into a stable signed 32-bit integer ID. */
 export function hash32(input: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < input.length; i++) {
@@ -177,14 +98,4 @@ export function hash32(input: string): number {
     h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
   }
   return h & 0x7fffffff;
-}
-
-/** Wraps an image URL in your backend proxy if needed. */
-export function proxifyImage(originalUrl: string, referer: string, useProxy: boolean = false): string {
-  if (!originalUrl) return "";
-  if (!useProxy) return originalUrl;
-
-  const encodedUrl = encodeURIComponent(originalUrl);
-  const encodedRef = encodeURIComponent(referer);
-  return `/api/image-proxy?url=${encodedUrl}&referer=${encodedRef}`;
 }

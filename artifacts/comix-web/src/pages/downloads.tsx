@@ -19,7 +19,7 @@ import {
   BookOpen, Trash2, HardDrive, WifiOff,
   AlertCircle, CheckCircle2, FileArchive,
 } from "lucide-react";
-import { proxyImage, readerUrl } from "@/lib/utils";
+import { mediaImage, readerUrl } from "@/lib/utils";
 import { format } from "date-fns";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ function DownloadingTab() {
             return (
               <div key={item.id} className="flex items-center gap-3 rounded-2xl bg-card border border-border/50 p-3">
                 <img
-                  src={proxyImage(item.mangaThumbnail, item.sourceId)}
+                  src={mediaImage(item.mangaThumbnail, item.sourceId)}
                   alt={item.mangaTitle}
                   className="h-16 w-12 rounded-xl object-cover shrink-0"
                 />
@@ -229,7 +229,7 @@ function DownloadingTab() {
           {done.map(item => (
             <div key={item.id} className="flex items-center gap-3 rounded-2xl bg-card border border-border/30 p-3 opacity-60">
               <img
-                src={proxyImage(item.mangaThumbnail, item.sourceId)}
+                src={mediaImage(item.mangaThumbnail, item.sourceId)}
                 alt={item.mangaTitle}
                 className="h-12 w-9 rounded-lg object-cover shrink-0"
               />
@@ -330,7 +330,7 @@ function OfflineLibraryTab() {
                 onClick={() => setLocation(`/manga/${encodeURIComponent(mangaId)}`)}
               >
                 <img
-                  src={proxyImage(first.mangaThumbnail, first.sourceId)}
+                  src={mediaImage(first.mangaThumbnail, first.sourceId)}
                   alt={first.mangaTitle}
                   className="h-20 w-15 rounded-xl object-cover shrink-0"
                 />

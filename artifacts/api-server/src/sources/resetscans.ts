@@ -10,7 +10,7 @@ import type {
   ChapterSummary,
   PageInfo,
 } from "./types";
-import { absUrl, fetchHtml, fetchHtmlWithBypass, imgAttr, makeHttp } from "./scraper-utils";
+import { absUrl, fetchHtml, imgAttr, makeHttp } from "./scraper-utils";
 import * as cheerio from "cheerio";
 
 const BASE = "https://www.resetscans.net";
@@ -173,10 +173,7 @@ async function fetchResetScansHtml(
   url: string,
   config: Parameters<typeof fetchHtml>[2] = {},
 ) {
-  return fetchHtmlWithBypass(http, url, config, {
-    referer: `${BASE}/`,
-    waitFor: "dom_loaded",
-  });
+  return fetchHtml(http, url, config);
 }
 
 export const ResetScansSource: MangaSource = {

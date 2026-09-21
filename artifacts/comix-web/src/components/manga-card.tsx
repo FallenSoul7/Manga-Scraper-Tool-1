@@ -1,6 +1,6 @@
 import { memo, useState } from "react";
 import { Link } from "wouter";
-import { proxyImage } from "@/lib/utils";
+import { mediaImage } from "@/lib/utils";
 import { Check } from "lucide-react";
 import { BookOpen, Film } from "lucide-react";
 import type { MangaSummary } from "@workspace/api-client-react";
@@ -52,7 +52,7 @@ export const MangaCard = memo(function MangaCard({
 }: MangaCardProps) {
   const { settings } = useSettings();
   const [imageFailed, setImageFailed] = useState(false);
-  const thumbnail = manga.thumbnail ? proxyImage(manga.thumbnail, sourceId) : "";
+  const thumbnail = manga.thumbnail ? mediaImage(manga.thumbnail, sourceId) : "";
   const inner = (
     <div className="group relative cursor-pointer select-none">
       <div

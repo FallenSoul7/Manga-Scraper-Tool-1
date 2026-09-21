@@ -8,7 +8,7 @@ import { useStore, storeActions, THEME_OPTIONS, type Theme } from "@/lib/storage
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Download, Upload, AlertTriangle, ArrowLeft, Check, Shield } from "lucide-react";
+import { Download, Upload, AlertTriangle, ArrowLeft, Check } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
@@ -46,16 +46,8 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [isVpnEnabled, setIsVpnEnabled] = useState(
-    () => localStorage.getItem("builtin_vpn_enabled") === "true"
-  );
   const [adultDialogOpen, setAdultDialogOpen] = useState(false);
   const [adultConfirmed, setAdultConfirmed] = useState(false);
-  const toggleVpn = (val: boolean) => {
-    setIsVpnEnabled(val);
-    localStorage.setItem("builtin_vpn_enabled", String(val));
-  };
-
   const handleMatureContentChange = (showMature: boolean) => {
     if (showMature && !hasAdultAccessConsent()) {
       setAdultConfirmed(false);
@@ -273,27 +265,6 @@ export default function SettingsPage() {
                   onCheckedChange={(checked) => updateSettings({ dedupeChapters: checked })}
                 />
               </SettingRow>
-            </div>
-          </Section>
-        </div>
-
-        {/* ── Network ────────────────────────────────────────────────── */}
-        <div className="p-5 bg-card">
-          <Section title="Network">
-            <SettingRow
-              label="Built-in Image Proxy"
-              description="Route supported media through the server when the source permits it"
-            >
-              <Switch
-                checked={isVpnEnabled}
-                onCheckedChange={toggleVpn}
-              />
-            </SettingRow>
-            <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-muted/50">
-              <Shield className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                May slow image loading slightly. Use the <Link href="/vpn" className="underline underline-offset-2">VPN page</Link> for full proxy controls.
-              </p>
             </div>
           </Section>
         </div>

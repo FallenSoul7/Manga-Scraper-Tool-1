@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useStore, getStoreSnapshot, type StoreState } from "@/lib/storage";
-import { proxyImage } from "@/lib/utils";
+import { mediaImage } from "@/lib/utils";
 
 const STORAGE_KEY = "comihub-offline-catalog-v1";
 const SOURCE_CATALOG_KEY = "comihub-offline-source-catalog-v1";
@@ -148,7 +148,7 @@ export function OfflineCatalogPersistence() {
     saveOfflineCatalogState({ library, categories, progress, history, installedSources });
     if (navigatorOnline() && typeof window !== "undefined") {
       const coverUrls = Object.values(library)
-        .map(manga => proxyImage(manga.thumbnail, manga.sourceId))
+        .map(manga => mediaImage(manga.thumbnail, manga.sourceId))
         .filter(Boolean);
       const iconUrls = Object.values(installedSources)
         .map(source => source.iconUrl)

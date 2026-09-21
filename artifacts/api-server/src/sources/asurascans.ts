@@ -155,7 +155,7 @@ export const AsuraScansSource: MangaSource = {
       chapterId,
       pages: pages.map((p, i) => ({
         index: i,
-        url: `/api/image-proxy?url=${encodeURIComponent(p.url)}&referer=${encodeURIComponent(SITE + "/")}`,
+        url: p.url,
       })),
     };
   },

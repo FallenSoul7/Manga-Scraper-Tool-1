@@ -208,7 +208,7 @@ export const WebtoonsSource: MangaSource = {
       chapterId,
       pages: urls.map((url, i) => ({
         index: i,
-        url: `/api/image-proxy?url=${encodeURIComponent(url)}&referer=${encodeURIComponent(BASE + "/")}`,
+        url,
       })),
     };
   },

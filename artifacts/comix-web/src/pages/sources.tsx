@@ -5,7 +5,7 @@ import { customFetch } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { proxyImage } from "@/lib/utils";
+import { mediaImage } from "@/lib/utils";
 import {
   Search,
   CheckCircle2,
@@ -197,7 +197,7 @@ function GlobalSearchResults({ query, results, isSearching, onClear }: {
                     <div className="shrink-0 w-24 sm:w-28 cursor-pointer group">
                       <div className="aspect-[2/3] rounded-lg overflow-hidden bg-muted mb-1.5 shadow-sm">
                         <img
-                          src={proxyImage(manga.thumbnail, source.id)} alt={manga.title}
+                          src={mediaImage(manga.thumbnail, source.id)} alt={manga.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           loading="lazy"
                         />

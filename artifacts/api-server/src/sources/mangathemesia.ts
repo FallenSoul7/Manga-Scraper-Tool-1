@@ -11,7 +11,7 @@ import type {
   PageInfo,
   SourceTag,
 } from "./types";
-import { absUrl, fetchHtml, fetchHtmlWithBypass, imgAttr, makeHttp } from "./scraper-utils";
+import { absUrl, fetchHtml, imgAttr, makeHttp } from "./scraper-utils";
 import * as cheerio from "cheerio";
 
 export interface MangaThemesiaOptions {
@@ -22,8 +22,6 @@ export interface MangaThemesiaOptions {
   isNsfw?: boolean;
   /** default "/manga" */
   mangaUrlDirectory?: string;
-  /** Use the configured browser fallback when the site blocks Render requests. */
-  useBypass?: boolean;
 }
 
 function parseStatus(text: string): string {
@@ -49,9 +47,7 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
   const http = makeHttp(baseUrl);
 
   async function fetchPage(url: string, config: Parameters<typeof fetchHtml>[2] = {}) {
-    return opts.useBypass
-      ? fetchHtmlWithBypass(http, url, config, { referer: `${baseUrl}/`, waitFor: "dom_loaded" })
-      : fetchHtml(http, url, config);
+    return fetchHtml(http, url, config);
   }
 
   // Cache scraped tags so we don't hit the site on every filter request.

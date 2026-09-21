@@ -39,11 +39,8 @@ const META_TAGS = new Set([
 ]);
 
 // ── Raw URL passthrough ────────────────────────────────────────────────────────
-// The frontend's proxyImage() wraps raw URLs as /api/image?url=<raw>&source=en.rule34
-// The /api/image route then uses source.imageReferer (https://rule34.paheal.net/)
-// to set the correct referer when fetching from paheal's CDN.
-// Do NOT pre-proxy here — returning /api/image-proxy?... relative paths causes a
-// double-wrap that makes /api/image fail its URL validation with 400.
+// Keep source-provided media URLs direct. The server does not rewrite them or
+// attempt to defeat source hotlink, regional, or access controls.
 function rawUrl(url: string): string {
   return url ?? "";
 }

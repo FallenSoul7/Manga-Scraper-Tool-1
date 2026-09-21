@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { ArrowLeft, Download, FileImage, Heart, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { proxyImage } from "@/lib/utils";
+import { mediaImage } from "@/lib/utils";
 import { saveChapterToFile } from "@/lib/save-to-file";
 
 type Page = { index: number; url: string };
@@ -22,7 +22,7 @@ function decodeRoutePart(value: string | undefined): string {
 function mediaUrl(url: string): string {
   // Images still use the SSRF-safe proxy because Pawchive's CDN can hotlink-
   // protect image requests and the proxy supplies the source referer.
-  return proxyImage(url, "all.pawchive");
+  return mediaImage(url, "all.pawchive");
 }
 
 function videoUrl(url: string): string {

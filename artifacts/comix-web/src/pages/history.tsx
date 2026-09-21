@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore, storeActions } from "@/lib/storage";
 import type { ChapterProgress } from "@/lib/storage";
 import { Link } from "wouter";
-import { proxyImage, readerUrl } from "@/lib/utils";
+import { mediaImage, readerUrl } from "@/lib/utils";
 import { formatDistanceToNow, isToday, isYesterday, isThisWeek } from "date-fns";
 import { BookOpen, Clock, Film, Search, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -175,7 +175,7 @@ export default function HistoryPage() {
                       <Link href={`/manga/${item.mangaId}`} className="shrink-0">
                         <div className="relative w-[60px] h-[80px] rounded-lg overflow-hidden bg-muted shadow-sm">
                           <img
-                            src={proxyImage(item.mangaThumbnail)}
+                            src={mediaImage(item.mangaThumbnail)}
                             alt={item.mangaTitle}
                             className="w-full h-full object-cover"
                           />

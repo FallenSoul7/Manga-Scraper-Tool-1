@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import {
   Settings, Download, BarChart3, Info, FolderOpen, Sparkles,
-  Shield, Trash2, AppWindow, LogIn, Lock,
+  Trash2, AppWindow, LogIn, Lock,
 } from "lucide-react";
 
 interface SystemBlock {
@@ -62,12 +62,6 @@ const blocks: SystemBlock[] = [
     description: "AI chat assistant — sort your Tachimanga library by genre, tags, or any rule.",
     icon: Sparkles,
     highlight: true,
-  },
-  {
-    href: "/vpn",
-    label: "Built-in VPN",
-    description: "Route images through the server to bypass regional blocks.",
-    icon: Shield,
   },
   {
     href: "/settings",

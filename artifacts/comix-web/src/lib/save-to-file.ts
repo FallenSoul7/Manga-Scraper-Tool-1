@@ -1,7 +1,7 @@
 /**
  * save-to-file.ts
- * Fetches all pages of a chapter via the backend image proxy (to bypass
- * hotlink-protection), bundles them as a ZIP, then triggers a browser download.
+ * Fetches all pages of a chapter directly from the source URLs, bundles them
+ * as a ZIP, then triggers a browser download.
  *
  * On desktop/Android → file goes to Downloads folder.
  * On iOS/Safari      → the native share sheet opens with the ZIP attached.
@@ -42,9 +42,7 @@ export async function saveChapterToFile(opts: SaveToFileOptions): Promise<void> 
   const folderName = sanitize(`${mangaTitle} - ${chapterLabel}`);
   const folder     = zip.folder(folderName)!;
 
-  // ── 3. Fetch each page via the backend image proxy ────────────────────────
-  // Direct CDN fetches get 403 (hotlink protected). Routing through /api/image
-  // lets the server add the correct Referer / headers.
+  // ── 3. Fetch each page directly from the source URL ────────────────────────
   const CONCURRENT = 3;
   let fetched = 0;
 
@@ -53,9 +51,9 @@ export async function saveChapterToFile(opts: SaveToFileOptions): Promise<void> 
 
     await Promise.all(
       chunk.map(async (rawUrl, offset) => {
-        const proxiedUrl = buildProxiedUrl(rawUrl, sourceId);
+        const mediaUrl = buildMediaUrl(rawUrl);
         try {
-          const res = await fetch(proxiedUrl);
+          const res = await fetch(mediaUrl);
           if (!res.ok) return;
           const blob = await res.blob();
           const ext  = guessExt(rawUrl, res.headers.get('content-type'));
@@ -121,15 +119,14 @@ export async function saveChapterToFile(opts: SaveToFileOptions): Promise<void> 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Route a raw CDN image URL through the backend proxy so hotlink-protection
- * headers are set server-side. Already-local paths are left as-is.
+ * Resolve local application assets without relaying external source media.
  */
-function buildProxiedUrl(rawUrl: string, sourceId: string): string {
+function buildMediaUrl(rawUrl: string): string {
   if (!rawUrl) return rawUrl;
   if (rawUrl.startsWith('/api/') || rawUrl.startsWith('/public/')) {
     return apiUrl(rawUrl);
   }
-  return apiUrl(`/api/image?url=${encodeURIComponent(rawUrl)}&source=${encodeURIComponent(sourceId)}`);
+  return rawUrl;
 }
 
 function sanitize(s: string): string {

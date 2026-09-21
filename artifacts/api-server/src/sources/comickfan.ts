@@ -10,7 +10,7 @@ import type {
   MangaSummary,
   SourceTag,
 } from "./types";
-import { makeHttp, fetchHtmlWithBypass, fetchImagesViaBypass, isBypassAvailable } from "./scraper-utils";
+import { makeHttp, fetchHtml } from "./scraper-utils";
 
 const BASE = "https://comickfan.com";
 
@@ -139,7 +139,7 @@ export const ComickFanSource: MangaSource = {
       sort: opts.sort ?? "rating",
       genres: included.join("_")
     };
-    const { $ } = await fetchHtmlWithBypass(html, "/advanced-search", { params });
+    const { $ } = await fetchHtml(html, "/advanced-search", { params });
     return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
   },
 
@@ -150,7 +150,7 @@ export const ComickFanSource: MangaSource = {
       sort: "latest",
       genres: included.join("_")
     };
-    const { $ } = await fetchHtmlWithBypass(html, "/advanced-search", { params });
+    const { $ } = await fetchHtml(html, "/advanced-search", { params });
     return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
   },
 
@@ -161,12 +161,12 @@ export const ComickFanSource: MangaSource = {
     if (opts.sort) params.sort = opts.sort;
     if (included.length > 0) params.genres = included.join("_");
 
-    const { $ } = await fetchHtmlWithBypass(html, "/advanced-search", { params });
+    const { $ } = await fetchHtml(html, "/advanced-search", { params });
     return { items: parseGrid($), page: opts.page, hasNextPage: hasNext($) };
   },
 
   async details(slug: string, opts: DetailOptions): Promise<MangaDetail> {
-    const { $ } = await fetchHtmlWithBypass(html, `/manga/${slug}`);
+    const { $ } = await fetchHtml(html, `/manga/${slug}`);
 
     const title = $("h1").first().text().trim() || slug;
     const description = $("div.comic-content.desk").first().text().trim();
@@ -264,65 +264,12 @@ export const ComickFanSource: MangaSource = {
     if (!decoded) throw new Error(`ComicKFan: invalid chapter ID "${chapterId}"`);
     const { slug, chapter, hashId } = decoded;
 
-    const readingUrl = `${BASE}/manga/${slug}/chapter-${chapter}-${hashId}`;
-
-    // ComickFan chapter pages are fully JavaScript-rendered (no images in
-    // the HTML shell) and the site is behind Cloudflare. We use the
-    // Scrapling bypass server (headless Chromium with Cloudflare solving)
-    // to load the page, render the JS, and extract the image URLs.
-
-    // Strategy 1: Try the bypass server to extract images from the rendered page
-    const bypassAvailable = await isBypassAvailable();
-    if (bypassAvailable) {
-      try {
-        const images = await fetchImagesViaBypass(readingUrl, {
-          referer: `${BASE}/manga/${slug}`,
-          waitFor: "network_idle",
-          timeout: 45,
-        });
-
-        // Filter out non-page images (logos, avatars, loading placeholders)
-        const pageUrls = images
-          .map(sanitizeImageUrl)
-          .filter(url =>
-            url &&
-            !url.startsWith("data:") &&
-            !url.includes("logo.png") &&
-            !url.includes("avatar") &&
-            !url.includes("thumb-default") &&
-            !url.includes("thumb-loading") &&
-            !url.includes("favicon")
-          );
-
-        // Deduplicate while preserving order
-        const seen = new Set<string>();
-        const uniqueUrls = pageUrls.filter(url => {
-          if (seen.has(url)) return false;
-          seen.add(url);
-          return true;
-        });
-
-        if (uniqueUrls.length > 0) {
-          return {
-            chapterId,
-            pages: uniqueUrls.map((url, i) => ({
-              index: i,
-              url: `/api/image-proxy?url=${encodeURIComponent(url)}&referer=${encodeURIComponent("https://comickfan.com/")}`,
-            })),
-          };
-        }
-      } catch {
-        // Bypass fetch failed — fall through to HTML parsing
-      }
-    }
-
-    // Strategy 2: Try normal HTTP + cheerio parsing (works if not Cloudflare-blocked)
+    // Read only what the source makes available to a normal HTTP client.
     try {
-      const { $ } = await fetchHtmlWithBypass(
+      const { $ } = await fetchHtml(
         html,
         `/manga/${slug}/chapter-${chapter}-${hashId}`,
         { headers: { Referer: `${BASE}/manga/${slug}` } },
-        { referer: `${BASE}/manga/${slug}` },
       );
 
       const pageUrls: string[] = [];
@@ -385,7 +332,7 @@ export const ComickFanSource: MangaSource = {
           chapterId,
           pages: pageUrls.map((url, i) => ({
             index: i,
-            url: `/api/image-proxy?url=${encodeURIComponent(url)}&referer=${encodeURIComponent("https://comickfan.com/")}`,
+            url,
           })),
         };
       }
@@ -395,8 +342,8 @@ export const ComickFanSource: MangaSource = {
 
     throw new Error(
       "ComickFan chapter pages could not be loaded. The site is fully client-side rendered " +
-      "and protected by Cloudflare. Make sure the bypass server is running " +
-      "(cd artifacts/bypass-server && python main.py) and try again."
+      "and protected by Cloudflare. Make sure the normal source access is running " +
+      "try again later."
     );
   },
 
@@ -407,7 +354,7 @@ export const ComickFanSource: MangaSource = {
     const seen = new Set<string>();
 
     try {
-      const { $ } = await fetchHtmlWithBypass(html, "/advanced-search");
+      const { $ } = await fetchHtml(html, "/advanced-search");
 
       $("a[href*='/manga-list/'], form input[type='checkbox']").each((_i, el) => {
         let id = "";

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, BookOpen, HardDrive, Trash2, WifiOff } from "lucide-react";
-import { proxyImage } from "@/lib/utils";
+import { mediaImage } from "@/lib/utils";
 import { useOfflineChapters, offlineDb, formatBytes } from "@/lib/offline-db";
 import { readerUrl } from "@/lib/utils";
 
@@ -66,7 +66,7 @@ export default function DownloadsLibraryPage() {
                   className="w-full flex items-center gap-3 p-3 text-left hover:bg-muted/30 transition-colors"
                   onClick={() => setLocation(`/manga/${encodeURIComponent(mangaId)}`)}
                 >
-                  <img src={proxyImage(first.mangaThumbnail, first.sourceId)} alt={first.mangaTitle} className="h-20 w-14 rounded-xl object-cover shrink-0" />
+                  <img src={mediaImage(first.mangaThumbnail, first.sourceId)} alt={first.mangaTitle} className="h-20 w-14 rounded-xl object-cover shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-sm truncate">{first.mangaTitle}</div>
                     <div className="flex items-center gap-1 mt-1 text-[11px] text-green-500 font-semibold"><WifiOff className="h-3 w-3" /> Available offline</div>

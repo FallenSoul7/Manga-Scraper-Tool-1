@@ -5,7 +5,7 @@ import { customFetch } from "@workspace/api-client-react";
 import { ArrowLeft, Calendar, Image as ImageIcon, Loader2, Search, X, Youtube } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { proxyImage } from "@/lib/utils";
+import { mediaImage } from "@/lib/utils";
 
 type Creator = { id: string; title: string; thumbnail: string; author?: string; synopsis?: string };
 type Post = {
@@ -38,7 +38,7 @@ function PawchiveThumbnail({
   const fallback = "/public/source-icons/all.pawchive.svg";
   return (
     <img
-      src={!failed && src ? proxyImage(src, "all.pawchive") : fallback}
+      src={!failed && src ? mediaImage(src, "all.pawchive") : fallback}
       alt={alt}
       loading={loading}
       onError={() => setFailed(true)}

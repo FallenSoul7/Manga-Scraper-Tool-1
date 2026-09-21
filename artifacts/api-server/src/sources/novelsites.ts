@@ -10,7 +10,6 @@ export interface NovelSiteOptions {
   name: string;
   baseUrl: string;
   searchPath: (query: string, page: number) => string;
-  useBypass?: boolean;
   tags?: string[];
 }
 
@@ -136,7 +135,6 @@ export const NovelFullSource = createNovelSiteSource({
   id: "en.novelfull",
   name: "NovelFull",
   baseUrl: "https://novelfull.com",
-  useBypass: true,
   searchPath: (query, page) => query ? `/search?keyword=${encodeURIComponent(query)}&page=${page}` : `/latest-release?page=${page}`,
   tags: ["Action", "Adventure", "Fantasy", "Romance", "Fan-fic", "System", "Reincarnation", "Game", "Naruto", "Anime", "Movies"],
 });

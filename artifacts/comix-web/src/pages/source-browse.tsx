@@ -68,76 +68,11 @@ function buildQuery(params: Record<string, string | string[] | undefined>): stri
 }
 
 const DEBOUNCE_MS = 220;
-const VPN_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
 function resolveAssetUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   return url.startsWith("/") && API_ORIGIN ? `${API_ORIGIN}${url}` : url;
-}
-
-// ---------------------------------------------------------------------------
-// VPN / Blocked-source banner (unchanged)
-// ---------------------------------------------------------------------------
-function VpnBanner({
-  sourceId, onRetry, coversAvailable,
-}: { sourceId: string; onRetry: () => void; coversAvailable: boolean }) {
-  const storageKey = `vpn_banner_${sourceId}`;
-  const [visible, setVisible] = useState(() => {
-    const last = parseInt(localStorage.getItem(storageKey) || "0");
-    return Date.now() - last > VPN_COOLDOWN_MS;
-  });
-  const [countdown, setCountdown] = useState(10);
-
-  useEffect(() => {
-    if (!visible) return;
-    const iv = setInterval(() => {
-      setCountdown(c => {
-        if (c <= 1) {
-          clearInterval(iv);
-          dismiss();
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
-    return () => clearInterval(iv);
-  }, [visible]);
-
-  function dismiss() {
-    setVisible(false);
-    localStorage.setItem(storageKey, String(Date.now()));
-  }
-
-  if (!visible) return null;
-
-  return (
-    <div className="mx-4 mt-3 rounded-xl border border-amber-400/40 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 flex items-start gap-3 animate-in slide-in-from-top-2 duration-200">
-      <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-          {coversAvailable
-            ? "Reading chapters may require a VPN in your region"
-            : "This source couldn't be reached — it may be blocked in your region"}
-        </p>
-        <p className="text-xs text-amber-700/70 dark:text-amber-400/70 mt-0.5">
-          {coversAvailable
-            ? "Covers are available. If chapters fail to load, try a VPN."
-            : "A VPN may help. Auto-dismissing in " + countdown + "s…"}
-        </p>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        {!coversAvailable && (
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-amber-700 hover:text-amber-900 dark:text-amber-300" onClick={onRetry}>
-            <RefreshCw className="h-3 w-3 mr-1" />Retry
-          </Button>
-        )}
-        <button type="button" onClick={dismiss} className="p-1 text-amber-600 hover:text-amber-900 dark:text-amber-400">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -421,7 +356,6 @@ export default function SourceBrowsePage() {
 
   const activeQuery = isFiltering ? filterQuery : tab === "latest" ? latestQuery : popularQuery;
   const isSourceError = activeQuery.isError;
-  const coversAvailable = !isSourceError && (popularItems.length > 0 || popularQuery.isSuccess);
 
   // Save snapshot
   useEffect(() => {
@@ -812,15 +746,6 @@ export default function SourceBrowsePage() {
           </div>
         )}
       </header>
-
-      {/* VPN banner */}
-      {isSourceError && (
-        <VpnBanner
-          sourceId={sourceId}
-          coversAvailable={coversAvailable}
-          onRetry={() => activeQuery.refetch()}
-        />
-      )}
 
       {/* Content */}
       <main className="flex-1 container mx-auto px-4 py-3 max-w-7xl">
