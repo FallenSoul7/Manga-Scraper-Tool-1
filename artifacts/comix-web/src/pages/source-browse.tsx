@@ -221,6 +221,7 @@ export default function SourceBrowsePage() {
     () => storedSnapshot?.appliedTagState ?? (urlTagId ? { [urlTagId]: "include" } : {}),
   );
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
+  const [tagsEnabled, setTagsEnabled] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // ── Scroll restoration ────────────────────────────────
@@ -313,7 +314,9 @@ export default function SourceBrowsePage() {
   const { data: availableTags = [] } = useQuery<SourceTag[]>({
     queryKey: ["source-tags", sourceId],
     queryFn: () => customFetch<SourceTag[]>(`/api/tags`),
-    enabled: online && !!sourceId && !!source,
+    // Tag discovery can be much slower than the first browse request for
+    // sources with large tag catalogues. Never make it block the main list.
+    enabled: online && !!sourceId && !!source && tagsEnabled,
     staleTime: 60 * 60 * 1000,
   });
 
@@ -364,6 +367,14 @@ export default function SourceBrowsePage() {
     staleTime: 30 * 1000,
     retry: 1,
   });
+
+  // Start tag discovery only after the first browse result is available. A
+  // URL-applied filter still enables it immediately so its picker can hydrate.
+  useEffect(() => {
+    if (popularQuery.isSuccess || latestQuery.isSuccess || isFiltering) {
+      setTagsEnabled(true);
+    }
+  }, [popularQuery.isSuccess, latestQuery.isSuccess, isFiltering]);
 
   useEffect(() => {
     if (!popularQuery.data) return;

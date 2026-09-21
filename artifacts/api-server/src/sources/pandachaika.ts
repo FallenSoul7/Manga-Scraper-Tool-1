@@ -59,9 +59,10 @@ function pageProxyUrl(archiveId: number, index: number): string {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function archiveToSummary(a: LongArchive): MangaSummary {
+  const title = a.title?.trim() || a.title_jpn?.trim() || `Archive ${a.id}`;
   return {
     id:        String(a.id),
-    title:     a.title,
+    title,
     thumbnail: a.thumbnail,
     type:      a.category || "Doujinshi",
     isNsfw:    true,
