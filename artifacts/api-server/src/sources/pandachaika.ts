@@ -7,6 +7,7 @@ import type {
   ChapterListResponse,
   PageListResponse,
   MangaSummary,
+  MangaDetailSourceTag,
 } from "./types";
 import { makeHttp, fetchHtml, fetchJson } from "./scraper-utils";
 
@@ -81,12 +82,32 @@ function parseArtist(tags: string[]): string {
   return a ? a.slice(7).replace(/_/g, " ") : "";
 }
 
+function tagGroup(tag: string): string {
+  const scope = tag.split(":", 1)[0] || "other";
+  return scope[0].toUpperCase() + scope.slice(1);
+}
+
+function sourceTags(tags: string[]): MangaDetailSourceTag[] {
+  return tags
+    .map(raw => raw.trim())
+    .filter(Boolean)
+    .map(raw => {
+      const colon = raw.indexOf(":");
+      const name = (colon >= 0 ? raw.slice(colon + 1) : raw).replace(/_/g, " ");
+      return { id: raw, name, group: tagGroup(raw) };
+    });
+}
+
 function searchUrl(params: Record<string, string>): string {
   const q = new URLSearchParams({ apply: "", json: "", ...params });
   return `/search/?${q}`;
 }
 
 const TAG_SCOPES = ["language", "artist", "group", "parody", "female", "male", "mixed", "other"];
+// Panda Chaika's autocomplete endpoint caps every response at ten choices and
+// does not expose pagination. Querying each scope with character prefixes lets
+// us discover the full catalogue instead of keeping only the first ten tags.
+const TAG_QUERY_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789".split("");
 let cachedTags: Array<{ id: string; name: string; group: string }> | null = null;
 
 function tagParams(o: ListOptions): Record<string, string> {
@@ -129,18 +150,24 @@ export const PandaChaikaSource: MangaSource = {
   async tags() {
     if (cachedTags) return cachedTags;
     const groups = await Promise.all(TAG_SCOPES.map(async scope => {
-      try {
-        const { $ } = await fetchHtml(http, `/tag-autocomplete/?q=${scope}`);
-        const tags: Array<{ id: string; name: string; group: string }> = [];
-        $("a.choice[data-value]").each((_i, el) => {
-          const value = $(el).attr("data-value")?.trim();
-          if (!value) return;
-          tags.push({ id: value, name: value.replace(/_/g, " "), group: scope[0].toUpperCase() + scope.slice(1) });
+      const group = scope[0].toUpperCase() + scope.slice(1);
+      const queries = [scope, ...TAG_QUERY_CHARS.map(char => `${scope}:${char}`)];
+      const responses = await Promise.all(queries.map(async query => {
+        try {
+          return await fetchHtml(http, `/tag-autocomplete/?q=${encodeURIComponent(query)}`);
+        } catch {
+          return null;
+        }
+      }));
+      const tags: Array<{ id: string; name: string; group: string }> = [];
+      for (const response of responses) {
+        response?.$?.("a.choice[data-value]").each((_i, el) => {
+          const value = response.$(el).attr("data-value")?.trim();
+          if (!value || !value.startsWith(`${scope}:`)) return;
+          tags.push({ id: value, name: value.slice(scope.length + 1).replace(/_/g, " "), group });
         });
-        return tags;
-      } catch {
-        return [];
       }
+      return tags;
     }));
     const seen = new Set<string>();
     cachedTags = groups.flat().filter(tag => !seen.has(tag.id) && seen.add(tag.id));
@@ -164,6 +191,7 @@ export const PandaChaikaSource: MangaSource = {
       genres:        parseTags(d.tags),
       score:         d.rating ? String(d.rating) : "",
       scorePosition: "top",
+      sourceTags:    sourceTags(d.tags),
     };
   },
 
