@@ -47,7 +47,6 @@ const LockScreen           = lazy(() => import("@/components/lock-screen").then(
 
 import { useActiveSourceId, applyActiveSource, registerQueryClient } from "@/lib/source";
 import { useLibrarySync } from "@/hooks/use-library-sync";
-import { useTokenRefresh } from "@/hooks/use-token-refresh";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -171,7 +170,6 @@ function LockGate({ children }: { children: React.ReactNode }) {
 
 function AppContent() {
   useLibrarySync();
-  useTokenRefresh();
 
   return (
     <div className="min-h-[100dvh] flex flex-col">

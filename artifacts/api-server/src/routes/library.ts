@@ -13,7 +13,7 @@ async function requireAuth(req: any, res: any, next: any) {
 
     if (token) {
       const supabaseUrl = process.env["SUPABASE_URL"];
-      const apiKey = process.env["SUPABASE_SERVICE_KEY"] || process.env["SUPABASE_ANON_KEY"] || "";
+      const apiKey = process.env["SUPABASE_ANON_KEY"] || process.env["SUPABASE_SERVICE_KEY"] || "";
 
       if (!supabaseUrl || !apiKey) {
         console.error("Missing Supabase URL or Key");
@@ -60,7 +60,7 @@ router.get("/sync", requireAuth, async (req, res) => {
     const data = rows[0]?.data ?? {};
      return res.json({ data, updatedAt: rows[0]?.updatedAt ?? null });
   } catch (err) {
-    console.error("library sync GET failed:", err);
+    console.error("library sync GET failed");
      return res.status(500).json({ error: "Database error" });
   }
 });
@@ -89,7 +89,7 @@ router.post("/sync", requireAuth, async (req, res) => {
         },
       });
     } catch (userErr: any) {
-      console.warn("⚠️ User upsert skipped — real cause:", userErr.cause?.message ?? userErr.message);
+      console.warn("User upsert skipped during library sync");
     }
 
     let finalData: any = {};
@@ -146,12 +146,12 @@ router.post("/sync", requireAuth, async (req, res) => {
       });
       res.json({ ok: true, count: Object.keys(finalData.library || {}).length });
     } catch (libErr: any) {
-      console.error("⚠️ Library save failed — real cause:", libErr.cause?.message ?? libErr.message);
+      console.error("Library save failed during library sync");
       res.json({ ok: false, count: 0, warning: "Could not save — database issue." });
     }
 
   } catch (err) {
-    console.error("library sync POST failed:", err);
+    console.error("library sync POST failed");
     res.status(500).json({ error: "Database error" });
   }
   return;

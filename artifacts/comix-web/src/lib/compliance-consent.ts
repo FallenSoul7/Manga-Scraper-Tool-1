@@ -1,4 +1,4 @@
-export const FIRST_USE_POLICY_VERSION = "2026-09-21";
+export const FIRST_USE_POLICY_VERSION = "2026-09-22";
 
 const AGREEMENT_KEY = "comihub-first-use-agreement-v1";
 const ADULT_CONSENT_KEY = "comihub-adult-access-consent-v1";

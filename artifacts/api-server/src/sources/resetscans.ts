@@ -224,9 +224,7 @@ export const ResetScansSource: MangaSource = {
 
   async chapters(mangaId: string): Promise<ChapterListResponse> {
     // The chapter list and its load-more nonce are present in the normal
-    // HTML response. Do not route this page through the optional bypass
-    // service: some bypass responses omit the inline load-more config,
-    // which silently leaves the adapter with only the first 10 chapters.
+    // HTML response; keeping the normal request preserves the full list.
     let firstPage: Awaited<ReturnType<typeof fetchHtml>>;
     try {
       firstPage = await fetchHtml(http, mangaId);

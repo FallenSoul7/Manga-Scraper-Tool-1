@@ -1,13 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api-url";
 import { useStore, storeActions, getStoreSnapshot } from "@/lib/storage";
-import { getAccessToken } from "@/lib/auth-cache";
+import { getCachedUser } from "@/lib/auth-cache";
 import { setSyncStatus } from "@/lib/sync-status";
-
-function authHeaders(): Record<string, string> {
-  const token = getAccessToken();
-  return token ? { "Authorization": `Bearer ${token}` } : {};
-}
 
 export type SyncState = "idle" | "uploading" | "downloading" | "done" | "error";
 
@@ -31,9 +26,7 @@ export function useLibrarySync() {
   useEffect(() => {
     if (startupSyncDone.current) return;
     startupSyncDone.current = true;
-
-    const token = getAccessToken();
-    if (!token) return; // Not logged in — nothing to do
+    if (!getCachedUser()) return;
 
     const snap = getStoreSnapshot();
 
@@ -44,7 +37,7 @@ export function useLibrarySync() {
         await fetch(apiUrl("/api/library/sync"), {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json", ...authHeaders() },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             library: snap.library,
             categories: snap.categories,
@@ -56,7 +49,7 @@ export function useLibrarySync() {
         // Step 2: pull merged cloud state back into local store
         const res = await fetch(apiUrl("/api/library/sync"), {
           credentials: "include",
-          headers: { ...authHeaders() },
+          headers: {},
         });
         if (res.ok) {
           const data = await res.json();
@@ -81,7 +74,7 @@ export function useLibrarySync() {
     fetch(apiUrl("/api/library/sync"), {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ library, categories, installedSources, strategy: "merge" }),
     }).catch((err) => console.warn("Background auto-sync failed:", err));
 
@@ -94,7 +87,7 @@ export function useLibrarySync() {
       const res = await fetch(apiUrl("/api/library/sync"), {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ library, categories, installedSources, strategy: "merge" }),
       });
       
@@ -121,7 +114,7 @@ export function useLibrarySync() {
     try {
       const res = await fetch(apiUrl("/api/library/sync"), {
         credentials: "include",
-        headers: { ...authHeaders() },
+        headers: {},
       });
       
       if (!res.ok) {

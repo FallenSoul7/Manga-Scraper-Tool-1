@@ -1,7 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-// Server-side Supabase client — uses service key which bypasses RLS.
-// Never expose this key to the frontend.
+// Server-side admin client. The service key is never exposed to the frontend.
 let _client: ReturnType<typeof createClient> | null = null;
 
 export function getSupabaseAdmin() {

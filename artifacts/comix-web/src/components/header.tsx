@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { useHistoryHeader } from "@/lib/header-history";
 import { usePwa } from "@/lib/pwa-context";
 import { useSyncStatus } from "@/lib/sync-status";
-import { getAccessToken } from "@/lib/auth-cache";
+import { getCachedUser } from "@/lib/auth-cache";
 
 const PAGE_TITLES: Record<string, string> = {
   "/updates": "Updates",
@@ -23,7 +23,7 @@ const PAGE_TITLES: Record<string, string> = {
 
 function SyncIndicator() {
   const status = useSyncStatus();
-  const isLoggedIn = !!getAccessToken();
+  const isLoggedIn = !!getCachedUser();
   if (!isLoggedIn || status === "idle") return null;
 
   if (status === "syncing") {

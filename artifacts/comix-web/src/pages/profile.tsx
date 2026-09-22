@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { ArrowLeft, Loader2, Check, AlertCircle, Pencil } from "lucide-react";
-import { getCachedUser, setCachedUser, clearCachedUser, getAccessToken, type CachedUser } from "@/lib/auth-cache";
+import { getCachedUser, setCachedUser, clearCachedUser, type CachedUser } from "@/lib/auth-cache";
 import { apiUrl } from "@/lib/api-url";
 
 export default function ProfilePage() {
@@ -57,11 +57,9 @@ export default function ProfilePage() {
   }
 
   async function handleLogout() {
-    const token = getAccessToken();
     await fetch(apiUrl("/api/auth/logout"), {
       method: "POST",
       credentials: "include",
-      headers: token ? { "Authorization": `Bearer ${token}` } : {},
     }).catch(() => {});
     clearCachedUser();
     setLocation("/system");

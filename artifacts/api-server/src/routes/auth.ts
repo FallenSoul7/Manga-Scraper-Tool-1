@@ -8,6 +8,8 @@ import { getDb } from "../db";
 import { users } from "../schema";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
+import { logger } from "../lib/logger";
+import { rateLimit } from "../lib/rate-limit";
 
 const router = Router();
 
@@ -57,7 +59,7 @@ async function upsertUser(user: GoogleUser): Promise<GoogleUser> {
     });
     return { ...user, username };
   } catch (error: any) {
-    console.error("Drizzle upsert error:", error.message);
+    logger.error({ err: error?.message ?? "database error" }, "User upsert failed");
     return user;
   }
 }
@@ -76,7 +78,7 @@ async function loadUserById(id: string): Promise<GoogleUser | null> {
       photo: "",
     };
   } catch (error) {
-    console.error("Drizzle load user error:", error);
+    logger.error({ err: error instanceof Error ? error.message : "database error" }, "User lookup failed");
     return null;
   }
 }
@@ -116,7 +118,7 @@ class SupabaseSessionStore extends session.Store {
     }).then(({ error }: { error?: { message?: string } }) => {
       if (error) {
         if (!error.message?.includes("already exists")) {
-          console.warn("Sessions table setup warning:", error.message);
+          logger.warn({ err: error.message }, "Session table setup warning");
         }
       } else {
         this.tableReady = true;
@@ -289,14 +291,12 @@ router.post("/logout", (req, res) => {
   req.logout(() => res.json({ ok: true }));
 });
 
-router.post("/register", async (req, res) => {
+router.post("/register", rateLimit({ windowMs: 15 * 60 * 1000, max: 8 }), async (req, res) => {
   const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
   const username = typeof req.body.username === "string" ? req.body.username.trim() : "";
   const password = typeof req.body.password === "string" ? req.body.password : "";
   const consentAccepted = req.body.consentAccepted === true;
   const consentVersion = typeof req.body.consentVersion === "string" ? req.body.consentVersion : "";
-
-  console.log("Registration attempt received");
 
   const sb = getSupabaseAdmin();
   if (!sb) {
@@ -318,22 +318,22 @@ router.post("/register", async (req, res) => {
       options: { data: { username, consentAcceptedAt: new Date().toISOString(), consentVersion } },
     });
     if (error) {
-      console.warn("Registration rejected by authentication provider");
-      res.status(400).json({ error: error.message });
+      logger.info("Registration rejected by authentication provider");
+      res.status(400).json({ error: "Registration could not be completed." });
       return;
     }
-    console.log("Registration accepted by authentication provider");
+    logger.info("Registration accepted by authentication provider");
     res.status(200).json({
       message: "Check your email to verify your account!",
       user: data.user,
     });
   } catch {
-    console.error("Registration request failed");
+    logger.error("Registration request failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", rateLimit({ windowMs: 15 * 60 * 1000, max: 10 }), async (req, res) => {
   const { email, password } = req.body;
   const sb = getSupabaseAdmin();
   if (!sb) {
@@ -343,7 +343,7 @@ router.post("/login", async (req, res) => {
   try {
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
     if (error) {
-      res.status(400).json({ error: error.message });
+      res.status(401).json({ error: "Invalid email or password." });
       return;
     }
     const rawUser: GoogleUser = {
@@ -359,46 +359,16 @@ router.post("/login", async (req, res) => {
         res.status(500).json({ error: "Session creation failed" });
         return;
       }
-      res.status(200).json({
-        message: "Login successful!",
-        user,
-        accessToken: data.session?.access_token ?? "",
-        refreshToken: data.session?.refresh_token ?? "",
-        expiresAt: data.session?.expires_at ?? null,
-      });
+      res.status(200).json({ message: "Login successful!", user });
     });
   } catch (err: any) {
-    console.error("Login Error:", err);
+    logger.error({ err: err?.message ?? "authentication error" }, "Login failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.post("/refresh", async (req, res) => {
-  const { refreshToken } = req.body as { refreshToken?: string };
-  if (!refreshToken) {
-    res.status(400).json({ error: "refreshToken is required" });
-    return;
-  }
-  const sb = getSupabaseAdmin();
-  if (!sb) {
-    res.status(500).json({ error: "Database not configured" });
-    return;
-  }
-  try {
-    const { data, error } = await sb.auth.refreshSession({ refresh_token: refreshToken });
-    if (error || !data.session) {
-      res.status(401).json({ error: error?.message ?? "Refresh failed" });
-      return;
-    }
-    res.json({
-      accessToken: data.session.access_token,
-      refreshToken: data.session.refresh_token,
-      expiresAt: data.session.expires_at ?? null,
-    });
-  } catch (err: any) {
-    console.error("Token refresh error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+router.post("/refresh", (_req, res) => {
+  res.status(410).json({ error: "Token refresh endpoint retired; sign in again." });
 });
 
 router.get("/google", (req, res, next) => {

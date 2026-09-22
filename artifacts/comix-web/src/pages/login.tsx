@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useStore, storeActions } from "@/lib/storage";
-import { setCachedUser, setAccessToken, setRefreshToken } from "@/lib/auth-cache";
+import { setCachedUser, clearCachedUser } from "@/lib/auth-cache";
 
 const API = "https://comihub-backend.onrender.com";
 
@@ -43,10 +43,11 @@ export default function LoginPage() {
 
     try {
       const endpoint = isLoginMode ? "/api/auth/login" : "/api/auth/register";
-      const bodyData = isLoginMode ? { email, password } : { email, username, password, consentAccepted: true, consentVersion: "2026-09-18" };
+      const bodyData = isLoginMode ? { email, password } : { email, username, password, consentAccepted: true, consentVersion: "2026-09-22" };
 
       const res = await fetch(`${API}${endpoint}`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bodyData),
       });
@@ -55,46 +56,24 @@ export default function LoginPage() {
       if (!res.ok) throw new Error(data.error || "Authentication failed");
 
       if (isLoginMode) {
-        const accessToken: string = data.accessToken ?? "";
-
-        // Persist tokens and user so future syncs always have auth
-        if (accessToken) setAccessToken(accessToken);
-        if (data.refreshToken) setRefreshToken(data.refreshToken);
         if (data.user) setCachedUser(data.user);
+        else clearCachedUser();
 
-        if (accessToken) {
-          const bearerHeaders = {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${accessToken}`,
-          };
+        await fetch(`${API}/api/library/sync`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ library: localLibrary, categories: localCategories, installedSources: localSources, strategy: "merge" }),
+        }).catch(() => {});
 
-          // Step 1: Push everything up so the backend can merge it
-          await fetch(`${API}/api/library/sync`, {
-            method: "POST",
-            headers: bearerHeaders,
-            body: JSON.stringify({ 
-              library: localLibrary, 
-              categories: localCategories,
-              installedSources: localSources,
-              strategy: "merge" 
-            }),
-          }).catch(() => {});
-
-          // Step 2: Pull the final merged data back down
-          try {
-            const getRes = await fetch(`${API}/api/library/sync`, {
-              headers: { "Authorization": `Bearer ${accessToken}` },
-            });
-
-            if (getRes.ok) {
-              const syncData = await getRes.json();
-              if (syncData.data) {
-                storeActions.restoreCloudSync(syncData.data);
-              }
-            }
-          } catch (downloadErr) {
-            console.warn("Library restore skipped:", downloadErr);
+        try {
+          const getRes = await fetch(`${API}/api/library/sync`, { credentials: "include" });
+          if (getRes.ok) {
+            const syncData = await getRes.json();
+            if (syncData.data) storeActions.restoreCloudSync(syncData.data);
           }
+        } catch {
+          // Local data remains available when cloud restore is unavailable.
         }
         setLocation("/");
       } else {

@@ -1,4 +1,4 @@
-import { getAccessToken } from "@/lib/auth-cache";
+import { getCachedUser } from "@/lib/auth-cache";
 import { apiUrl } from "@/lib/api-url";
 
 // ── localStorage keys (namespaced, unique to this feature) ──────────────
@@ -158,12 +158,12 @@ export async function verifyPin(pin: string): Promise<boolean> {
     return true;
   }
 
-  const token = getAccessToken();
-  if (token) {
+  if (getCachedUser()) {
     try {
       const res = await fetch(apiUrl("/api/auth/lock-pin-verify"), {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ pin }),
       });
       const data = await res.json();
@@ -194,12 +194,12 @@ export async function setPin(pin: string): Promise<string | null> {
   }
   unlockedThisSession = true;
 
-  const token = getAccessToken();
-  if (!token) return null;
+  if (!getCachedUser()) return null;
   try {
     const res = await fetch(apiUrl("/api/auth/lock-pin"), {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json" },
+        credentials: "include",
       body: JSON.stringify({ pin }),
     });
     if (!res.ok) return "Saved on this device, but could not sync to your account.";
@@ -219,10 +219,9 @@ export async function clearPin(): Promise<string | null> {
   } catch { /* */ }
   unlockedThisSession = true;
 
-  const token = getAccessToken();
-  if (!token) return null;
+  if (!getCachedUser()) return null;
   try {
-    const res = await fetch(apiUrl("/api/auth/lock-pin"), { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(apiUrl("/api/auth/lock-pin"), { method: "DELETE", credentials: "include" });
     return res.ok ? null : "Removed on this device, but could not sync to your account.";
   } catch {
     return "Removed on this device, but could not sync to your account (offline).";
@@ -232,11 +231,10 @@ export async function clearPin(): Promise<string | null> {
 // ── Server status --------------------------------------------------------
 /** Returns true if a PIN should gate the app (local device hash, or server-side for logged-in users). */
 export async function refreshServerLock(): Promise<boolean> {
-  const token = getAccessToken();
-  if (!token) return shouldLockCurrentMode();
+  if (!getCachedUser()) return shouldLockCurrentMode();
   try {
     const res = await fetch(apiUrl("/api/auth/lock-pin-status"), {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     const data = await res.json();
     if (data?.hasPin) return getLockModes()[isStandaloneMode() ? "standalone" : "browser"];
@@ -248,11 +246,11 @@ export async function refreshServerLock(): Promise<boolean> {
 
 // ── Forgot / email reset -------------------------------------------------
 export async function requestEmailReset(email?: string): Promise<{ ok: boolean; message: string }> {
-  const token = getAccessToken();
   try {
     const res = await fetch(apiUrl("/api/auth/lock-reset-email"), {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json" },
+        credentials: "include",
       body: JSON.stringify({ email: email || "" }),
     });
     const data = await res.json().catch(() => ({}));
