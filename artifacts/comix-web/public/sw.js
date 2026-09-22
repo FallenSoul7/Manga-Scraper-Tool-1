@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'comihub-static-v11';
-const API_CACHE    = 'comihub-api-v5';
+const STATIC_CACHE = 'comihub-static-v12';
+const API_CACHE    = 'comihub-api-v6';
 const IMAGE_CACHE  = 'comihub-images-v1';
 const CHAPTER_IMAGE_CACHE = 'comihub-chapter-images-v1';
 const OFFLINE_IMAGE_CACHE = 'comihub-offline-v1';
