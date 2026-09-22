@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
@@ -294,9 +294,19 @@ export default function SourcesPage() {
     staleTime: 24 * 60 * 60 * 1000,
     networkMode: "always",
     refetchOnMount: "always",
+    refetchOnReconnect: true,
     retry: 3,
     retryDelay: attempt => Math.min(1000 * 2 ** attempt, 5000),
   });
+  // Mobile browsers and standalone PWAs can report offline during the first
+  // paint even when the network is already usable. The query intentionally
+  // starts immediately; retry once the online probe transitions to online so
+  // the user never has to refresh the page to populate Extensions.
+  const wasOnline = useRef(online);
+  useEffect(() => {
+    if (online && !wasOnline.current && !catalog) void refetchCatalog();
+    wasOnline.current = online;
+  }, [online, catalog, refetchCatalog]);
   useEffect(() => {
     if (online && catalog) saveOfflineSourceCatalog(catalog);
   }, [online, catalog]);
@@ -692,7 +702,7 @@ function BrowseTab({
   const visible = filtered.slice(0, visibleCount);
 
   if (!catalog) {
-    if (online && loading) {
+    if (loading) {
       return (
         <div className="py-20 flex flex-col items-center gap-3 text-sm text-muted-foreground px-6">
           <Loader2 className="h-7 w-7 animate-spin text-primary" />
@@ -701,7 +711,7 @@ function BrowseTab({
       );
     }
 
-    if (online && error) {
+    if (error) {
       return (
         <div className="py-20 flex flex-col items-center gap-3 text-center text-sm text-muted-foreground px-6">
           <p>Couldn’t load the extension catalog.</p>
