@@ -6,7 +6,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { mediaImage } from "@/lib/utils";
-import { apiUrl } from "@/lib/api-url";
 import {
   Search,
   CheckCircle2,
@@ -286,10 +285,10 @@ export default function SourcesPage() {
     refetch: refetchCatalog,
   } = useQuery<CatalogResponse>({
     queryKey: ["sources-catalog"],
-    // Use the Render origin when configured. This avoids a first-launch race
-    // where an installed PWA is controlled by an older service worker that
-    // returns its empty offline API response before it has cached the catalog.
-    queryFn: () => customFetch<CatalogResponse>(apiUrl("/api/sources/catalog"), { cache: "no-store" }),
+    // Use the same-origin Vercel rewrite for the catalog. It is substantially
+    // faster than waking the Render service directly from a cold start and is
+    // also the path handled by the PWA service worker cache.
+    queryFn: () => customFetch<CatalogResponse>("/api/sources/catalog", { cache: "no-store" }),
     // Catalog loading is safe to attempt even when navigator.onLine is stale
     // inside a preview iframe. React Query keeps cached data visible if the
     // request fails, while other source actions still honor the online flag.
