@@ -22,7 +22,9 @@ import {
 import { cn } from "@/lib/utils";
 import { storeActions, getStoreSnapshot } from "@/lib/storage";
 
-const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+// Keep AI requests same-origin. Vercel rewrites /api/* to Render, avoiding
+// browser CORS failures when the public backend URL is configured separately.
+const API_BASE = "";
 const FETCH_TIMEOUT_MS = 60_000;
 
 // ── Types ──────────────────────────────────────────────────────────────────
