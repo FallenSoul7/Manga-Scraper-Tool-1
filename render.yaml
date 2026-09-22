@@ -7,3 +7,9 @@ services:
     rootDir: artifacts/api-server
     buildCommand: pnpm install && pnpm run build
     startCommand: node --enable-source-maps ./dist/index.mjs
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render generates and persists this value; never commit a literal secret.
+      - key: SESSION_SECRET
+        generateValue: true
