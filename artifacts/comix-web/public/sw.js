@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'comihub-static-v12';
-const API_CACHE    = 'comihub-api-v6';
+const STATIC_CACHE = 'comihub-static-v13';
+const API_CACHE    = 'comihub-api-v7';
 const IMAGE_CACHE  = 'comihub-images-v1';
 const CHAPTER_IMAGE_CACHE = 'comihub-chapter-images-v1';
 const OFFLINE_IMAGE_CACHE = 'comihub-offline-v1';
@@ -198,13 +198,18 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (isApiRequest(url)) {
-    event.respondWith(staleWhileRevalidate(event.request, API_CACHE));
+    // The catalogue must not remain stuck on an old response after a deploy.
+    // Use the network first, with the cache only as an offline fallback.
+    event.respondWith(networkFirst(event.request, API_CACHE, 24 * 3600));
   } else if (isHashedAsset(url) || isCodeAsset(url)) {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, null));
   } else if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, null));
   } else if (isHtml(event.request, url)) {
-    event.respondWith(staleWhileRevalidate(event.request, STATIC_CACHE));
+    // Never serve an old HTML shell first: it can reference hashed JS assets
+    // removed by Vercel, which then fall through to index.html and trigger the
+    // "text/html is not a valid JavaScript MIME type" error.
+    event.respondWith(networkFirst(event.request, STATIC_CACHE, 24 * 3600));
   }
 });
 

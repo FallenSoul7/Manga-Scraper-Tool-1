@@ -13,7 +13,7 @@ const CACHE_TIERS: Array<{ id: CacheTier; label: string; description: string; ic
     label: "Important app data",
     description: "App assets, extension icons, catalog data, manga details, and category information.",
     icon: HardDrive,
-    caches: ["comihub-static-v10", "comihub-api-v4"],
+    caches: ["comihub-static-v13", "comihub-api-v7"],
   },
   {
     id: "images",
