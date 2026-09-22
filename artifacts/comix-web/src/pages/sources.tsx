@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { mediaImage } from "@/lib/utils";
+import { apiUrl } from "@/lib/api-url";
 import {
   Search,
   CheckCircle2,
@@ -285,7 +286,10 @@ export default function SourcesPage() {
     refetch: refetchCatalog,
   } = useQuery<CatalogResponse>({
     queryKey: ["sources-catalog"],
-    queryFn: () => customFetch<CatalogResponse>("/api/sources/catalog"),
+    // Use the Render origin when configured. This avoids a first-launch race
+    // where an installed PWA is controlled by an older service worker that
+    // returns its empty offline API response before it has cached the catalog.
+    queryFn: () => customFetch<CatalogResponse>(apiUrl("/api/sources/catalog"), { cache: "no-store" }),
     // Catalog loading is safe to attempt even when navigator.onLine is stale
     // inside a preview iframe. React Query keeps cached data visible if the
     // request fails, while other source actions still honor the online flag.
@@ -308,8 +312,10 @@ export default function SourcesPage() {
     wasOnline.current = online;
   }, [online, catalog, refetchCatalog]);
   useEffect(() => {
-    if (online && catalog) saveOfflineSourceCatalog(catalog);
-  }, [online, catalog]);
+    // Persist any successful response even if the browser's online flag is
+    // stale. This is what makes the catalog available on the next PWA launch.
+    if (catalog) saveOfflineSourceCatalog(catalog);
+  }, [catalog]);
   const extensionCount = catalog?.count ?? 0;
 
   return (
