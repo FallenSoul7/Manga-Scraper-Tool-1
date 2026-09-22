@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'comihub-static-v10';
-const API_CACHE    = 'comihub-api-v4';
+const STATIC_CACHE = 'comihub-static-v11';
+const API_CACHE    = 'comihub-api-v5';
 const IMAGE_CACHE  = 'comihub-images-v1';
 const CHAPTER_IMAGE_CACHE = 'comihub-chapter-images-v1';
 const OFFLINE_IMAGE_CACHE = 'comihub-offline-v1';
@@ -19,7 +19,12 @@ const IMAGE_PATTERNS = ['/api/image'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then(cache => cache.add('/')).catch(() => {})
+    Promise.all([
+      caches.open(STATIC_CACHE).then(cache => cache.add('/')).catch(() => {}),
+      // Seed the catalog during installation so the Extensions tab is
+      // available on the first offline/PWA launch as well.
+      caches.open(API_CACHE).then(cache => cache.add('/api/sources/catalog')).catch(() => {}),
+    ])
       .then(() => self.skipWaiting())
   );
 });
