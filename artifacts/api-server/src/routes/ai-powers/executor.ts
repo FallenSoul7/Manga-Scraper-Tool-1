@@ -23,10 +23,10 @@ export async function executeSkill(
 
   try {
     return await handler(args, context);
-  } catch (error: any) {
+  } catch {
     // Catch any unexpected errors (network timeouts, validation failures, etc.)
     return {
-      result: `⚠️ Error while executing "${skillName}": ${error.message || String(error)}`,
+      result: `⚠️ Unable to execute "${skillName}" right now.`,
     };
   }
 }

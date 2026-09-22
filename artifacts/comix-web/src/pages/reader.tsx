@@ -207,7 +207,7 @@ export default function Reader() {
     if (!(readerSettings.keepScreenOn && 'wakeLock' in navigator)) return;
     const requestWakeLock = async () => {
       try { wakeLockRef.current = await navigator.wakeLock.request('screen'); }
-      catch (err) { console.error(err); }
+      catch { /* Wake lock is optional. */ }
     };
     requestWakeLock();
     const handleVisibilityChange = () => {

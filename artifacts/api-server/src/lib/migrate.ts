@@ -39,8 +39,8 @@ export async function runMigrations() {
       await sql.unsafe(CREATE_SQL);
       await sql.end();
       logger.info("DB migrations OK (fallback path)");
-    } catch (err2) {
-      logger.error({ err: err2 }, "DB migrations failed — tables may not exist");
+    } catch {
+      logger.error("DB migrations failed — tables may not exist");
     }
   }
 }

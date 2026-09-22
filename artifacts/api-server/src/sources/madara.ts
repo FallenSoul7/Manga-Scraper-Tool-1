@@ -13,6 +13,7 @@ import type {
 } from "./types";
 import { absUrl, fetchHtml, imgAttr, makeHttp } from "./scraper-utils";
 import * as cheerio from "cheerio";
+import { logger } from "../lib/logger";
 
 export interface MadaraOptions {
   id: string;
@@ -253,8 +254,8 @@ export function createMadaraSource(opts: MadaraOptions): MangaSource {
 
         tagCache = foundTags.sort((a, b) => a.name.localeCompare(b.name));
         return tagCache;
-      } catch (err) {
-        console.error(`[${opts.name}] Failed parsing search parameters:`, err);
+      } catch {
+        logger.warn({ source: opts.id }, "Source search-parameter parsing failed");
         return [];
       }
     },

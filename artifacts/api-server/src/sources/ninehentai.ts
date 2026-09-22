@@ -222,9 +222,6 @@ async function fetchPage(
     ? page < totalPages
     : items.length === 20;
 
-  console.log(
-    `[9Hentai] page=${page} items=${items.length} totalCount=${totalCount} totalPages=${totalPages} hasNext=${hasNextPage}`
-  );
   return { items, page, hasNextPage };
 }
 
@@ -437,7 +434,6 @@ export const NineHentaiSource: MangaSource = {
 
     // Warn if tags are still empty after all attempts
     if (allGenres.length === 0) {
-      console.warn(`[9Hentai] No tags for book ${id} – enrichment may have failed`);
     }
 
     const GROUP_NAMES: Record<number, string> = {

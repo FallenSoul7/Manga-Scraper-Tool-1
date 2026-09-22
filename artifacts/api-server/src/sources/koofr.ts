@@ -17,6 +17,7 @@ import * as fsp from "fs/promises";
 import * as nodePath from "path";
 import * as crypto from "crypto";
 import * as os from "os";
+import { logger } from "../lib/logger";
 import type {
   MangaSource,
   ListOptions,
@@ -81,7 +82,7 @@ async function listAllFiles(): Promise<KoofrEntry[]> {
 
   return results.flatMap((r, i) => {
     if (r.status === "rejected") {
-      console.error(`[koofr] Failed to list /${subdirs[i]?.name}:`, r.reason);
+      logger.warn({ source: "koofr", folderIndex: i }, "Koofr folder listing failed");
       return [];
     }
     return r.value;

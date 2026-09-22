@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -22,10 +22,6 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[ErrorBoundary]", error, info.componentStack);
-  }
-
   handleReset = () => {
     this.setState({ hasError: false, error: null });
   };
@@ -41,7 +37,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <div>
             <h3 className="font-semibold text-foreground mb-1">Something went wrong</h3>
             <p className="text-sm text-muted-foreground max-w-sm">
-              {this.state.error?.message ?? "An unexpected error occurred in this section."}
+              An unexpected error occurred in this section. Please try again.
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={this.handleReset} className="gap-2">

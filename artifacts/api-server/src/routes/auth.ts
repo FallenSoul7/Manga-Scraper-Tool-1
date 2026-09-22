@@ -58,8 +58,8 @@ async function upsertUser(user: GoogleUser): Promise<GoogleUser> {
       },
     });
     return { ...user, username };
-  } catch (error: any) {
-    logger.error({ err: error?.message ?? "database error" }, "User upsert failed");
+  } catch {
+    logger.error("User upsert failed");
     return user;
   }
 }
@@ -77,8 +77,8 @@ async function loadUserById(id: string): Promise<GoogleUser | null> {
       email: row.email,
       photo: "",
     };
-  } catch (error) {
-    logger.error({ err: error instanceof Error ? error.message : "database error" }, "User lookup failed");
+  } catch {
+    logger.error("User lookup failed");
     return null;
   }
 }
@@ -118,7 +118,7 @@ class SupabaseSessionStore extends session.Store {
     }).then(({ error }: { error?: { message?: string } }) => {
       if (error) {
         if (!error.message?.includes("already exists")) {
-          logger.warn({ err: error.message }, "Session table setup warning");
+          logger.warn("Session table setup warning");
         }
       } else {
         this.tableReady = true;
@@ -361,8 +361,8 @@ router.post("/login", rateLimit({ windowMs: 15 * 60 * 1000, max: 10 }), async (r
       }
       res.status(200).json({ message: "Login successful!", user });
     });
-  } catch (err: any) {
-    logger.error({ err: err?.message ?? "authentication error" }, "Login failed");
+  } catch {
+    logger.error("Login failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,6 +1,7 @@
 // routes/ai.ts
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { PROMPTS } from "./ai-powers/prompts";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -349,7 +350,7 @@ router.post("/chat", aiAdmission, async (req, res) => {
     ...cleanMessages,
   ];
 
-  let lastError = "No API keys are configured.";
+  let providerFailures = 0;
 
   for (const provider of queue) {
     if (!provider.key) continue;
@@ -376,11 +377,11 @@ router.post("/chat", aiAdmission, async (req, res) => {
       });
 
       if (!aiRes.ok) {
-        const errText = await aiRes.text();
+        await aiRes.text();
         if (aiRes.status === 404) {
           throw new Error(`Model ${provider.model} not found – skipping.`);
         }
-        throw new Error(`${aiRes.status} — ${errText.slice(0, 300)}`);
+        throw new Error(`Provider returned HTTP ${aiRes.status}`);
       }
 
       const data = await aiRes.json() as any;
@@ -408,13 +409,14 @@ router.post("/chat", aiAdmission, async (req, res) => {
       });
       return;
     } catch (err: any) {
-      lastError = err.message ?? String(err);
+      providerFailures++;
+      logger.warn({ provider: provider.name }, "AI provider request failed");
     } finally {
       clearTimeout(timer);
     }
   }
 
-  res.status(502).json({ error: `All AI providers exhausted. Last error: ${lastError}` });
+  res.status(502).json({ error: providerFailures > 0 ? "AI providers are temporarily unavailable." : "No AI providers are configured." });
 });
 
 export default router;

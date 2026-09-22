@@ -205,7 +205,6 @@ function loadState(): StoreState {
         if (result.success) {
           rescuedLibrary[key] = result.data;
         } else {
-          console.warn(`Dropping invalid library entry "${key}" (won't wipe rest of library)`, result.error.flatten());
         }
       }
       merged.library = rescuedLibrary;
@@ -219,7 +218,6 @@ function loadState(): StoreState {
         if (result.success) {
           rescuedProgress[key] = result.data;
         } else {
-          console.warn(`Dropping invalid progress entry "${key}"`, result.error.flatten());
         }
       }
       merged.progress = rescuedProgress;
@@ -253,7 +251,6 @@ function loadState(): StoreState {
     }
 
     // Last resort: try to preserve the library at minimum so data isn't lost
-    console.warn("Store schema validation failed even after rescue — preserving library only", validated.error.flatten());
     try {
       const fallback: StoreState = { ...DEFAULT_STATE };
       if (merged.library && typeof merged.library === 'object') {
@@ -263,8 +260,7 @@ function loadState(): StoreState {
     } catch {
       return DEFAULT_STATE;
     }
-  } catch (e) {
-    console.error("loadState: unexpected error, using defaults", e);
+  } catch {
     return DEFAULT_STATE;
   }
 }
@@ -273,8 +269,7 @@ function saveState(state: StoreState) {
   memoryState = state;
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
-  } catch (e) {
-    console.error("Failed to save to localStorage", e);
+  } catch {
   }
   notify();
   applyTheme(state.theme);

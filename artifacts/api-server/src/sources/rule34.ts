@@ -18,6 +18,7 @@ import type {
   SourceTag,
 } from "./types";
 import { makeHttp } from "./scraper-utils";
+import { logger } from "../lib/logger";
 
 const BASE_URL = "https://rule34.paheal.net";
 const CDN_URL  = "https://r34i.paheal-cdn.net";
@@ -101,8 +102,6 @@ async function fetchPosts(tags: string, page: number): Promise<MangaListResponse
     ? `&tags=${encodeURIComponent(tags.trim())}`
     : "";
   const path = `/api/danbooru/find_posts?limit=${PAGE_SIZE}&page=${page}${tagsParam}`;
-  console.log(`[Rule34] GET ${path}`);
-
   const $ = await fetchXml(path);
   const posts = $("posts > tag").toArray();
   const items = posts.map(el => toSummary($, el));
@@ -150,8 +149,8 @@ async function scrapeTagPage(path: string): Promise<SourceTag[]> {
         // skip malformed entries silently
       }
     });
-  } catch (e: any) {
-    console.warn(`[Rule34] Tag scrape failed for ${path}: ${e.message}`);
+  } catch {
+    logger.warn("Rule34 tag scrape failed");
   }
   return tags;
 }
@@ -196,12 +195,11 @@ async function getTags(): Promise<SourceTag[]> {
     .then(tags => {
       tagCache = tags;
       tagLoadPromise = null;
-      console.log(`[Rule34] Loaded ${tags.length} tags`);
       return tags;
     })
-    .catch(e => {
+    .catch(() => {
       tagLoadPromise = null;
-      console.error("[Rule34] Tag load failed:", e.message);
+      logger.warn("Rule34 tag load failed");
       return [];
     });
 

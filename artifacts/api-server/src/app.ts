@@ -165,7 +165,7 @@ app.get("/api/allmanga/video", async (req, res) => {
     // return a clear error so the player can surface it.
     const ct = upstream.headers["content-type"] as string | undefined;
     if (ct && ct.includes("text/html")) {
-      logger.error({ url: target.hostname, status: upstream.status, contentType: ct }, "AllManga video proxy got Cloudflare challenge");
+      logger.error({ status: upstream.status, contentType: ct }, "AllManga video proxy got Cloudflare challenge");
       if (!res.headersSent) res.status(502).json({ error: "Video source is temporarily unavailable." });
       return;
     }
@@ -181,8 +181,8 @@ app.get("/api/allmanga/video", async (req, res) => {
       if (!res.headersSent) res.status(502).end();
     });
     return;
-  } catch (err: any) {
-    logger.error({ err: err.message, url: target.hostname }, "AllManga video proxy failed");
+  } catch {
+    logger.error("AllManga video proxy failed");
     if (!res.headersSent) return res.status(502).json({ error: "Failed to stream AllManga video" });
     return;
   }
@@ -209,8 +209,8 @@ app.get("/api/koofr/cover", async (req, res) => {
     if (!coverPath) return res.status(404).json({ error: "no images in zip" });
     res.setHeader("Cache-Control", "public, max-age=86400");
      return res.sendFile(coverPath);
-  } catch (err: any) {
-    logger.error({ err: err.message }, "Koofr cover extraction failed");
+  } catch {
+    logger.error("Koofr cover extraction failed");
      return res.status(502).json({ error: "failed to extract cover" });
   }
 });
@@ -249,7 +249,7 @@ app.get("/api/koofr/proxy", async (req, res) => {
     (upstream.data as NodeJS.ReadableStream).on("error", () => { if (!res.headersSent) res.status(502).end(); });
     return;
   } catch (err: any) {
-    logger.error({ err: err.message, path: koofrPath }, "Koofr proxy failed");
+    logger.error("Koofr proxy failed");
     if (!res.headersSent) return res.status(502).json({ error: "failed to stream file" });
     return;
   }
@@ -285,8 +285,8 @@ app.get("/api/koofr/thumbnail", async (req, res) => {
       (stream as any).pipe(res);
       (stream as any).on("error", () => { if (!res.headersSent) res.status(502).end(); });
        return;
-    } catch (err: any) {
-      logger.error({ err: err.message, path: koofrPath }, "Koofr thumbnail+proxy failed");
+    } catch {
+      logger.error("Koofr thumbnail+proxy failed");
        if (!res.headersSent) return res.status(502).json({ error: "failed to fetch file" });
        return;
     }

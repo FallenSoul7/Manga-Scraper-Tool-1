@@ -18,10 +18,10 @@ if (Number.isNaN(port) || port <= 0) {
 
 app.listen(port, (err) => {
   if (err) {
-    logger.error({ err }, "Error listening on port");
+    logger.error("Error listening on port");
     process.exit(1);
   }
 
   logger.info({ port }, "Server listening");
-  runMigrations().catch(e => logger.error({ err: e }, "Migration error"));
+  runMigrations().catch(() => logger.error("Migration error"));
 });

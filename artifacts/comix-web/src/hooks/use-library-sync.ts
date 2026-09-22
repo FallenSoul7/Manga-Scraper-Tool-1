@@ -76,7 +76,7 @@ export function useLibrarySync() {
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ library, categories, installedSources, strategy: "merge" }),
-    }).catch((err) => console.warn("Background auto-sync failed:", err));
+    }).catch(() => {});
 
   }, [library, categories, installedSources]);
 

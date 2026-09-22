@@ -58,7 +58,6 @@ function buildSummary($: cheerio.CheerioAPI, el: any): MangaSummary | null {
 // ---------------------------------------------------------------------------
 async function fetchStandardList(page: number): Promise<MangaListResponse> {
   const url = page === 1 ? BASE_URL : `${BASE_URL}/pag/${page}/`;
-  console.log(`[HentaiFox] Fetching list: ${url}`);
   
   const { $ } = await fetchHtml(http, url);
   const items: MangaSummary[] = [];
@@ -76,7 +75,6 @@ async function fetchSearchResults(params: Record<string, string>, page: number):
   const query = new URLSearchParams(params);
   query.set("page", String(page));
   const url = `${BASE_URL}/search/?${query.toString()}`;
-  console.log(`[HentaiFox] Fetching search: ${url}`);
   const { $ } = await fetchHtml(http, url);
   const items: MangaSummary[] = [];
   
@@ -164,8 +162,7 @@ export const HentaiFoxSource: MangaSource = {
           tags.push({ id: slug, name, group: "Tag" });
         }
       });
-    } catch (e) {
-      console.warn("[HentaiFox] /tags/ fetch failed.");
+    } catch {
     }
     cachedTags = tags;
     return tags;

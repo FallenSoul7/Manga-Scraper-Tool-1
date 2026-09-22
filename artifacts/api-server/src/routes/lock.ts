@@ -4,6 +4,7 @@ import { getDb, isDbConfigured } from "../db";
 import { users } from "../schema";
 import { eq } from "drizzle-orm";
 import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -43,10 +44,10 @@ async function requireAuth(req: any, res: any, next: any) {
 
     if (token) {
       const supabaseUrl = process.env["SUPABASE_URL"];
-      const apiKey = process.env["SUPABASE_SERVICE_KEY"] || process.env["SUPABASE_ANON_KEY"] || "";
+      const apiKey = process.env["SUPABASE_ANON_KEY"] || process.env["SUPABASE_SERVICE_KEY"] || "";
 
       if (!supabaseUrl || !apiKey) {
-        console.error("Missing Supabase URL or Key");
+        logger.error("Missing Supabase URL or key");
         return res.status(500).json({ error: "Server configuration error" });
       }
 
@@ -120,7 +121,7 @@ router.put("/lock-pin", requireAuth, async (req, res) => {
       .where(eq(users.id, ctx.userId));
     res.json({ ok: true });
   } catch (err) {
-    console.error("lock-pin PUT failed:", err);
+    logger.error("lock-pin PUT failed");
     res.status(500).json({ error: "Database error" });
   }
 });
@@ -137,7 +138,7 @@ router.delete("/lock-pin", requireAuth, async (req, res) => {
       .where(eq(users.id, ctx.userId));
     res.json({ ok: true });
   } catch (err) {
-    console.error("lock-pin DELETE failed:", err);
+    logger.error("lock-pin DELETE failed");
     res.status(500).json({ error: "Database error" });
   }
 });
@@ -153,7 +154,7 @@ router.get("/lock-pin-status", requireAuth, async (req, res) => {
     const hash = rows[0]?.lockPinHash ?? null;
     res.json({ hasPin: !!hash && hash.length > 0 });
   } catch (err) {
-    console.error("lock-pin-status GET failed:", err);
+    logger.error("lock-pin-status GET failed");
     res.status(500).json({ error: "Database error" });
   }
 });
@@ -181,7 +182,7 @@ router.post("/lock-pin-verify", requireAuth, async (req, res) => {
     }
     res.json({ ok: verifyPinHash(pin, hash), hasPin: true });
   } catch (err) {
-    console.error("lock-pin-verify POST failed:", err);
+    logger.error("lock-pin-verify POST failed");
     res.status(500).json({ error: "Database error" });
   }
 });
@@ -211,12 +212,12 @@ router.post("/lock-reset-email", requireAuth, async (req, res) => {
       options: emailRedirectTo ? { emailRedirectTo } : undefined,
     });
     if (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: "Reset email could not be sent." });
       return;
     }
     res.json({ ok: true, message: "Check your email for a reset code." });
   } catch (err) {
-    console.error("lock-reset-email POST failed:", err);
+    logger.error("lock-reset-email POST failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -231,7 +232,7 @@ router.post("/lock-verify-email", async (req, res) => {
   }
 
   const supabaseUrl = process.env["SUPABASE_URL"];
-  const apiKey = process.env["SUPABASE_SERVICE_KEY"] || process.env["SUPABASE_ANON_KEY"] || "";
+  const apiKey = process.env["SUPABASE_ANON_KEY"] || process.env["SUPABASE_SERVICE_KEY"] || "";
   if (!supabaseUrl || !apiKey) {
     res.status(500).json({ error: "Server configuration error" });
     return;
@@ -245,8 +246,8 @@ router.post("/lock-verify-email", async (req, res) => {
     });
 
     if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      res.status(400).json({ error: (body as any)?.msg ?? (body as any)?.error_description ?? "Invalid or expired code" });
+      await response.json().catch(() => ({}));
+      res.status(400).json({ error: "Invalid or expired code" });
       return;
     }
 
@@ -259,7 +260,7 @@ router.post("/lock-verify-email", async (req, res) => {
       .catch(() => {});
     res.json({ ok: true, message: "PIN removed. You can now set a new one." });
   } catch (err) {
-    console.error("lock-verify-email POST failed:", err);
+    logger.error("lock-verify-email POST failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

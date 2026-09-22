@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getDb, isDbConfigured } from "../db";
 import { users, librarySync } from "../schema";
 import { eq } from "drizzle-orm";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -16,7 +17,7 @@ async function requireAuth(req: any, res: any, next: any) {
       const apiKey = process.env["SUPABASE_ANON_KEY"] || process.env["SUPABASE_SERVICE_KEY"] || "";
 
       if (!supabaseUrl || !apiKey) {
-        console.error("Missing Supabase URL or Key");
+        logger.error("Missing Supabase URL or key");
         return res.status(500).json({ error: "Server configuration error" });
       }
 
@@ -60,7 +61,7 @@ router.get("/sync", requireAuth, async (req, res) => {
     const data = rows[0]?.data ?? {};
      return res.json({ data, updatedAt: rows[0]?.updatedAt ?? null });
   } catch (err) {
-    console.error("library sync GET failed");
+    logger.error("Library sync GET failed");
      return res.status(500).json({ error: "Database error" });
   }
 });
@@ -89,7 +90,7 @@ router.post("/sync", requireAuth, async (req, res) => {
         },
       });
     } catch (userErr: any) {
-      console.warn("User upsert skipped during library sync");
+      logger.warn("User upsert skipped during library sync");
     }
 
     let finalData: any = {};
@@ -146,12 +147,12 @@ router.post("/sync", requireAuth, async (req, res) => {
       });
       res.json({ ok: true, count: Object.keys(finalData.library || {}).length });
     } catch (libErr: any) {
-      console.error("Library save failed during library sync");
+      logger.error("Library save failed during library sync");
       res.json({ ok: false, count: 0, warning: "Could not save — database issue." });
     }
 
   } catch (err) {
-    console.error("library sync POST failed");
+    logger.error("Library sync POST failed");
     res.status(500).json({ error: "Database error" });
   }
   return;

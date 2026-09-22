@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { getSource, getSourceOrNull } from "../sources/registry";
 import type { ListOptions, PosterQuality } from "../sources/types";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -38,9 +39,9 @@ function wrap(
     try {
       const result = await handler(req, res);
       if (!res.headersSent) res.json(result);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!res.headersSent) res.status(500).json({ error: msg });
+    } catch {
+      logger.error("Manga source request failed");
+      if (!res.headersSent) res.status(500).json({ error: "Source request failed" });
     }
   };
 }

@@ -45,8 +45,7 @@ export default function UpdatesPage() {
         try {
           const result = await checkMangaUpdates(manga);
           storeActions.recordDiscoveredUpdates(manga.id, result.newChapters, result.chapters.length, result.chapterIds);
-        } catch (error) {
-          console.warn(`Update check failed for ${manga.title}`, error);
+        } catch {
         }
       }));
     } finally {

@@ -446,11 +446,8 @@ const source: MangaSource = {
       // and doesn't require the token for this particular query).
       try {
         data = await graphQl<PageData>(PAGE_QUERY, variables);
-      } catch (postErr) {
-        throw new Error(
-          `AllManga chapter pages failed: token query error (${tokenErr instanceof Error ? tokenErr.message : tokenErr}), ` +
-          `fallback query error (${postErr instanceof Error ? postErr.message : postErr})`,
-        );
+      } catch {
+        throw new Error("AllManga chapter pages unavailable");
       }
     }
 
