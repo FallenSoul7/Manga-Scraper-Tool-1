@@ -634,8 +634,6 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
 }
 
 // ─── Extensions tab ───────────────────────────────────────────────────────────
-const SUPPORTED_FIRST = (a: CatalogExtension, b: CatalogExtension) =>
-  Number(b.supported) - Number(a.supported) || a.name.localeCompare(b.name);
 const PAGE_SIZE = 60;
 
 function BrowseTab({
@@ -685,8 +683,7 @@ function BrowseTab({
       // Keep the curated "hidden" sources out of the default list; they only
       // show up once the user is actively searching for them.
       .filter(e => q ? true : !HIDDEN_FROM_DEFAULT_BROWSE.has(e.id))
-      .filter(e => q ? e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) || e.slug.toLowerCase().includes(q) : true)
-      .sort(SUPPORTED_FIRST);
+      .filter(e => q ? e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) || e.slug.toLowerCase().includes(q) : true);
   }, [catalog, search, lang, showNsfw, supportedOnly, adultAccess]);
 
   const visible = filtered.slice(0, visibleCount);
