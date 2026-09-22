@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
@@ -285,10 +285,7 @@ export default function SourcesPage() {
     refetch: refetchCatalog,
   } = useQuery<CatalogResponse>({
     queryKey: ["sources-catalog"],
-    // Use the same-origin Vercel rewrite for the catalog. It is substantially
-    // faster than waking the Render service directly from a cold start and is
-    // also the path handled by the PWA service worker cache.
-    queryFn: () => customFetch<CatalogResponse>("/api/sources/catalog", { cache: "no-store" }),
+    queryFn: () => customFetch<CatalogResponse>("/api/sources/catalog"),
     // Catalog loading is safe to attempt even when navigator.onLine is stale
     // inside a preview iframe. React Query keeps cached data visible if the
     // request fails, while other source actions still honor the online flag.
@@ -297,24 +294,12 @@ export default function SourcesPage() {
     staleTime: 24 * 60 * 60 * 1000,
     networkMode: "always",
     refetchOnMount: "always",
-    refetchOnReconnect: true,
     retry: 3,
     retryDelay: attempt => Math.min(1000 * 2 ** attempt, 5000),
   });
-  // Mobile browsers and standalone PWAs can report offline during the first
-  // paint even when the network is already usable. The query intentionally
-  // starts immediately; retry once the online probe transitions to online so
-  // the user never has to refresh the page to populate Extensions.
-  const wasOnline = useRef(online);
   useEffect(() => {
-    if (online && !wasOnline.current && !catalog) void refetchCatalog();
-    wasOnline.current = online;
-  }, [online, catalog, refetchCatalog]);
-  useEffect(() => {
-    // Persist any successful response even if the browser's online flag is
-    // stale. This is what makes the catalog available on the next PWA launch.
-    if (catalog) saveOfflineSourceCatalog(catalog);
-  }, [catalog]);
+    if (online && catalog) saveOfflineSourceCatalog(catalog);
+  }, [online, catalog]);
   const extensionCount = catalog?.count ?? 0;
 
   return (
@@ -707,7 +692,7 @@ function BrowseTab({
   const visible = filtered.slice(0, visibleCount);
 
   if (!catalog) {
-    if (loading) {
+    if (online && loading) {
       return (
         <div className="py-20 flex flex-col items-center gap-3 text-sm text-muted-foreground px-6">
           <Loader2 className="h-7 w-7 animate-spin text-primary" />
@@ -716,7 +701,7 @@ function BrowseTab({
       );
     }
 
-    if (error) {
+    if (online && error) {
       return (
         <div className="py-20 flex flex-col items-center gap-3 text-center text-sm text-muted-foreground px-6">
           <p>Couldn’t load the extension catalog.</p>

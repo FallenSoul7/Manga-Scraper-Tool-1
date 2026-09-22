@@ -247,9 +247,6 @@ export default function SourceBrowsePage() {
   const isSearching = searchQuery.length > 0;
   const isTagFiltering = hasAppliedTags && !isSearching;
   const isFiltering = hasAppliedTags || isSearching;
-  // Do not rely only on the module-level header set by an effect. Direct
-  // navigation can issue the first request before that effect runs.
-  const serverFetch = <T,>(path: string) => customFetch<T>(path, { headers: { "X-Source": sourceId } });
 
   useEffect(() => {
     if (searchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
@@ -257,7 +254,7 @@ export default function SourceBrowsePage() {
 
   const { data: availableTags = [] } = useQuery<SourceTag[]>({
     queryKey: ["source-tags", sourceId],
-    queryFn: () => serverFetch<SourceTag[]>(`/api/tags`),
+    queryFn: () => customFetch<SourceTag[]>(`/api/tags`),
     // Tag discovery can be much slower than the first browse request for
     // sources with large tag catalogues. Never make it block the main list.
     enabled: online && !!sourceId && !!source && tagsEnabled,
@@ -275,8 +272,8 @@ export default function SourceBrowsePage() {
   const popularQuery = useQuery<ListResponse>({
     queryKey: ["source-popular", sourceId, mediaType, popularPage, popularSort, settings.hideNsfw, settings.posterQuality],
     queryFn: () => clientAdapter
-      ? clientAdapter.popular(popularPage).catch(() => serverFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
-      : serverFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
+      ? clientAdapter.popular(popularPage).catch(() => customFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
+      : customFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
     enabled: online && !!sourceId && !!source && tab === "popular" && !isFiltering,
     staleTime: 5 * 60 * 1000,
     retry: 1,
@@ -285,8 +282,8 @@ export default function SourceBrowsePage() {
   const latestQuery = useQuery<ListResponse>({
     queryKey: ["source-latest", sourceId, mediaType, latestPage, popularSort, settings.hideNsfw, settings.posterQuality],
     queryFn: () => clientAdapter
-      ? clientAdapter.latest(latestPage).catch(() => serverFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
-      : serverFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
+      ? clientAdapter.latest(latestPage).catch(() => customFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
+      : customFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
     enabled: online && !!sourceId && !!source && tab === "latest" && !isFiltering,
     staleTime: 5 * 60 * 1000,
     retry: 1,
@@ -295,13 +292,13 @@ export default function SourceBrowsePage() {
   const filterQuery = useQuery<ListResponse>({
     queryKey: ["source-filter", sourceId, mediaType, searchQuery, allTagIds.join(","), filterPage, settings.hideNsfw, settings.posterQuality],
     queryFn: () => clientAdapter && isSearching
-      ? clientAdapter.search(searchQuery, filterPage).catch(() => serverFetch<ListResponse>(`/api/search${buildQuery({
+      ? clientAdapter.search(searchQuery, filterPage).catch(() => customFetch<ListResponse>(`/api/search${buildQuery({
           ...commonOpts,
           query: searchQuery,
           page: String(filterPage),
           "tagIds[]": allTagIds,
         })}`))
-      : serverFetch<ListResponse>(`/api/search${buildQuery({
+      : customFetch<ListResponse>(`/api/search${buildQuery({
           ...commonOpts,
           query: searchQuery || undefined,
           page: String(filterPage),
