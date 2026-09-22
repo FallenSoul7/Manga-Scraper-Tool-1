@@ -721,9 +721,6 @@ function BrowseTab({
   return (
     <div>
       <div className="px-4 pt-4 pb-3 space-y-2">
-        <p className="text-xs leading-5 text-muted-foreground">
-          Extensions are optional. Adding one is your choice; ComiHub does not require you to install or use any particular extension. Mature extensions stay hidden until you separately enable 18+ content in Settings.
-        </p>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search extensions…" className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
