@@ -506,7 +506,7 @@ export default function MangaDetail() {
       storeActions.addToLibrary({
         id: manga.id, title: manga.title, thumbnail: manga.thumbnail,
         type: manga.type, isNsfw: manga.isNsfw, author: manga.author || manga.artist,
-        status: manga.status, sourceId: sourceContext ?? activeSourceId,
+        status: manga.status, sourceId: sourceContext ?? (manga as any).sourceId ?? activeSourceId,
         addedAt: Date.now(), categoryIds: ['default'],
         lastChapterCountSeen: visibleChapters.length || 0, pendingUpdates: [], updatesEnabled: false, updatesInitialized: false, trackedChapterIds: [],
       });

@@ -367,7 +367,9 @@ export default function LibraryPage() {
               <MangaCard
                 manga={manga as any}
                 sourceId={(manga as any).sourceId}
-                href={`/manga/${manga.id}?from=library&cat=${activeTab}`}
+                href={manga.sourceId
+                  ? `/sources/${encodeURIComponent(manga.sourceId)}/manga/${encodeURIComponent(manga.id)}?from=library&cat=${encodeURIComponent(activeTab)}`
+                  : `/manga/${encodeURIComponent(manga.id)}?from=library&cat=${encodeURIComponent(activeTab)}`}
                 isSelecting={selectionMode}
                 isSelected={selectedIds.has(manga.id)}
                 showSourceBadge
