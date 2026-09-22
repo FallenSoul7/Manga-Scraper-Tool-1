@@ -265,19 +265,23 @@ export default function MangaDetail() {
   const chaptersParams = { dedupe: false };
 
   const clientAdapter = getClientSourceAdapter(effectiveSourceForKey ?? "");
+  const sourceFetch = useCallback(<T,>(path: string) =>
+    customFetch<T>(path, { headers: effectiveSourceForKey ? { "X-Source": effectiveSourceForKey } : undefined }),
+    [effectiveSourceForKey],
+  );
   const clientDetailsQuery = useQuery({
     queryKey: ["client-details", effectiveSourceForKey, id, settings.posterQuality, settings.showAltNames, settings.scorePosition],
     queryFn: () => clientAdapter?.details
       ? clientAdapter.details(id!, { scorePosition: settings.scorePosition === "hidden" ? "none" : settings.scorePosition })
-          .catch(() => customFetch<any>(`/api/manga/${encodeURIComponent(id!)}`))
-      : customFetch<any>(`/api/manga/${encodeURIComponent(id!)}`),
+          .catch(() => sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}`))
+      : sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}`),
     enabled: !!id && sourceReady && online && !!clientAdapter?.details,
     staleTime: 5 * 60 * 1000,
   });
   const clientChaptersQuery = useQuery({
     queryKey: ["client-chapters", effectiveSourceForKey, id],
     queryFn: () => clientAdapter?.chapters
-      ? clientAdapter.chapters(id!).catch(() => customFetch<any>(`/api/manga/${encodeURIComponent(id!)}/chapters?dedupe=false`))
+      ? clientAdapter.chapters(id!).catch(() => sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}/chapters?dedupe=false`))
       : Promise.reject(new Error("Client chapters unavailable")),
     enabled: !!id && sourceReady && online && !!clientAdapter?.chapters,
     staleTime: 60 * 1000,
