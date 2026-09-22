@@ -76,6 +76,19 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     // Poll for SW updates every 60 s so long-lived PWA sessions pick up new
     // versions without requiring the user to close and reopen the app.
     let interval: ReturnType<typeof setInterval>;
+    let hasControlledPage = Boolean(navigator.serviceWorker.controller);
+    let reloadedForUpdate = false;
+    const handleControllerChange = () => {
+      // A service worker can activate without replacing the JavaScript already
+      // running in this page. Reload only when an existing controlled page is
+      // being upgraded; do not reload on the first service-worker takeover.
+      if (hasControlledPage && !reloadedForUpdate) {
+        reloadedForUpdate = true;
+        window.location.reload();
+      }
+      hasControlledPage = true;
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
     navigator.serviceWorker.ready.then((reg) => {
       // Warm the two critical offline routes after the worker controls the
       // page. Vite's lazy chunks are then captured by the service worker
@@ -91,6 +104,7 @@ export function PwaProvider({ children }: { children: ReactNode }) {
 
     return () => {
       clearInterval(interval);
+      navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
     };
   }, []);
 
