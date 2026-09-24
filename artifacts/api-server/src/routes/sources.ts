@@ -14,7 +14,9 @@ const enriched = {
     lang: ext.lang,
     isNsfw: ext.isNsfw,
     versionCode: ext.versionCode,
-    iconUrl: ext.icon ? `/public/source-icons/${ext.icon as string}` : null,
+    iconUrl: ext.icon
+      ? `/public/source-icons/${ext.icon as string}`
+      : ext.id === "all.atsu" ? "https://atsu.moe/favicon.ico" : null,
     supported: isSupported(ext.id as string),
   })),
 };

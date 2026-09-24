@@ -29,6 +29,15 @@ function firstHref($: cheerio.CheerioAPI, root: cheerio.Cheerio<any>, selectors:
   return result;
 }
 
+function absoluteId(base: string, href: string): string {
+  try {
+    const url = new URL(href, `${base}/`);
+    return `${url.pathname}${url.search}`.replace(/^\/+|\/+$/g, "");
+  } catch {
+    return href.replace(base, "").replace(/^\/+|\/+$/g, "");
+  }
+}
+
 export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
   const base = opts.baseUrl.replace(/\/+$/, "");
   const http = makeHttp(base);
@@ -63,7 +72,7 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
         return !href.startsWith("/genre/") && !href.startsWith("javascript:") && href !== "#" && !href.includes("/chapter/");
       }).first().text());
       if (!href || !title || title.length < 2) return;
-      const id = href.replace(base, "").replace(/^\/+|\/+$/g, "");
+      const id = absoluteId(base, href);
       if (!id || seen.has(id)) return;
       seen.add(id);
       const thumbnail = root.find("img").first().attr("data-src") || root.find("img").first().attr("src") || "";
@@ -95,7 +104,10 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
     },
     async details(id: string, _o: DetailOptions): Promise<MangaDetail> {
       const { $ } = await fetchPage(novelPath(id));
-      const title = clean($("#bookname, .desc h3.title, .novel-title, .book-title, h1").filter((_i, el) => !$(el).closest(".breadcrumb").length).first().text()) || id;
+      const title = clean($("#bookname, .desc h3.title, .novel-title, .book-title, .bookname, h1, [itemprop='name']")
+        .filter((_i, el) => !$(el).closest(".breadcrumb, nav, header").length).first().text())
+        || clean($("meta[property='og:title'], meta[name='title']").first().attr("content") || "")
+        || id;
       const synopsis = clean($(".intro, .summary, .description, .desc-text, .novel-detail .content, [itemprop='description'], meta[name='description']").first().attr("content") || $(".intro, .summary, .description, .desc-text, .novel-detail .content, [itemprop='description']").first().text());
       const author = clean($("#author, .info a[href*='/author/'], .author, [itemprop='author']").first().text());
       const thumbnail = $(".books img, .novel-cover img, .book-cover img, img[itemprop='image'], .cover img, meta[name='image']").first().attr("src") || $("meta[name='image']").first().attr("content") || "";
@@ -111,7 +123,7 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
         const href = $(el).attr("href") || "";
         const title = clean($(el).text());
         if (!href || !title) return;
-        const id = href.replace(base, "").replace(/^\/+|\/+$/g, "");
+        const id = absoluteId(base, href);
         if (!id || seen.has(id)) return;
         seen.add(id);
         items.push({ id: encodeURIComponent(id), number: num(title, items.length + 1), title, scanlator: opts.name, date: 0 });
@@ -121,7 +133,7 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
     async pages(chapterId: string): Promise<PageListResponse> {
       const { $, html } = await fetchPage(novelPath(chapterId));
       const title = clean($("h1, .chapter-title, .chapter-name").first().text()) || "Chapter";
-      const root = $(".chapter-content, .chapter-inner, .reading-content, #chapter-content, #htmlContent, .entry-content, .chapter-c, .chr-c, .content").first();
+      const root = $(".chapter-content, .chapter-inner, .reading-content, #chapter-content, #htmlContent, .entry-content, .chapter-c, .chr-c, .chapter-detail, .read-content, .content-inner, .content").first();
       if (!root.length) throw new Error(`${opts.name} chapter content was not found`);
       root.find("script, style, .ads, .ad, .advertisement, .chapter-footer, .social-share").remove();
       const text = root.html()?.trim() || clean(root.text());
@@ -135,7 +147,7 @@ export const NovelFullSource = createNovelSiteSource({
   id: "en.novelfull",
   name: "NovelFull",
   baseUrl: "https://novelfull.com",
-  searchPath: (query, page) => query ? `/search?keyword=${encodeURIComponent(query)}&page=${page}` : `/latest-release?page=${page}`,
+  searchPath: (query, page) => query ? `/search?keyword=${encodeURIComponent(query)}&page=${page}` : `/latest-release-novel?page=${page}`,
   tags: ["Action", "Adventure", "Fantasy", "Romance", "Fan-fic", "System", "Reincarnation", "Game", "Naruto", "Anime", "Movies"],
 });
 
@@ -143,6 +155,6 @@ export const NovelHallSource = createNovelSiteSource({
   id: "en.novelhall",
   name: "NovelHall",
   baseUrl: "https://www.novelhall.com",
-  searchPath: (query, page) => query ? `/index.php?s=so&module=book&keyword=${encodeURIComponent(query)}&page=${page}` : `/lastupdate.html?page=${page}`,
+  searchPath: (query, page) => query ? `/index.php?s=so&module=book&keyword=${encodeURIComponent(query)}&page=${page}` : `/?page=${page}`,
   tags: ["Action", "Adventure", "Fantasy", "Romance", "Eastern", "Urban", "Drama", "Comedy", "Fan-fic", "System", "Reincarnation"],
 });

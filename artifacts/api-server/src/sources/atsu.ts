@@ -39,11 +39,19 @@ type AtsuChaptersResponse = { chapters?: AtsuChapter[] };
 type AtsuChapterResponse = { readChapter?: { id: string; title?: string; pages?: Array<{ image?: string; number?: number }> } };
 
 const BASE_URL = "https://atsu.moe";
+const CDN_URL = "https://cdn.atsu.moe";
 const http = makeHttp(BASE_URL, { Accept: "application/json" });
 const clean = (value: unknown) => String(value ?? "").replace(/\s+/g, " ").trim();
+const assetUrl = (value: string) => {
+  if (!value) return "";
+  if (value.startsWith("/static/")) return `${CDN_URL}${value}`;
+  return absUrl(BASE_URL, value);
+};
 const posterUrl = (value: AtsuPoster | undefined, fallback?: string) => {
   const raw = typeof value === "string" ? value : value?.image || fallback || "";
-  return raw ? absUrl(BASE_URL, raw.startsWith("/static/") ? raw : `/static/${raw.replace(/^static\//, "")}`) : "";
+  if (!raw) return "";
+  const path = raw.startsWith("static/") ? `/${raw}` : raw.startsWith("/") ? raw : `/static/${raw}`;
+  return assetUrl(path);
 };
 const tagsFor = (manga: AtsuManga) => [
   ...(manga.genres || []).map(tag => ({ name: clean(tag.name), group: "Genre" })),
@@ -153,7 +161,7 @@ export const AtsuSource: MangaSource = {
       chapterId: chapterKey,
       pages: (chapter.pages || []).map((page, index) => ({
         index: Number(page.number ?? index),
-        url: absUrl(BASE_URL, page.image),
+        url: assetUrl(page.image || ""),
         title: clean(chapter.title) || "Chapter",
       })),
     };
