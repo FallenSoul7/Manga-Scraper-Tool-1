@@ -59,7 +59,7 @@ export function createMangaThemesiaSource(opts: MangaThemesiaOptions): MangaSour
 
   function buildSummary($: cheerio.CheerioAPI, el: any): MangaSummary | null {
     const $el = $(el);
-    const a = $el.find("a").first();
+    const a = $el.is("a") ? $el : $el.find("a").first();
     const href = a.attr("href");
     if (!href) return null;
     const title = a.attr("title") || $el.find(".tt").text().trim() || a.text().trim();

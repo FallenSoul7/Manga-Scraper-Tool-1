@@ -300,6 +300,13 @@ export default function Reader() {
     };
   }, [effectiveDirection, pagesData, mangaId, effectiveChapterData, effectiveMangaData, currentPage, currentProgress?.isRead]);
 
+  const sameChapterId = (a: unknown, b: unknown) => {
+    const decode = (value: unknown) => {
+      const text = String(value ?? "");
+      try { return decodeURIComponent(text); } catch { return text; }
+    };
+    return decode(a) === decode(b);
+  };
   const navChapters = useMemo<any[]>(() => {
     if (!effectiveChapterData.length) return [];
     if (!selectedScanlator) {
@@ -312,11 +319,11 @@ export default function Reader() {
       return Array.from(map.values()).sort((a, b) => b.number - a.number);
     }
     const filtered = effectiveChapterData.filter(c => (c.scanlator || "Unknown") === selectedScanlator);
-    if (!filtered.find(c => String(c.id) === chapterId)) return effectiveChapterData;
+    if (!filtered.find(c => sameChapterId(c.id, chapterId))) return effectiveChapterData;
     return filtered.sort((a, b) => b.number - a.number);
   }, [effectiveChapterData, selectedScanlator, chapterId]);
 
-  const chapterIndex = useMemo(() => navChapters.findIndex(c => String(c.id) === chapterId), [navChapters, chapterId]);
+  const chapterIndex = useMemo(() => navChapters.findIndex(c => sameChapterId(c.id, chapterId)), [navChapters, chapterId]);
   const prevChapter = chapterIndex >= 0 && chapterIndex < navChapters.length - 1 ? navChapters[chapterIndex + 1] : null;
   const nextChapter = chapterIndex > 0 ? navChapters[chapterIndex - 1] : null;
 

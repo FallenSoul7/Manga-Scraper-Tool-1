@@ -3,7 +3,7 @@ import type {
   MangaSource, ListOptions, MangaListResponse, MangaDetail, DetailOptions,
   ChapterListResponse, PageListResponse, MangaSummary, ChapterSummary, SourceTag,
 } from "./types";
-import { absUrl, fetchHtml, makeHttp } from "./scraper-utils";
+import { absUrl, fetchHtml, imgAttr, makeHttp } from "./scraper-utils";
 
 export interface NovelSiteOptions {
   id: string;
@@ -52,9 +52,20 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
       const target = `${base}${url.startsWith("/") ? "" : "/"}${url}`;
       try {
         const targetUrl = new URL(target);
-        return await fetchHtml(readerHttp, `/http://${targetUrl.host}${targetUrl.pathname}${targetUrl.search}`, {
+        const jinaPath = `/http://${targetUrl.host}${targetUrl.pathname}${targetUrl.search}`;
+        const response = await readerHttp.get(jinaPath, {
+          responseType: "text",
           headers: { "X-Respond-With": "html" },
         });
+        const raw = typeof response.data === "string" ? response.data : String(response.data);
+        let html = raw;
+        try {
+          const payload = JSON.parse(raw) as { data?: { html?: string }; html?: string };
+          html = payload.data?.html || payload.html || raw;
+        } catch {
+          // Jina may return the HTML directly depending on its cache state.
+        }
+        return { $: cheerio.load(html), finalUrl: target, html };
       } catch {
         throw error;
       }
@@ -64,10 +75,10 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
   function parseListing($: cheerio.CheerioAPI): MangaSummary[] {
     const items: MangaSummary[] = [];
     const seen = new Set<string>();
-    $(".novel-item, .list-novel .row, .row[itemtype*='Book'], .book-item, .novel-list .row, .top-item, #main .section1 li, table tr, article").each((_i, el) => {
+    $(".novel-item, .list-novel .row, .list-truyen .row, .archive .row, .row[itemtype*='Book'], .book-item, .novel-list .row, .top-item, #main .section1 li, table tr, article").each((_i, el) => {
       const root = $(el);
-      const href = firstHref($, root, ["h3 a", ".novel-title a", ".title a", ".book-title a"]);
-      const title = clean(root.find("h3, .novel-title, .title, .book-title, .s-title, .book-info h2").first().text() || root.find("a[href]").filter((_i, a) => {
+      const href = firstHref($, root, ["h3 a", ".truyen-title a", ".novel-title a", ".title a", ".book-title a", ".book-info h2 a", "h2 a"]);
+      const title = clean(root.find("h3, h2, .truyen-title, .novel-title, .title, .book-title, .s-title, .book-info h2").first().text() || root.find("a[href]").filter((_i, a) => {
         const href = $(a).attr("href") || "";
         return !href.startsWith("/genre/") && !href.startsWith("javascript:") && href !== "#" && !href.includes("/chapter/");
       }).first().text());
@@ -75,7 +86,7 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
       const id = absoluteId(base, href);
       if (!id || seen.has(id)) return;
       seen.add(id);
-      const thumbnail = root.find("img").first().attr("data-src") || root.find("img").first().attr("src") || "";
+      const thumbnail = imgAttr(root.find(".cover img, .book-img img, img").first());
       items.push({ id: encodeURIComponent(id), title, thumbnail: absUrl(base, thumbnail), type: "Novel", isNsfw: false });
     });
     return items.slice(0, 50);
@@ -110,7 +121,8 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
         || id;
       const synopsis = clean($(".intro, .summary, .description, .desc-text, .novel-detail .content, [itemprop='description'], meta[name='description']").first().attr("content") || $(".intro, .summary, .description, .desc-text, .novel-detail .content, [itemprop='description']").first().text());
       const author = clean($("#author, .info a[href*='/author/'], .author, [itemprop='author']").first().text());
-      const thumbnail = $(".books img, .novel-cover img, .book-cover img, img[itemprop='image'], .cover img, meta[name='image']").first().attr("src") || $("meta[name='image']").first().attr("content") || "";
+      const thumbnail = imgAttr($(".books img, .novel-cover img, .book-cover img, .book-img img, img[itemprop='image'], .cover img").first())
+        || $("meta[property='og:image'], meta[name='image']").first().attr("content") || "";
       const genres = $(".genres a, .genre a, .categories a, a[href*='genre']").map((_i, el) => clean($(el).text())).get().filter(Boolean);
       const status = clean($(".status, [itemprop='status']").first().text()) || "Unknown";
       return { id, title, author, artist: "", synopsis, altTitles: [], status, type: "Novel", isNsfw: false, rating: 0, thumbnail: absUrl(base, thumbnail), genres, score: "", scorePosition: "none" };
@@ -133,9 +145,18 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
     async pages(chapterId: string): Promise<PageListResponse> {
       const { $, html } = await fetchPage(novelPath(chapterId));
       const title = clean($("h1, .chapter-title, .chapter-name").first().text()) || "Chapter";
-      const root = $(".chapter-content, .chapter-inner, .reading-content, #chapter-content, #htmlContent, .entry-content, .chapter-c, .chr-c, .chapter-detail, .read-content, .content-inner, .content").first();
+      const candidates = $(".chapter-content, .chapter-inner, .reading-content, #chapter-content, #htmlContent, .entry-content, .chapter-c, .chr-c, .chapter-detail, .read-content, .content-inner, .content").toArray();
+      const root = $(candidates.find(el => clean($(el).text()).length > 40) ?? candidates[0]);
       if (!root.length) throw new Error(`${opts.name} chapter content was not found`);
-      root.find("script, style, .ads, .ad, .advertisement, .chapter-footer, .social-share").remove();
+      root.find("script, style, iframe, .ads, .ad, .advertisement, .chapter-footer, .social-share, [id*='ad-'], [id*='ads'], [class*='ad-'], [class*='ads-'], [class*='advert']").remove();
+      root.find("a[href*='freegames'], a[href*='ads'], a[rel*='sponsored'], [title*='Advertisement'], [aria-label*='Advertisement']").each((_i, el) => {
+        $(el).closest("div").remove();
+      });
+      root.find("div[style*='300px'][style*='250px'], div[style*='iframe']").remove();
+      root.find("p, div").each((_i, el) => {
+        const text = clean($(el).text());
+        if (/ads?\s*(popup|redirect)|advertisement|freegames\.click|report chapter/i.test(text) && $(el).find("p").length === 0) $(el).remove();
+      });
       const text = root.html()?.trim() || clean(root.text());
       if (!text) throw new Error(`${opts.name} chapter text was empty`);
       return { chapterId, pages: [{ index: 0, url: "", text, title }] };

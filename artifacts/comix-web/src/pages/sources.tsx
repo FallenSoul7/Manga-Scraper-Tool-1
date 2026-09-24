@@ -672,7 +672,7 @@ function BrowseTab({
       // The 18+ toggle acts as an "NSFW only" filter: off (default) shows all
       // extensions (18+ and non-18+ alike), on shows only 18+ sources.
       .filter(e => !showNsfw || e.isNsfw)
-      .filter(e => !e.isNsfw || (adultAccess && (showNsfw || q.length > 0)))
+      .filter(e => !e.isNsfw || adultAccess)
       .filter(e => supportedOnly ? e.supported : true)
       // Keep the curated "hidden" sources out of the default list; they only
       // show up once the user is actively searching for them.
