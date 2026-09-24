@@ -129,24 +129,28 @@ export default function Reader() {
   };
 
   const clientAdapter = getClientSourceAdapter(sourceId ?? "");
+  // Webtoon viewer pages do not expose browser CORS headers consistently.
+  // Keep lists/details client-side where possible, but use the server adapter
+  // for chapter HTML so the reader does not fail after the episode opens.
+  const webtoonPagesUseServer = sourceId === "all.webtoons";
   const clientPagesQuery = useQuery({
     queryKey: ["client-pages", sourceId, chapterId],
     queryFn: () => clientAdapter?.pages
       ? clientAdapter.pages(chapterId).catch(() => customFetch<any>(`/api/chapter/${encodeURIComponent(chapterId)}/pages`))
       : Promise.reject(new Error("Client pages unavailable")),
-    enabled: !isOfflineMode && !!chapterId && chapterId !== "0" && !!clientAdapter?.pages,
+    enabled: !isOfflineMode && !!chapterId && chapterId !== "0" && !!clientAdapter?.pages && !webtoonPagesUseServer,
     staleTime: 5 * 60 * 1000,
   });
   const serverPagesQuery = useGetChapterPages(chapterId, {
     query: {
       // Skip API when reading offline or when this source has a client page adapter.
-      enabled: !isOfflineMode && !!chapterId && chapterId !== "0" && !clientAdapter?.pages,
+      enabled: !isOfflineMode && !!chapterId && chapterId !== "0" && (!clientAdapter?.pages || webtoonPagesUseServer),
       queryKey: getGetChapterPagesQueryKey(chapterId),
     },
   });
   const pagesData = clientPagesQuery.data ?? serverPagesQuery.data;
-  const pagesLoading = clientPagesQuery.isLoading || (!clientAdapter?.pages && serverPagesQuery.isLoading);
-  const pagesError = clientPagesQuery.error ?? (!clientAdapter?.pages ? serverPagesQuery.error : null);
+  const pagesLoading = clientPagesQuery.isLoading || ((!clientAdapter?.pages || webtoonPagesUseServer) && serverPagesQuery.isLoading);
+  const pagesError = clientPagesQuery.error ?? ((!clientAdapter?.pages || webtoonPagesUseServer) ? serverPagesQuery.error : null);
 
   // Unified pages array: offline IndexedDB data OR live API data
   const effectivePages: Array<ChapterPage & { videoTracks?: VideoTrack[] }> =

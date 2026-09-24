@@ -71,6 +71,7 @@ export const MangaCard = memo(function MangaCard({
               isSelected && "opacity-70",
             ].filter(Boolean).join(" ")}
             loading="lazy"
+            decoding="async"
             draggable={false}
             onError={() => setImageFailed(true)}
           />

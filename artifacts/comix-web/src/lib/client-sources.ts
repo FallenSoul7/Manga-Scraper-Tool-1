@@ -126,6 +126,19 @@ async function clientHtml(key: string, url: string, init?: RequestInit): Promise
 function parseCards(document: Document): ClientMangaSummary[] {
   const seen = new Set<string>();
   const items: ClientMangaSummary[] = [];
+  const imageUrl = (image: HTMLImageElement | null): string => {
+    if (!image) return "";
+    const candidates = [
+      image.getAttribute("data-url"), image.getAttribute("data-src"),
+      image.getAttribute("data-original"), image.getAttribute("data-lazy-src"),
+      image.getAttribute("data-srcset"), image.getAttribute("srcset"),
+      image.getAttribute("src"),
+    ].filter(Boolean) as string[];
+    const raw = candidates.find(value => !value.startsWith("data:") && !/transparent|blank|placeholder/i.test(value)) || "";
+    const first = raw.split(",")[0].trim().split(/\s+/)[0];
+    try { return first ? new URL(first, WEBTOONS_BASE).toString() : ""; }
+    catch { return first; }
+  };
   document.querySelectorAll(".webtoon_list li a, ul.lst_type1 li a, ul.list_type1 li a").forEach((anchor) => {
     const href = anchor.getAttribute("href") ?? "";
     if (!href.includes("title_no=")) return;
@@ -134,8 +147,7 @@ function parseCards(document: Document): ClientMangaSummary[] {
     const title = anchor.querySelector(".title, .subj")?.textContent?.trim() ?? "";
     if (!title) return;
     seen.add(id);
-    const image = anchor.querySelector("img");
-    items.push({ id, title, thumbnail: image?.getAttribute("src") || image?.getAttribute("data-src") || "", type: "manga", isNsfw: false });
+    items.push({ id, title, thumbnail: imageUrl(anchor.querySelector("img")), type: "manga", isNsfw: false });
   });
   return items;
 }
@@ -158,7 +170,9 @@ async function webtoonDetails(id: string, options?: { scorePosition?: "top" | "b
   const document = await clientHtml(`webtoons:detail:${id}`, id.startsWith("http") ? id : `${WEBTOONS_BASE}${id}`, { headers: { Cookie: "ageGatePass=true; locale=en; needGDPR=false" } });
   const title = document.querySelector("h1.subj, .detail_header h1")?.textContent?.trim() || id;
   const synopsis = document.querySelector("p.summary, .detail_header .summary")?.textContent?.trim() || "";
-  const thumbnail = document.querySelector("meta[property='og:image']")?.getAttribute("content") || document.querySelector(".detail_header .thmb img")?.getAttribute("src") || "";
+  const thumbnail = document.querySelector("meta[property='og:image']")?.getAttribute("content")
+    || document.querySelector(".detail_header .thmb img")?.getAttribute("data-src")
+    || document.querySelector(".detail_header .thmb img")?.getAttribute("src") || "";
   const author = document.querySelector(".author_area .author, .author_area")?.textContent?.trim() || "";
   const genres = Array.from(document.querySelectorAll(".genre")).map(el => el.textContent?.trim() || "").filter(Boolean);
   const statusText = document.querySelector(".day_info")?.textContent || "";

@@ -41,7 +41,7 @@ function parseComicCards($: ReturnType<typeof cheerio.load>): MangaSummary[] {
     const title = ($(el).find(".title, .subj").first().text().trim()) || "";
     if (!title) return;
     const img = $(el).find("img").first();
-    const thumbnail = img.attr("src") ?? img.attr("data-src") ?? "";
+    const thumbnail = img.attr("data-src") ?? img.attr("data-original") ?? img.attr("data-lazy-src") ?? img.attr("src") ?? "";
 
     items.push({ id, title, thumbnail, type: "manga", isNsfw: false });
   });
@@ -110,6 +110,8 @@ export const WebtoonsSource: MangaSource = {
     const synopsis = $("p.summary, .detail_header .summary").first().text().trim();
     const thumbnail =
       $("head meta[property='og:image']").attr("content") ??
+      $(".detail_header .thmb img").attr("data-src") ??
+      $(".detail_header .thmb img").attr("data-original") ??
       $(".detail_header .thmb img").attr("src") ?? "";
     const author  = $(".author_area .author:first-of-type").text().trim() ||
                     $(".author_area").text().replace(/,.*/, "").trim();

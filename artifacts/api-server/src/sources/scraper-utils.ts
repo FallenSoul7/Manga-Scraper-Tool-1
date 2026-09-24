@@ -83,9 +83,11 @@ export function unpackId(id: string): string[] {
 
 /** Try several attributes (img-data-src, data-lazy-src, src) to find a real image URL. */
 export function imgAttr($el: cheerio.Cheerio<any>): string {
-  for (const attr of ["data-src", "data-lazy-src", "data-cfsrc", "src", "data-srcset"]) {
+  for (const attr of ["data-src", "data-original", "data-lazy-src", "data-cfsrc", "data-image", "src", "data-srcset", "srcset"]) {
     const v = $el.attr(attr);
-    if (v) return v.split(",")[0].trim().split(" ")[0];
+    if (v && !v.startsWith("data:") && !/transparent|blank|placeholder/i.test(v)) {
+      return v.split(",")[0].trim().split(/\s+/)[0];
+    }
   }
   return "";
 }
