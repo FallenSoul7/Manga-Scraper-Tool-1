@@ -50,6 +50,7 @@ const assetUrl = (value: string) => {
 const posterUrl = (value: AtsuPoster | undefined, fallback?: string) => {
   const raw = typeof value === "string" ? value : value?.image || fallback || "";
   if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
   const path = raw.startsWith("static/") ? `/${raw}` : raw.startsWith("/") ? raw : `/static/${raw}`;
   return assetUrl(path);
 };
