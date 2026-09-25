@@ -3,7 +3,7 @@ import type {
   MangaSource, ListOptions, MangaListResponse, MangaDetail, DetailOptions,
   ChapterListResponse, PageListResponse, MangaSummary, ChapterSummary, SourceTag,
 } from "./types";
-import { absUrl, fetchHtml, imgAttr, makeHttp } from "./scraper-utils";
+import { absUrl, fetchHtmlWithBypass, imgAttr, makeHttp } from "./scraper-utils";
 
 export interface NovelSiteOptions {
   id: string;
@@ -44,7 +44,7 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
   const readerHttp = makeHttp("https://r.jina.ai");
   const fetchPage = async (url: string) => {
     try {
-      return await fetchHtml(http, url);
+      return await fetchHtmlWithBypass(http, url, {}, { referer: `${base}/` });
     } catch (error) {
       // NovelFull and NovelHall periodically challenge server-side clients.
       // Jina's HTML reader provides the same document without changing the
@@ -144,6 +144,11 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
     },
     async pages(chapterId: string): Promise<PageListResponse> {
       const { $, html } = await fetchPage(novelPath(chapterId));
+      // Remove ad frames globally before selecting the content root. Some
+      // NovelFull layouts place the iframe outside the chapter container,
+      // while others leave it inside an empty wrapper.
+      $("iframe, script, style, .ads, .ad, .advertisement, [id*='ad-'], [id*='ads'], [class*='ad-'], [class*='ads-']").remove();
+      $("a[href*='freegames'], a[href*='ads'], a[rel*='sponsored'], [title*='Advertisement'], [aria-label*='Advertisement']").each((_i, el) => { $(el).closest("div").remove(); });
       const title = clean($("h1, .chapter-title, .chapter-name").first().text()) || "Chapter";
       const candidates = $(".chapter-content, .chapter-inner, .reading-content, #chapter-content, #htmlContent, .entry-content, .chapter-c, .chr-c, .chapter-detail, .read-content, .content-inner, .content").toArray();
       const root = $(candidates.find(el => clean($(el).text()).length > 40) ?? candidates[0]);

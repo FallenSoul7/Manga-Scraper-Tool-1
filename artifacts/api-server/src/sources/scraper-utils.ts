@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from "axios";
 import * as cheerio from "cheerio";
+import { fetchHtmlViaBypass, isBypassAvailable } from "../lib/bypass-client";
 
 const DEFAULT_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -34,6 +35,41 @@ export async function fetchHtml(
   }
   const html = typeof res.data === "string" ? res.data : String(res.data);
   return { $: cheerio.load(html), finalUrl: res.request?.res?.responseUrl || url, html };
+}
+
+function isCloudflareChallenge(html: string): boolean {
+  const lower = html.toLowerCase();
+  return lower.includes("just a moment") || lower.includes("cf-challenge") ||
+    lower.includes("cf-turnstile") || lower.includes("cf-browser-verification") ||
+    (lower.includes("cloudflare") && lower.includes("challenge"));
+}
+
+/** Fetch HTML normally, then use the configured Scrapling bypass for blocked or challenged pages. */
+export async function fetchHtmlWithBypass(
+  http: AxiosInstance,
+  url: string,
+  config: AxiosRequestConfig = {},
+  bypassOptions: { referer?: string; waitFor?: "network_idle" | "dom_loaded" | "none" } = {},
+): Promise<{ $: CheerioRoot; finalUrl: string; html: string }> {
+  try {
+    const res = await http.get(url, { responseType: "text", ...config });
+    const html = typeof res.data === "string" ? res.data : String(res.data);
+    if (res.status < 400 && !isCloudflareChallenge(html)) {
+      return { $: cheerio.load(html), finalUrl: res.request?.res?.responseUrl || url, html };
+    }
+  } catch {
+    // Fall through to the browser bypass when configured.
+  }
+  if (!(await isBypassAvailable())) {
+    throw new Error(`Upstream request failed and the bypass service is unavailable for ${url}`);
+  }
+  const base = String(http.defaults.baseURL ?? "").replace(/\/+$/, "");
+  const fullUrl = url.startsWith("http") ? url : `${base}${url.startsWith("/") ? "" : "/"}${url}`;
+  const html = await fetchHtmlViaBypass(fullUrl, {
+    referer: bypassOptions.referer ?? base,
+    waitFor: bypassOptions.waitFor ?? "network_idle",
+  });
+  return { $: cheerio.load(html), finalUrl: fullUrl, html };
 }
 
 export async function fetchJson<T>(

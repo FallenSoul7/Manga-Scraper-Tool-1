@@ -56,7 +56,7 @@ const langLabel = (code: string) => LANG_LABELS[code] ?? code.toUpperCase();
 // accidentally shown as an unsupported "Coming soon" extension.
 const ALLMANGA_SOURCE_ID = "en.allmanga";
 const ALLMANGA_CATALOG_ID = "en.allanime";
-const ANIME_SOURCE_IDS = new Set(["video.hentaiyoga", ALLMANGA_SOURCE_ID, "en.animegg"]);
+const ANIME_SOURCE_IDS = new Set(["en.animegg"]);
 
 // Keep extension availability labels in one place so installed-source rows and
 // the extension browser always show the same status.
@@ -90,7 +90,26 @@ const HIDDEN_FROM_DEFAULT_BROWSE = new Set([
   "en.ninehentai",        // NineHentai
   "all.pandachaika",      // PandaChaika
   "all.pawchive",         // Pawchive
+  "local.koofr",          // K-Cafe
 ]);
+
+// AnimeGG is the only anime extension currently exposed in the Anime tab and
+// in the default extension browser. Other anime entries remain searchable.
+const HIDDEN_ANIME_BROWSE_IDS = new Set([
+  "video.hentaiyoga",
+  ALLMANGA_CATALOG_ID,
+  ALLMANGA_SOURCE_ID,
+]);
+
+function canonicalSourceId(id: string): string {
+  return id === ALLMANGA_CATALOG_ID ? ALLMANGA_SOURCE_ID : id;
+}
+
+function sourceAvailabilityRank(extension: CatalogExtension): number {
+  const id = canonicalSourceId(extension.id);
+  if (!extension.supported && id !== ALLMANGA_SOURCE_ID) return 2;
+  return NOT_WORKING_SOURCE_IDS.has(id) ? 1 : 0;
+}
 
 // Mirrors Mihon's BrowseIcons defaultModifier: a fixed square icon slot with
 // proportional fitting so wide/tall source icons remain fully visible.
@@ -535,35 +554,17 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
     );
   }
 
-  const allMangaCatalogEntry = catalog?.extensions.find(e => e.id === ALLMANGA_CATALOG_ID);
+  const animeGGCatalogEntry = catalog?.extensions.find(e => e.id === "en.animegg");
 
-  // Hardcoded discoverable anime extensions (always visible for install)
+  // AnimeGG is the only anime extension currently exposed in this tab.
   const ANIME_EXTENSIONS = [
     {
-      id: "video.hentaiyoga",
-      name: "Hentai Yoga",
-      lang: "en",
-      isNsfw: true,
-      description: "Hentai anime videos",
-      iconUrl: null,
-      supported: true,
-    },
-    {
-      id: ALLMANGA_SOURCE_ID,
-      name: allMangaCatalogEntry?.name ?? "AllManga",
-      lang: allMangaCatalogEntry?.lang ?? "en",
-      isNsfw: allMangaCatalogEntry?.isNsfw ?? true,
-      description: "Manga and anime catalog",
-      iconUrl: allMangaCatalogEntry?.iconUrl ?? null,
-      supported: true,
-    },
-    {
       id: "en.animegg",
-      name: catalog?.extensions.find(e => e.id === "en.animegg")?.name ?? "AnimeGG",
-      lang: catalog?.extensions.find(e => e.id === "en.animegg")?.lang ?? "en",
+      name: animeGGCatalogEntry?.name ?? "AnimeGG",
+      lang: animeGGCatalogEntry?.lang ?? "en",
       isNsfw: false,
       description: "Anime episodes from AnimeGG",
-      iconUrl: catalog?.extensions.find(e => e.id === "en.animegg")?.iconUrl ?? null,
+      iconUrl: animeGGCatalogEntry?.iconUrl ?? null,
       supported: true,
     },
   ];
@@ -674,13 +675,21 @@ function BrowseTab({
       .filter(e => !showNsfw || e.isNsfw)
       .filter(e => !e.isNsfw || adultAccess)
       .filter(e => supportedOnly ? e.supported : true)
-      // Keep the curated "hidden" sources out of the default list; they only
-      // show up once the user is actively searching for them.
+      // Keep the four curated sources and the other anime integrations out of
+      // the default list; they remain discoverable through explicit search.
       .filter(e => q ? true : !HIDDEN_FROM_DEFAULT_BROWSE.has(e.id))
+      .filter(e => q || !HIDDEN_ANIME_BROWSE_IDS.has(e.id))
       .filter(e => q ? e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) || e.slug.toLowerCase().includes(q) : true);
   }, [catalog, search, lang, showNsfw, supportedOnly, adultAccess]);
 
-  const visible = filtered.slice(0, visibleCount);
+  const sortedFiltered = useMemo(
+    () => [...filtered].sort((a, b) =>
+      sourceAvailabilityRank(a) - sourceAvailabilityRank(b) || a.name.localeCompare(b.name),
+    ),
+    [filtered],
+  );
+
+  const visible = sortedFiltered.slice(0, visibleCount);
 
   if (!catalog) {
     if (online && loading) {
