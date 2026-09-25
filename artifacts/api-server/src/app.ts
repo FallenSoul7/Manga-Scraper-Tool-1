@@ -188,6 +188,50 @@ app.get("/api/allmanga/video", async (req, res) => {
   }
 });
 
+// ── Source image proxy ──────────────────────────────────────────────────────
+// Some source CDNs reject browser image requests when the source referer is
+// missing (notably Webtoons). Keep this proxy narrowly allow-listed.
+const SOURCE_MEDIA_HOSTS: Record<string, { hosts: string[]; referer: string }> = {
+  "all.webtoons": { hosts: ["webtoon-phinf.pstatic.net"], referer: "https://www.webtoons.com/" },
+  "all.atsu": { hosts: ["cdn.atsu.moe"], referer: "https://atsu.moe/" },
+  "en.resetscans": { hosts: ["cdn.resetscans.net", "www.resetscans.net"], referer: "https://www.resetscans.net/" },
+};
+
+app.get("/api/source-media", async (req, res) => {
+  const sourceId = String(req.query.source ?? "");
+  const targetUrl = String(req.query.url ?? "");
+  const source = SOURCE_MEDIA_HOSTS[sourceId];
+  if (!source || !targetUrl) return res.status(400).json({ error: "source and url are required" });
+  let target: URL;
+  try { target = new URL(targetUrl); } catch { return res.status(400).json({ error: "Invalid media URL" }); }
+  if (target.protocol !== "https:" || !source.hosts.includes(target.hostname)) {
+    return res.status(403).json({ error: "Media host is not allowed for this source" });
+  }
+  try {
+    const upstream = await axios.get(target.toString(), {
+      responseType: "stream",
+      headers: { Referer: source.referer, Origin: new URL(source.referer).origin, "User-Agent": VIDEO_PROXY_UA, Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
+      timeout: 120_000, maxRedirects: 5, validateStatus: () => true,
+    });
+    const contentType = String(upstream.headers["content-type"] ?? "");
+    if (upstream.status >= 400 || contentType.includes("text/html")) {
+      (upstream.data as NodeJS.ReadableStream).destroy();
+      return res.status(502).json({ error: "Source media is temporarily unavailable" });
+    }
+    res.status(upstream.status);
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    if (contentType) res.setHeader("Content-Type", contentType);
+    if (upstream.headers["content-length"]) res.setHeader("Content-Length", upstream.headers["content-length"] as string);
+    (upstream.data as NodeJS.ReadableStream).pipe(res);
+    (upstream.data as NodeJS.ReadableStream).on("error", () => { if (!res.headersSent) res.status(502).end(); });
+    return;
+  } catch {
+    logger.error({ sourceId }, "Source media proxy failed");
+    if (!res.headersSent) return res.status(502).json({ error: "Failed to fetch source media" });
+    return;
+  }
+});
+
 // ── Koofr: serve extracted zip page from local cache ─────────────────────────
 app.get("/api/koofr/file", (req, res) => {
   const dir  = req.query.dir  as string;

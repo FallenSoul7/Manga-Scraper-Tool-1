@@ -5,14 +5,23 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function mediaImage(url: string | undefined, _source?: string): string {
+const PROXIED_MEDIA_SOURCES = new Set(["all.webtoons", "all.atsu", "en.resetscans"]);
+
+export function mediaImage(url: string | undefined, source?: string): string {
   if (!url) return '';
   // Resolve only local application assets against the deployed API origin.
   // External source media remains direct; ComiHub does not relay or rewrite it.
   const apiOrigin = (import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL ?? "")
     .replace(/\/+$/, "");
   if (url.startsWith('/api/') || url.startsWith('/public/')) return `${apiOrigin}${url}`;
+  if (source && PROXIED_MEDIA_SOURCES.has(source) && /^https:\/\//i.test(url)) {
+    return `${apiOrigin}/api/source-media?source=${encodeURIComponent(source)}&url=${encodeURIComponent(url)}`;
+  }
   return url;
+}
+
+export function shouldProxySourceMedia(source?: string | null): boolean {
+  return !!source && PROXIED_MEDIA_SOURCES.has(source);
 }
 
 /** Build a reader URL that remains one route segment even when an extension

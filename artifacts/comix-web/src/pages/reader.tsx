@@ -11,7 +11,7 @@ import {
   customFetch,
   type ChapterPage,
 } from "@workspace/api-client-react";
-import { mediaImage, readerUrl } from "@/lib/utils";
+import { mediaImage, readerUrl, shouldProxySourceMedia } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
 import { getClientSourceAdapter } from "@/lib/client-sources";
 import VideoPlayer, { type VideoTrack } from "@/pages/video-player";
@@ -26,8 +26,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 
-function resolveReaderMediaUrl(url: string): string {
-  return url.startsWith("/") ? apiUrl(url) : url;
+function resolveReaderMediaUrl(url: string, sourceId?: string | null): string {
+  if (url.startsWith("/")) return apiUrl(url);
+  return shouldProxySourceMedia(sourceId) ? mediaImage(url, sourceId ?? undefined) : url;
 }
 
 export default function Reader() {
@@ -697,7 +698,7 @@ export default function Reader() {
                     </div>
                   ) : (
                     <img
-                      src={resolveReaderMediaUrl(imageUrlWithRetry(page.url, idx))}
+                      src={resolveReaderMediaUrl(imageUrlWithRetry(page.url, idx), sourceId)}
                       alt={`Page ${page.index}`}
                       loading={loadStrategy}
                       decoding="async"
@@ -739,7 +740,7 @@ export default function Reader() {
                     </div>
                   ) : (
                     <img
-                      src={resolveReaderMediaUrl(imageUrlWithRetry(page.url, idx))}
+                      src={resolveReaderMediaUrl(imageUrlWithRetry(page.url, idx), sourceId)}
                       alt={`Page ${page.index}`}
                       className={`transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
                       loading={loadStrategy}
