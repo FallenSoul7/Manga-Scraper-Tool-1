@@ -189,9 +189,9 @@ app.get("/api/allmanga/video", async (req, res) => {
   }
 });
 
-// AnimeGG embeds include a third-party popunder script which can prevent the
-// player from starting when the browser blocks the popup. Proxy only the
-// allow-listed AnimeGG embed page and remove ad scripts before framing it.
+// AnimeGG embeds require their original popup/player bootstrap behavior. Proxy
+// only the allow-listed embed page, but do not sanitize its scripts: removing
+// window.open/popunder code makes the episode player fail to initialize.
 app.get("/api/animegg/embed", async (req, res) => {
   const rawUrl = String(req.query.url ?? "");
   let target: URL;
@@ -206,15 +206,6 @@ app.get("/api/animegg/embed", async (req, res) => {
       responseType: "text",
     });
     const $ = cheerio.load(upstream.data);
-    $("script[src]").each((_i, el) => {
-      const src = String($(el).attr("src") ?? "").toLowerCase();
-      if (/imidesestreat|bugyeed|visariomedia|cloudfront\.net\/assets\/scripts|jdygobphcbh|rnnkub|ad[sx]?\b/.test(src)) $(el).remove();
-    });
-    $("script:not([src])").each((_i, el) => {
-      const text = $(el).html() ?? "";
-      if (/popunder|popunders|topmostlayer|daae0314ee9b087bdd5e991fc425b009/i.test(text)) $(el).remove();
-      else if (/window\.open\s*\(/i.test(text)) $(el).html(text.replace(/window\.open\s*\([^;]+;?/gi, "void 0;"));
-    });
     if ($("head base").length === 0) $("head").prepend(`<base href="${target.origin}${target.pathname.replace(/[^/]+$/, "")}">`);
     res.removeHeader("X-Frame-Options");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
