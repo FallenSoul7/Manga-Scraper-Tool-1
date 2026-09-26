@@ -11,6 +11,7 @@
 - [CSS theme system](css-pitch-black.md) — dark mode and all color themes use pitch-black bases (0 0% 0% for dark, 2-3% for tinted themes); themes are CSS vars on .dark and html[data-theme=X].
 - [Rule34 Paheal limits](rule34-paheal-limits.md) — Rule34 uses Paheal; some Rule34.xxx tags such as rimjob are absent upstream and cannot return results through this source.
 - [API workspace dependency links](api-workspace-dependency-links.md) — a stale pnpm workspace link can break the API despite a valid lockfile; filtered online install repairs it and rebuilds logger workers.
+- [API runtime bundle freshness](api-runtime-bundle-freshness.md) — source registry changes require rebuilding and restarting the API workflow; a stale dist bundle can report catalog handlers as missing.
 - [Scrapling browser dependency](scrapling-curl-cffi.md) — Scrapling 0.4.x lazily imports curl_cffi for StealthyFetcher; health must reflect browser-engine readiness.
 - [Web workspace dependency repair](web-workspace-dependencies.md) — workspace-scoped pnpm install may be needed when the package installer targets the monorepo root.
 - [Type contract drift](type-contract-drift.md) — source routes must use MangaSource details/chapters/pages, and Plyr's bundled declarations need an explicit default-import exception.
