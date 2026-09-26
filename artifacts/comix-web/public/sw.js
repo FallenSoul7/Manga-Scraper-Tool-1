@@ -76,8 +76,9 @@ function sourceCacheKey(request) {
   return new Request(url.toString(), { method: 'GET' });
 }
 
-async function isEmptyAnimeGGChapters(request, response) {
-  if (request.headers.get('X-Source') !== 'en.animegg' || !request.url.includes('/chapters')) return false;
+async function isEmptyAnimeChapters(request, response) {
+  const source = request.headers.get('X-Source');
+  if ((source !== 'en.animegg' && source !== 'builtin.universal') || !request.url.includes('/chapters')) return false;
   try {
     const body = await response.clone().json();
     return !Array.isArray(body?.items) || body.items.length === 0;
@@ -91,14 +92,14 @@ async function networkFirst(request, cacheName, maxAgeSecs) {
   const key = sourceCacheKey(request);
   try {
     const res = await fetch(request.clone());
-    const emptyAnimeGGChapters = res.ok && await isEmptyAnimeGGChapters(request, res);
-    if (res.ok && !emptyAnimeGGChapters) {
+    const emptyAnimeChapters = res.ok && await isEmptyAnimeChapters(request, res);
+    if (res.ok && !emptyAnimeChapters) {
       const headers = new Headers(res.headers);
       headers.set('sw-cached-at', Date.now().toString());
       const cloned = new Response(await res.clone().arrayBuffer(), { status: res.status, headers });
       cache.put(key, cloned);
     }
-    if (emptyAnimeGGChapters) {
+    if (emptyAnimeChapters) {
       const cached = await cache.match(key);
       if (cached) return cached;
     }
