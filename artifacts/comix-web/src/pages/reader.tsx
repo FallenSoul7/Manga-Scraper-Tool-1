@@ -15,7 +15,7 @@ import { mediaImage, readerUrl, shouldProxySourceMedia } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
 import { getClientSourceAdapter } from "@/lib/client-sources";
 import VideoPlayer, { type VideoTrack } from "@/pages/video-player";
-import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu, RefreshCw } from "lucide-react";
+import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
 import { offlineDb } from "@/lib/offline-db";
@@ -88,6 +88,34 @@ export default function Reader() {
 
   const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(currentProgress?.lastPageRead || 0);
+
+  // Entering document fullscreen hides the browser/PWA status area (battery,
+  // clock, and browser chrome) when the platform supports immersive fullscreen.
+  // The toolbar itself is fixed, so hiding it never reserves space in the page.
+  const toggleReaderControls = async (next?: boolean) => {
+    const shouldShow = next ?? !showControls;
+    setShowControls(shouldShow);
+    try {
+      if (shouldShow) {
+        if (document.fullscreenElement) await document.exitFullscreen();
+      } else if (!document.fullscreenElement) {
+        const root = document.documentElement as any;
+        if (root.requestFullscreen) await root.requestFullscreen();
+        else if (root.webkitRequestFullscreen) await root.webkitRequestFullscreen();
+      }
+    } catch {
+      // Some browsers require their own fullscreen permission or do not support it.
+      // The toolbar still hides normally even when system chrome cannot be hidden.
+    }
+  };
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) setShowControls(true);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
   const [loadedImgs, setLoadedImgs] = useState<Record<number, boolean>>({});
   const [failedImgs, setFailedImgs] = useState<Record<number, boolean>>({});
   const [retryCounts, setRetryCounts] = useState<Record<number, number>>({});
@@ -465,6 +493,9 @@ export default function Reader() {
             </div>
             <Button variant="ghost" size="icon" className={novelDark ? "text-white/80 hover:text-white" : ""} disabled={!prevChapter} onClick={() => prevChapter && navigateToChapter(prevChapter.id)} aria-label="Previous chapter"><ChevronLeft className="h-5 w-5" /></Button>
             <Button variant="ghost" size="icon" className={novelDark ? "text-white/80 hover:text-white" : ""} disabled={!nextChapter} onClick={() => nextChapter && navigateToChapter(nextChapter.id)} aria-label="Next chapter"><ChevronRight className="h-5 w-5" /></Button>
+            <Button variant="ghost" size="icon" className="text-white/70 hover:text-white" onClick={(e) => { e.stopPropagation(); void toggleReaderControls(); }} title={showControls ? "Hide controls and enter fullscreen" : "Show controls"} aria-label={showControls ? "Hide controls and enter fullscreen" : "Show controls"}>
+              {showControls ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </Button>
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className={novelDark ? "text-white/80 hover:text-white" : ""} aria-label="Novel reader settings"><Settings className="h-5 w-5" /></Button>
@@ -503,7 +534,7 @@ export default function Reader() {
         containerRef.current.scrollBy({ left: goNext ? containerRef.current.clientWidth * (effectiveDirection === 'rtl' ? -1 : 1) : -containerRef.current.clientWidth * (effectiveDirection === 'rtl' ? -1 : 1), behavior: 'smooth' });
       }
     } else {
-      setShowControls(!showControls);
+      void toggleReaderControls();
     }
   };
 
