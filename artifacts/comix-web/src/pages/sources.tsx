@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
@@ -631,6 +631,44 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
 // ─── Extensions tab ───────────────────────────────────────────────────────────
 const PAGE_SIZE = 60;
 
+function ExtensionsAdSlot() {
+  const nativeContainerRef = useRef<HTMLDivElement>(null);
+  const socialContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const nativeContainer = nativeContainerRef.current;
+    const socialContainer = socialContainerRef.current;
+    if (!nativeContainer || !socialContainer) return;
+
+    const nativeScript = document.createElement("script");
+    nativeScript.async = true;
+    nativeScript.setAttribute("data-cfasync", "false");
+    nativeScript.src = "https://pl31519546.profitableratecpmnetwork.com/8700fc654fef9a8cd748607dfb63f672/invoke.js";
+    nativeContainer.appendChild(nativeScript);
+
+    const socialScript = document.createElement("script");
+    socialScript.src = "https://pl31519547.profitableratecpmnetwork.com/c1/cc/f1/c1ccf112787fd3d2d2eb80d73964b422.js";
+    socialContainer.appendChild(socialScript);
+
+    return () => {
+      nativeScript.remove();
+      socialScript.remove();
+      nativeContainer.replaceChildren();
+      socialContainer.replaceChildren();
+    };
+  }, []);
+
+  return (
+    <div
+      className="h-8 min-w-[116px] max-w-[150px] flex-1 overflow-hidden rounded-md border border-primary/20 bg-primary/5"
+      aria-label="Sponsored content"
+    >
+      <div ref={nativeContainerRef} id="container-8700fc654fef9a8cd748607dfb63f672" className="h-full w-full" />
+      <div ref={socialContainerRef} className="hidden" />
+    </div>
+  );
+}
+
 function BrowseTab({
   installedMap,
   catalog,
@@ -739,6 +777,7 @@ function BrowseTab({
             <input type="checkbox" checked={showNsfw} onChange={e => setShowNsfw(e.target.checked)} className="rounded" />
             18+ only
           </label>
+          <ExtensionsAdSlot />
         </div>
         <p className="text-xs text-muted-foreground">Showing {visible.length.toLocaleString()} of {filtered.length.toLocaleString()}</p>
       </div>
