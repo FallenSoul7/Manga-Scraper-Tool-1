@@ -215,7 +215,7 @@ app.get("/api/source-media", async (req, res) => {
     });
     const contentType = String(upstream.headers["content-type"] ?? "");
     if (upstream.status >= 400 || contentType.includes("text/html")) {
-      (upstream.data as NodeJS.ReadableStream).destroy();
+      (upstream.data as any).destroy();
       return res.status(502).json({ error: "Source media is temporarily unavailable" });
     }
     res.status(upstream.status);

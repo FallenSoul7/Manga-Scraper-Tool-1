@@ -19,6 +19,16 @@ CREATE TABLE IF NOT EXISTS library_sync (
 -- Lock feature (idempotent — safe to run on every deploy)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS lock_pin_hash TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS lock_pin_updated_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  plan_key TEXT NOT NULL,
+  paypal_subscription_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'APPROVAL_PENDING',
+  expires_at TIMESTAMPTZ,
+  last_event TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 `;
 
 export async function runMigrations() {

@@ -1,9 +1,13 @@
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, Check, Crown, LockKeyhole, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiUrl } from "@/lib/api-url";
+import { getCachedUser } from "@/lib/auth-cache";
 
 const plans = [
   {
+    key: "weekly",
     name: "Weekly",
     price: "$1",
     cadence: "first 7 days",
@@ -12,6 +16,7 @@ const plans = [
     featured: false,
   },
   {
+    key: "monthly",
     name: "Monthly",
     price: "$5",
     cadence: "per month",
@@ -20,6 +25,7 @@ const plans = [
     featured: false,
   },
   {
+    key: "quarterly",
     name: "3 Months",
     price: "$14",
     cadence: "every 3 months",
@@ -37,6 +43,31 @@ const benefits = [
 ];
 
 export default function SubscriptionPage() {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [active, setActive] = useState<{ plan: string | null; expiresAt: string | null }>({ plan: null, expiresAt: null });
+
+  useEffect(() => {
+    fetch(apiUrl("/api/paypal/status"), { credentials: "include" })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((data) => { if (data?.active) setActive({ plan: data.plan, expiresAt: data.expiresAt }); })
+      .catch(() => {});
+  }, []);
+
+  async function startCheckout(plan: string) {
+    if (!getCachedUser()) { setMessage("Sign in before starting a subscription."); return; }
+    setBusy(plan); setMessage("");
+    try {
+      const response = await fetch(apiUrl("/api/paypal/create-subscription"), { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.approvalUrl) throw new Error(data.error ?? "PayPal checkout could not be started.");
+      window.location.assign(data.approvalUrl);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "PayPal checkout could not be started.");
+      setBusy(null);
+    }
+  }
+
   return (
     <main className="container mx-auto max-w-4xl px-4 py-6 sm:py-10 animate-in fade-in duration-300">
       <Link href="/system" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
@@ -58,6 +89,9 @@ export default function SubscriptionPage() {
         </div>
       </section>
 
+      {active.plan && <div className="mb-5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-300">Premium is active{active.expiresAt ? ` until ${new Date(active.expiresAt).toLocaleDateString()}` : ""}.</div>}
+      {message && <div className="mb-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300">{message} <Link href="/login" className="font-semibold underline">Sign in</Link></div>}
+
       <div className="grid gap-4 md:grid-cols-3">
         {plans.map((plan) => (
           <article key={plan.name} className={`relative rounded-2xl border bg-card p-5 ${plan.featured ? "border-primary shadow-md" : "border-border"}`}>
@@ -69,10 +103,10 @@ export default function SubscriptionPage() {
             </div>
             <p className="mt-2 text-xs font-medium text-primary">{plan.note}</p>
             <p className="mt-3 min-h-10 text-xs text-muted-foreground">{plan.renewal}</p>
-            <Button className="mt-5 w-full" variant={plan.featured ? "default" : "outline"} disabled>
-              Pay with PayPal
+            <Button className="mt-5 w-full" variant={plan.featured ? "default" : "outline"} disabled={busy !== null} onClick={() => startCheckout(plan.key)}>
+              {busy === plan.key ? "Opening PayPal…" : "Pay with PayPal"}
             </Button>
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">PayPal checkout coming soon</p>
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">Secure checkout · cancel anytime</p>
           </article>
         ))}
       </div>
