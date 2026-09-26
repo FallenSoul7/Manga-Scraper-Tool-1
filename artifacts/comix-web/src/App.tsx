@@ -19,6 +19,7 @@ const SearchPage           = lazy(() => import("@/pages/search"));
 const MangaDetail          = lazy(() => import("@/pages/manga-detail"));
 const Reader               = lazy(() => import("@/pages/reader"));
 const SettingsPage         = lazy(() => import("@/pages/settings"));
+const SubscriptionPage     = lazy(() => import("@/pages/subscription"));
 const LibraryPage          = lazy(() => import("@/pages/library"));
 const UpdatesPage          = lazy(() => import("@/pages/updates"));
 const HistoryPage          = lazy(() => import("@/pages/history"));
@@ -224,6 +225,9 @@ function AppContent() {
               </Route>
               <Route path="/settings">
                 <Lazy><SettingsPage /></Lazy>
+              </Route>
+              <Route path="/subscription">
+                <Lazy><SubscriptionPage /></Lazy>
               </Route>
               <Route path="/updates">
                 <Lazy><UpdatesPage /></Lazy>

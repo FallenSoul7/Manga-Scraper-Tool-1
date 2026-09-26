@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import {
   Settings, Download, BarChart3, Info, FolderOpen, Sparkles,
-  Trash2, AppWindow, LogIn, Lock,
+  Trash2, AppWindow, LogIn, Lock, Crown,
 } from "lucide-react";
 
 interface SystemBlock {
@@ -68,6 +68,13 @@ const blocks: SystemBlock[] = [
     label: "Settings",
     description: "Theme, library defaults, reader, backup & restore.",
     icon: Settings,
+  },
+  {
+    href: "/subscription",
+    label: "Subscription",
+    description: "No ads, unlimited downloads, and expanded cloud library limits.",
+    icon: Crown,
+    highlight: true,
   },
   {
     href: "/categories",

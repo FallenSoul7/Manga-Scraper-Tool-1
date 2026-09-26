@@ -631,26 +631,6 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
 // ─── Extensions tab ───────────────────────────────────────────────────────────
 const PAGE_SIZE = 60;
 
-function ExtensionsSocialAdLoader() {
-  const socialContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const socialContainer = socialContainerRef.current;
-    if (!socialContainer) return;
-
-    const socialScript = document.createElement("script");
-    socialScript.src = "https://pl31519547.profitableratecpmnetwork.com/c1/cc/f1/c1ccf112787fd3d2d2eb80d73964b422.js";
-    socialContainer.appendChild(socialScript);
-
-    return () => {
-      socialScript.remove();
-      socialContainer.replaceChildren();
-    };
-  }, []);
-
-  return <div ref={socialContainerRef} className="hidden" />;
-}
-
 function BrowseTab({
   installedMap,
   catalog,
@@ -762,8 +742,6 @@ function BrowseTab({
         </div>
         <p className="text-xs text-muted-foreground">Showing {visible.length.toLocaleString()} of {filtered.length.toLocaleString()}</p>
       </div>
-
-      <ExtensionsSocialAdLoader />
 
       <div className="divide-y divide-border/40">
         {visible.map(ext => {

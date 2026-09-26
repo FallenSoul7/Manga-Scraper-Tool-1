@@ -1,0 +1,106 @@
+import { Link } from "wouter";
+import { ArrowLeft, Check, Crown, LockKeyhole, ShieldCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+const plans = [
+  {
+    name: "Weekly",
+    price: "$1",
+    cadence: "first 7 days",
+    renewal: "Then $2/week until canceled",
+    note: "Try premium for less",
+    featured: false,
+  },
+  {
+    name: "Monthly",
+    price: "$5",
+    cadence: "per month",
+    renewal: "$5/month until canceled",
+    note: "30% member discount",
+    featured: false,
+  },
+  {
+    name: "3 Months",
+    price: "$14",
+    cadence: "every 3 months",
+    renewal: "$14 every 3 months until canceled",
+    note: "30% member discount · Best value",
+    featured: true,
+  },
+];
+
+const benefits = [
+  "No ComiHub ads while your plan is active",
+  "Unlimited chapter downloads",
+  "Cloud library limit increased from 650 to 1,350 titles",
+  "Premium status checked securely after PayPal payment",
+];
+
+export default function SubscriptionPage() {
+  return (
+    <main className="container mx-auto max-w-4xl px-4 py-6 sm:py-10 animate-in fade-in duration-300">
+      <Link href="/system" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
+        <ArrowLeft className="h-4 w-4" /> System
+      </Link>
+
+      <section className="rounded-3xl border border-primary/25 bg-primary/5 p-5 sm:p-8 mb-6">
+        <div className="flex items-start gap-4">
+          <div className="h-12 w-12 shrink-0 rounded-2xl bg-primary/15 text-primary flex items-center justify-center">
+            <Crown className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">ComiHub Premium</p>
+            <h1 className="mt-1 text-2xl sm:text-3xl font-serif font-bold">Read without limits</h1>
+            <p className="mt-2 text-sm text-muted-foreground max-w-2xl">
+              Choose a plan from System whenever you want. ComiHub will not open a subscription offer on first launch or interrupt your reading with a purchase prompt.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        {plans.map((plan) => (
+          <article key={plan.name} className={`relative rounded-2xl border bg-card p-5 ${plan.featured ? "border-primary shadow-md" : "border-border"}`}>
+            {plan.featured && <span className="absolute -top-3 left-4 rounded-full bg-primary px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">Best value</span>}
+            <h2 className="font-serif text-xl font-bold">{plan.name}</h2>
+            <div className="mt-4 flex items-baseline gap-1">
+              <span className="text-3xl font-bold">{plan.price}</span>
+              <span className="text-sm text-muted-foreground">{plan.cadence}</span>
+            </div>
+            <p className="mt-2 text-xs font-medium text-primary">{plan.note}</p>
+            <p className="mt-3 min-h-10 text-xs text-muted-foreground">{plan.renewal}</p>
+            <Button className="mt-5 w-full" variant={plan.featured ? "default" : "outline"} disabled>
+              Pay with PayPal
+            </Button>
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">PayPal checkout coming soon</p>
+          </article>
+        ))}
+      </div>
+
+      <section className="mt-6 rounded-2xl border bg-card p-5 sm:p-6">
+        <h2 className="font-serif text-xl font-bold">Included with every active plan</h2>
+        <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+          {benefits.map((benefit) => (
+            <li key={benefit} className="flex items-start gap-2 text-sm text-muted-foreground">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+              <span>{benefit}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border bg-card p-5">
+          <div className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4 text-primary" /> Clear billing</div>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">The checkout will show the price, renewal period, next charge, and cancellation terms before you pay.</p>
+        </div>
+        <div className="rounded-2xl border bg-card p-5">
+          <div className="flex items-center gap-2 font-semibold"><LockKeyhole className="h-4 w-4 text-primary" /> Secure activation</div>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">Premium access will activate only after a verified PayPal confirmation. Payment credentials will never be stored in ComiHub.</p>
+        </div>
+      </section>
+
+      <p className="mt-6 text-center text-xs text-muted-foreground">Cancel before the next renewal to avoid the next charge. Terms and availability may vary by country.</p>
+    </main>
+  );
+}
