@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 export const UNIVERSAL_SOURCE_ID = "builtin.universal";
-type MediaType = "manga" | "anime";
+type MediaType = NonNullable<MangaSummary["mediaType"]>;
 type SourceEntry = { sourceId: string; mangaId: string; title: string; thumbnail: string; mediaType?: MediaType };
 type UniversalGroup = { entries: SourceEntry[] };
 
@@ -23,6 +23,11 @@ const UNIVERSAL_SOURCE_IDS = new Set([
   "en.animegg", "en.mangafreak", "en.comickfan",
 ]);
 const REQUEST_TIMEOUT_MS = 7_000;
+const SOURCE_REQUEST_TIMEOUTS: Record<string, number> = {
+  // AnimeGG can take 23–30 seconds to return a valid Cloudflare-protected
+  // HTML page. Keep the short timeout for every other Universal source.
+  "en.animegg": 40_000,
+};
 const TAG_TIMEOUT_MS = 4_000;
 const PROXIED_MEDIA_SOURCES = new Set([
   "all.webtoons", "all.atsu", "en.resetscans", "all.mangadex", "en.animegg",
@@ -58,6 +63,9 @@ function isAnime(item: MangaSummary): boolean {
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error("source timeout")), ms))]);
 }
+function sourceTimeout(sourceId: string): number {
+  return SOURCE_REQUEST_TIMEOUTS[sourceId] ?? REQUEST_TIMEOUT_MS;
+}
 function proxyMedia(sourceId: string, url: string): string {
   // AnimeGG episode pages are HTML player embeds, not image media. Keep the
   // original URL so its popup/player bootstrap can run in the iframe.
@@ -84,7 +92,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
 
   async function aggregate(loader: (source: MangaSource, opts: ListOptions) => Promise<MangaListResponse>, opts: ListOptions): Promise<MangaListResponse> {
     const sources = workingSources();
-    const results = await Promise.allSettled(sources.map(source => withTimeout(loader(source, sourceOpts(source, opts)), REQUEST_TIMEOUT_MS)));
+    const results = await Promise.allSettled(sources.map(source => withTimeout(loader(source, sourceOpts(source, opts)), sourceTimeout(source.id))));
     const groups = new Map<string, UniversalGroup>();
     const sourceItems = results.map(result => result.status === "fulfilled" ? result.value.items : []);
     const maxItems = Math.max(0, ...sourceItems.map(items => items.length));
@@ -145,7 +153,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       const entry = group.entries.find(item => sources.some(source => source.id === item.sourceId));
       if (!entry) throw new Error("Universal source is unavailable");
       const source = sources.find(item => item.id === entry.sourceId)!;
-      const detail = await withTimeout(source.details(entry.mangaId, opts), REQUEST_TIMEOUT_MS);
+       const detail = await withTimeout(source.details(entry.mangaId, opts), sourceTimeout(source.id));
       return { ...detail, id: encodeGroup(group), title: detail.title || entry.title, thumbnail: proxyMedia(entry.sourceId, detail.thumbnail) };
     },
     chapters: async (mangaId, dedupe): Promise<ChapterListResponse> => {
@@ -156,7 +164,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
         if (!source) throw new Error("source unavailable");
         // Universal must receive every translation; source-level dedupe often
         // intentionally keeps only one chapter number.
-        const response = await withTimeout(source.chapters(entry.mangaId, false), REQUEST_TIMEOUT_MS);
+         const response = await withTimeout(source.chapters(entry.mangaId, false), sourceTimeout(source.id));
         return { entry, source, chapters: response.items };
       }));
       const seen = new Set<string>();
@@ -184,7 +192,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       const [sourceId, sourceChapterId] = decodeTuple(chapterId);
       const source = workingSources().find(item => item.id === sourceId);
       if (!source) throw new Error(`Universal source ${sourceId} is unavailable`);
-      const response = await withTimeout(source.pages(sourceChapterId), REQUEST_TIMEOUT_MS);
+       const response = await withTimeout(source.pages(sourceChapterId), sourceTimeout(source.id));
       return { ...response, chapterId, pages: response.pages.map(page => ({ ...page, url: proxyMedia(sourceId, page.url) })) };
     },
   };
