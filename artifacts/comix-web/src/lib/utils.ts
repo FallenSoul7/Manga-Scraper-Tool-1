@@ -5,7 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-const PROXIED_MEDIA_SOURCES = new Set(["all.webtoons", "all.atsu", "en.resetscans"]);
+const PROXIED_MEDIA_SOURCES = new Set([
+  "all.webtoons", "all.atsu", "en.resetscans", "all.mangadex", "en.animegg",
+]);
 
 export function mediaImage(url: string | undefined, source?: string): string {
   if (!url) return '';

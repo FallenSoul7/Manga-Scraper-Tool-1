@@ -232,6 +232,8 @@ const SOURCE_MEDIA_HOSTS: Record<string, { hosts: string[]; referer: string }> =
   "all.webtoons": { hosts: ["webtoon-phinf.pstatic.net"], referer: "https://www.webtoons.com/" },
   "all.atsu": { hosts: ["cdn.atsu.moe"], referer: "https://atsu.moe/" },
   "en.resetscans": { hosts: ["cdn.resetscans.net", "www.resetscans.net"], referer: "https://www.resetscans.net/" },
+  "all.mangadex": { hosts: ["uploads.mangadex.org"], referer: "https://mangadex.org/" },
+  "en.animegg": { hosts: ["vidcache.net", ".vidcache.net"], referer: "https://www.animegg.org/" },
 };
 
 app.get("/api/source-media", async (req, res) => {
@@ -241,7 +243,8 @@ app.get("/api/source-media", async (req, res) => {
   if (!source || !targetUrl) return res.status(400).json({ error: "source and url are required" });
   let target: URL;
   try { target = new URL(targetUrl); } catch { return res.status(400).json({ error: "Invalid media URL" }); }
-  if (target.protocol !== "https:" || !source.hosts.includes(target.hostname)) {
+  const allowedHost = source.hosts.some(host => target.hostname === host || (host.startsWith(".") && target.hostname.endsWith(host)));
+  if (target.protocol !== "https:" || !allowedHost) {
     return res.status(403).json({ error: "Media host is not allowed for this source" });
   }
   try {

@@ -18,12 +18,14 @@ type UniversalGroup = { entries: SourceEntry[] };
 // must not make every browse request wait for the full timeout.
 const UNIVERSAL_SOURCE_IDS = new Set([
   "all.mangadex", "en.asurascans", "all.webtoons", "all.atsu",
-  "en.resetscans", "all.thunderscans", "en.novelfull", "en.novelhall",
+  "en.resetscans", "all.thunderscans", "en.novelfull",
   "en.animegg", "en.mangafreak", "en.comickfan",
 ]);
 const REQUEST_TIMEOUT_MS = 7_000;
 const TAG_TIMEOUT_MS = 4_000;
-const PROXIED_MEDIA_SOURCES = new Set(["all.webtoons", "all.atsu", "en.resetscans"]);
+const PROXIED_MEDIA_SOURCES = new Set([
+  "all.webtoons", "all.atsu", "en.resetscans", "all.mangadex", "en.animegg",
+]);
 
 function encodeTuple(parts: [string, string]): string {
   return `universal:${Buffer.from(JSON.stringify(parts), "utf8").toString("base64url")}`;
