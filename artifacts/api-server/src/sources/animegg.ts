@@ -3,10 +3,12 @@ import * as cheerio from "cheerio";
 import type { ChapterListResponse, DetailOptions, ListOptions, MangaDetail, MangaListResponse, MangaSource, PageListResponse, VideoTrack } from "./types";
 
 const BASE = "https://www.animegg.org";
+const ANIMEGG_ICON = "/public/source-icons/en.animegg.svg";
 const BROWSE_FALLBACK = [["one-piece", "One Piece"], ["naruto-shippuden", "Naruto Shippuden"], ["detectiveconan", "Detective Conan"], ["bleach", "Bleach"]] as const;
 const ANIME_GENRES = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Sports", "Thriller", "Supernatural", "Historical", "School", "Shounen", "Shoujo", "Music", "Military", "Psychological"];
 const http = axios.create({ timeout: 25000, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36", Accept: "text/html,application/json;q=0.9,*/*;q=0.8", Referer: `${BASE}/` } });
-const HTML_CACHE_TTL_MS = 2 * 60 * 1000;
+const HTML_CACHE_TTL_MS = 15 * 60 * 1000;
+const HTML_STALE_TTL_MS = 24 * 60 * 60 * 1000;
 const htmlCache = new Map<string, { expiresAt: number; data: string }>();
 const htmlInFlight = new Map<string, Promise<string>>();
 const JSON_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -28,9 +30,17 @@ async function getHtml(url: string, timeout: number): Promise<string> {
   const pending = htmlInFlight.get(url);
   if (pending) return pending;
   const request = http.get<string>(url, { timeout }).then(response => {
-    htmlCache.set(url, { expiresAt: Date.now() + HTML_CACHE_TTL_MS, data: response.data });
+    const html = response.data;
+    const head = html.slice(0, 20000).toLowerCase();
+    if (/just a moment|cf-chl-|challenge-platform|attention required|enable javascript and cookies|cloudflare ray id/.test(head)) {
+      throw new Error("AnimeGG returned a protection page");
+    }
+    htmlCache.set(url, { expiresAt: Date.now() + HTML_CACHE_TTL_MS, data: html });
     trimCache(htmlCache);
-    return response.data;
+    return html;
+  }).catch(error => {
+    if (cached && Date.now() - cached.expiresAt < HTML_STALE_TTL_MS) return cached.data;
+    throw error;
   }).finally(() => htmlInFlight.delete(url));
   htmlInFlight.set(url, request);
   return request;
@@ -91,12 +101,12 @@ function genrePath(opts: ListOptions): string | null {
 }
 
 function fallbackListing(page: number): MangaListResponse {
-  return { page, hasNextPage: false, items: BROWSE_FALLBACK.map(([id, title]) => ({ id, title, thumbnail: "/public/source-icons/en.animegg.svg", type: "Anime", isNsfw: false, mediaType: "anime" as const })) };
+  return { page, hasNextPage: false, items: BROWSE_FALLBACK.map(([id, title]) => ({ id, title, thumbnail: ANIMEGG_ICON, type: "Anime", isNsfw: false, mediaType: "anime" as const })) };
 }
 
 function fallbackDetail(slug: string): MangaDetail {
   const title = slug.split("-").map(word => word ? word[0].toUpperCase() + word.slice(1) : word).join(" ");
-  return { id: slug, title, author: "", artist: "", synopsis: "AnimeGG is temporarily unavailable while its upstream server is protected by Cloudflare. Try again shortly.", altTitles: [], status: "Unknown", type: "Anime", isNsfw: false, rating: 0, thumbnail: "", genres: [], score: "", scorePosition: "none", mediaType: "anime" };
+  return { id: slug, title, author: "", artist: "", synopsis: "AnimeGG is temporarily unavailable while its upstream server is protected by Cloudflare. Try again shortly.", altTitles: [], status: "Unknown", type: "Anime", isNsfw: false, rating: 0, thumbnail: ANIMEGG_ICON, genres: [], score: "", scorePosition: "none", mediaType: "anime" };
 }
 
 async function search(query: string, opts: ListOptions): Promise<MangaListResponse> {
@@ -130,7 +140,7 @@ async function details(id: string): Promise<MangaDetail> {
   const title = $("h1").first().text().trim() || $("title").text().replace(/^Watch\s+|\s+Episodes.*$/gi, "").trim() || slug;
   const info = $(".infoami").map((_i, el) => $(el).text().trim()).get().join(" ");
   const status = /completed|finished/i.test(info) ? "Completed" : "Ongoing";
-  const thumbnail = $(".media-object").first().attr("src") || $("meta[property='og:image']").attr("content") || "";
+  const thumbnail = $(".media-object").first().attr("src") || $("meta[property='og:image']").attr("content") || ANIMEGG_ICON;
   const synopsis = $(".ptext").first().text().trim();
   const alt = $(".infoami").filter((_i, el) => /Alternate Titles/i.test($(el).text())).text().replace(/^Alternate Titles:\s*/i, "").split(",").map(s => s.trim()).filter(Boolean);
   const genres = $(".tagscat a").map((_i, el) => $(el).text().trim()).get().filter(Boolean);

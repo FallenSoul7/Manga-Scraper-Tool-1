@@ -1,5 +1,5 @@
 const STATIC_CACHE = 'comihub-static-v13';
-const API_CACHE    = 'comihub-api-v7';
+const API_CACHE    = 'comihub-api-v8';
 const IMAGE_CACHE  = 'comihub-images-v1';
 const CHAPTER_IMAGE_CACHE = 'comihub-chapter-images-v1';
 const OFFLINE_IMAGE_CACHE = 'comihub-offline-v1';
@@ -76,16 +76,31 @@ function sourceCacheKey(request) {
   return new Request(url.toString(), { method: 'GET' });
 }
 
+async function isEmptyAnimeGGChapters(request, response) {
+  if (request.headers.get('X-Source') !== 'en.animegg' || !request.url.includes('/chapters')) return false;
+  try {
+    const body = await response.clone().json();
+    return !Array.isArray(body?.items) || body.items.length === 0;
+  } catch {
+    return true;
+  }
+}
+
 async function networkFirst(request, cacheName, maxAgeSecs) {
   const cache = await caches.open(cacheName);
   const key = sourceCacheKey(request);
   try {
     const res = await fetch(request.clone());
-    if (res.ok) {
+    const emptyAnimeGGChapters = res.ok && await isEmptyAnimeGGChapters(request, res);
+    if (res.ok && !emptyAnimeGGChapters) {
       const headers = new Headers(res.headers);
       headers.set('sw-cached-at', Date.now().toString());
       const cloned = new Response(await res.clone().arrayBuffer(), { status: res.status, headers });
       cache.put(key, cloned);
+    }
+    if (emptyAnimeGGChapters) {
+      const cached = await cache.match(key);
+      if (cached) return cached;
     }
     return res;
   } catch {
