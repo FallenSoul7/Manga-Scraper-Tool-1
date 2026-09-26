@@ -23,6 +23,7 @@ const UNIVERSAL_SOURCE_IDS = new Set([
 ]);
 const REQUEST_TIMEOUT_MS = 7_000;
 const TAG_TIMEOUT_MS = 4_000;
+const PROXIED_MEDIA_SOURCES = new Set(["all.webtoons", "all.atsu", "en.resetscans"]);
 
 function encodeTuple(parts: [string, string]): string {
   return `universal:${Buffer.from(JSON.stringify(parts), "utf8").toString("base64url")}`;
@@ -53,6 +54,11 @@ function isAnime(item: MangaSummary): boolean {
 }
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error("source timeout")), ms))]);
+}
+function proxyMedia(sourceId: string, url: string): string {
+  return PROXIED_MEDIA_SOURCES.has(sourceId) && /^https:\/\//i.test(url)
+    ? `/api/source-media?source=${encodeURIComponent(sourceId)}&url=${encodeURIComponent(url)}`
+    : url;
 }
 
 /** Universal is a virtual source: it discovers titles across working sources,
@@ -92,7 +98,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       // Source order is the popularity/priority order supplied by the working registry.
       // The first source title and cover are the representative card for the merged group.
       const representative = group.entries[0];
-      return { id: encodeGroup(group), title: representative.title, thumbnail: representative.thumbnail, type: representative.mediaType === "anime" ? "Anime" : "Manga", isNsfw: false, mediaType: representative.mediaType } satisfies MangaSummary;
+      return { id: encodeGroup(group), title: representative.title, thumbnail: proxyMedia(representative.sourceId, representative.thumbnail), type: representative.mediaType === "anime" ? "Anime" : "Manga", isNsfw: false, mediaType: representative.mediaType } satisfies MangaSummary;
     });
     return { items, page: opts.page, hasNextPage: results.some(result => result.status === "fulfilled" && result.value.hasNextPage) };
   }
@@ -128,7 +134,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       if (!entry) throw new Error("Universal source is unavailable");
       const source = sources.find(item => item.id === entry.sourceId)!;
       const detail = await withTimeout(source.details(entry.mangaId, opts), REQUEST_TIMEOUT_MS);
-      return { ...detail, id: encodeGroup(group), title: detail.title || entry.title };
+      return { ...detail, id: encodeGroup(group), title: detail.title || entry.title, thumbnail: proxyMedia(entry.sourceId, detail.thumbnail) };
     },
     chapters: async (mangaId, dedupe): Promise<ChapterListResponse> => {
       const group = decodeGroup(mangaId);
@@ -167,7 +173,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       const source = workingSources().find(item => item.id === sourceId);
       if (!source) throw new Error(`Universal source ${sourceId} is unavailable`);
       const response = await withTimeout(source.pages(sourceChapterId), REQUEST_TIMEOUT_MS);
-      return { ...response, chapterId, pages: response.pages };
+      return { ...response, chapterId, pages: response.pages.map(page => ({ ...page, url: proxyMedia(sourceId, page.url) })) };
     },
   };
 }
