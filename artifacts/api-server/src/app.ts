@@ -224,7 +224,7 @@ const SOURCE_MEDIA_HOSTS: Record<string, { hosts: string[]; referer: string }> =
   "all.atsu": { hosts: ["cdn.atsu.moe"], referer: "https://atsu.moe/" },
   "en.resetscans": { hosts: ["cdn.resetscans.net", "www.resetscans.net"], referer: "https://www.resetscans.net/" },
   "all.mangadex": { hosts: ["uploads.mangadex.org"], referer: "https://mangadex.org/" },
-  "en.animegg": { hosts: ["vidcache.net", ".vidcache.net"], referer: "https://www.animegg.org/" },
+  "en.animegg": { hosts: ["vidcache.net", ".vidcache.net", "animegg.org", ".animegg.org"], referer: "https://www.animegg.org/" },
 };
 
 app.get("/api/source-media", async (req, res) => {

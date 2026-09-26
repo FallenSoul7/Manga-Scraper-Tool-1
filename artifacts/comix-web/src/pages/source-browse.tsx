@@ -25,7 +25,7 @@ import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-interface MangaSummary { id: string; title: string; thumbnail: string; type: string; isNsfw: boolean; mediaType?: "manga" | "anime" }
+interface MangaSummary { id: string; title: string; thumbnail: string; type: string; isNsfw: boolean; mediaType?: "manga" | "anime" | "novel" }
 interface ListResponse { items: MangaSummary[]; page: number; hasNextPage: boolean }
 interface PageSnapshot {
   tab: ActiveTab;
@@ -66,6 +66,88 @@ function SourceBrowseNativeAd() {
   return (
     <div className="h-8 min-w-[116px] max-w-[150px] flex-1 overflow-hidden rounded-full border border-primary/20 bg-primary/5">
       <div ref={containerRef} id="container-8700fc654fef9a8cd748607dfb63f672" className="h-full w-full" />
+    </div>
+  );
+}
+
+type UniversalSectionMedia = "manga" | "anime" | "novel";
+
+function UniversalPopularSection({
+  media,
+  title,
+  sourceId,
+  nsfw,
+  poster,
+  sort,
+}: {
+  media: UniversalSectionMedia;
+  title: string;
+  sourceId: string;
+  nsfw: string;
+  poster: string;
+  sort: string | null;
+}) {
+  const [page, setPage] = useState(1);
+  const [items, setItems] = useState<MangaSummary[]>([]);
+  const query = useQuery<ListResponse>({
+    queryKey: ["universal-popular-section", sourceId, media, page, nsfw, poster, sort],
+    queryFn: () => {
+      const params = buildQuery({
+        media,
+        nsfw,
+        poster,
+        page: String(page),
+        ...(sort ? { sort } : {}),
+      });
+      return customFetch<ListResponse>(`/api/popular${params}`, { headers: { "X-Source": sourceId } });
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  useEffect(() => {
+    if (!query.data) return;
+    setItems(previous => page === 1
+      ? query.data!.items
+      : [...previous, ...query.data!.items.filter(item => !previous.some(existing => existing.id === item.id))]);
+  }, [query.data, page]);
+
+  return (
+    <section aria-labelledby={`universal-${media}-heading`}>
+      <h2 id={`universal-${media}-heading`} className="mb-3 text-lg font-semibold tracking-tight">
+        {title}
+      </h2>
+      <Grid
+        items={items}
+        loading={query.isFetching && items.length === 0}
+        fetching={query.isFetching}
+        hasNext={!!query.data?.hasNextPage}
+        onLoadMore={() => setPage(current => current + 1)}
+        sourceId={sourceId}
+      />
+    </section>
+  );
+}
+
+function UniversalPopularSections({
+  sourceId,
+  nsfw,
+  poster,
+  sort,
+}: {
+  sourceId: string;
+  nsfw: string;
+  poster: string;
+  sort: string | null;
+}) {
+  return (
+    <div className="space-y-10">
+      <UniversalPopularSection media="manga" title="Popular manga" sourceId={sourceId} nsfw={nsfw} poster={poster} sort={sort} />
+      <UniversalPopularSection media="anime" title="Popular anime" sourceId={sourceId} nsfw={nsfw} poster={poster} sort={sort} />
+      <UniversalPopularSection media="novel" title="Popular novels" sourceId={sourceId} nsfw={nsfw} poster={poster} sort={sort} />
+      <div className="flex justify-center py-2">
+        <SourceBrowseNativeAd />
+      </div>
     </div>
   );
 }
@@ -271,6 +353,10 @@ export default function SourceBrowsePage() {
   const isSearching = searchQuery.length > 0;
   const isTagFiltering = hasAppliedTags && !isSearching;
   const isFiltering = hasAppliedTags || isSearching;
+  const isUniversalHome = sourceId === "builtin.universal"
+    && tab === "popular"
+    && !isFiltering
+    && mediaType === "all";
   // The global X-Source header is updated in an effect. Direct navigation can
   // start the first query before that effect runs, so bind the route source
   // explicitly to every server request.
@@ -302,7 +388,7 @@ export default function SourceBrowsePage() {
     queryFn: () => clientAdapter
       ? clientAdapter.popular(popularPage).catch(() => serverFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
       : serverFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
-    enabled: online && !!sourceId && !!source && tab === "popular" && !isFiltering,
+    enabled: online && !!sourceId && !!source && tab === "popular" && !isFiltering && !isUniversalHome,
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
@@ -727,7 +813,7 @@ export default function SourceBrowsePage() {
               </Popover>
             )}
 
-            <SourceBrowseNativeAd />
+            {!isUniversalHome && <SourceBrowseNativeAd />}
 
             {inFilterMode && (
               <button
@@ -779,7 +865,14 @@ export default function SourceBrowsePage() {
 
       {/* Content */}
       <main className="flex-1 container mx-auto px-4 py-3 max-w-7xl">
-        {isSourceError && gridItems.length === 0 ? (
+        {isUniversalHome ? (
+          <UniversalPopularSections
+            sourceId={sourceId}
+            nsfw={commonOpts.nsfw}
+            poster={commonOpts.poster}
+            sort={popularSort}
+          />
+        ) : isSourceError && gridItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
             <AlertTriangle className="h-12 w-12 text-amber-500" />
             <h2 className="text-lg font-semibold">Couldn't load {source.name}</h2>

@@ -4,7 +4,7 @@ export interface ClientMangaSummary {
   thumbnail: string;
   type: string;
   isNsfw: boolean;
-  mediaType?: "manga" | "anime";
+  mediaType?: "manga" | "anime" | "novel";
 }
 
 export interface ClientListResponse {
@@ -29,7 +29,7 @@ export interface ClientMangaDetail {
   score: string;
   scorePosition: "top" | "bottom" | "none";
   sourceTags?: Array<{ id: string; name: string; group?: string }>;
-  mediaType?: "manga" | "anime";
+  mediaType?: "manga" | "anime" | "novel";
 }
 
 export interface ClientChapter {

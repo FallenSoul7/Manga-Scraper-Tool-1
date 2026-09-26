@@ -87,7 +87,7 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
       if (!id || seen.has(id)) return;
       seen.add(id);
       const thumbnail = imgAttr(root.find(".cover img, .book-img img, img").first());
-      items.push({ id: encodeURIComponent(id), title, thumbnail: absUrl(base, thumbnail), type: "Novel", isNsfw: false });
+      items.push({ id: encodeURIComponent(id), title, thumbnail: absUrl(base, thumbnail), type: "Novel", isNsfw: false, mediaType: "novel" });
     });
     return items.slice(0, 50);
   }
@@ -125,7 +125,7 @@ export function createNovelSiteSource(opts: NovelSiteOptions): MangaSource {
         || $("meta[property='og:image'], meta[name='image']").first().attr("content") || "";
       const genres = $(".genres a, .genre a, .categories a, a[href*='genre']").map((_i, el) => clean($(el).text())).get().filter(Boolean);
       const status = clean($(".status, [itemprop='status']").first().text()) || "Unknown";
-      return { id, title, author, artist: "", synopsis, altTitles: [], status, type: "Novel", isNsfw: false, rating: 0, thumbnail: absUrl(base, thumbnail), genres, score: "", scorePosition: "none" };
+      return { id, title, author, artist: "", synopsis, altTitles: [], status, type: "Novel", isNsfw: false, rating: 0, thumbnail: absUrl(base, thumbnail), genres, score: "", scorePosition: "none", mediaType: "novel" };
     },
     async chapters(mangaId: string, _dedupe: boolean): Promise<ChapterListResponse> {
       const { $ } = await fetchPage(novelPath(mangaId));

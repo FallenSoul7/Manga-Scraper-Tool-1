@@ -128,7 +128,7 @@ function parseMediaId(value: string, fallback: "manga" | "anime" = "manga"): { k
 }
 
 function mediaFilter(opts: ListOptions): "all" | "manga" | "anime" {
-  return opts.media ?? "all";
+  return opts.media === "manga" || opts.media === "anime" ? opts.media : "all";
 }
 
 interface MediaEdge {

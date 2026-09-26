@@ -5,7 +5,7 @@ export interface ListOptions {
   nsfw: boolean;
   poster: PosterQuality;
   /** Optional media filter for dual-media sources such as AllManga. */
-  media?: "all" | "manga" | "anime";
+  media?: "all" | "manga" | "anime" | "novel";
   /** Tag IDs (source-specific, e.g. comix `term_id`s) to filter the listing by. */
   tagIds?: string[];
   /** Optional sort key passed through from the client (source-defined values). */
@@ -35,7 +35,7 @@ export interface MangaSummary {
   type: string;
   isNsfw: boolean;
   /** Normalized media kind for sources that expose more than one kind. */
-  mediaType?: "manga" | "anime";
+  mediaType?: "manga" | "anime" | "novel";
 }
 
 export interface MangaListResponse {
@@ -65,7 +65,7 @@ export interface MangaDetail {
   genres: string[];
   score: string;
   scorePosition: "top" | "bottom" | "none";
-  mediaType?: "manga" | "anime";
+  mediaType?: "manga" | "anime" | "novel";
   /** Source-specific tags with IDs, used to enable clickable tag navigation. */
   sourceTags?: MangaDetailSourceTag[];
 }

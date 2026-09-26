@@ -11,7 +11,8 @@ import type {
 } from "./types";
 
 export const UNIVERSAL_SOURCE_ID = "builtin.universal";
-type SourceEntry = { sourceId: string; mangaId: string; title: string; thumbnail: string; mediaType?: "manga" | "anime" };
+type MediaType = "manga" | "anime" | "novel";
+type SourceEntry = { sourceId: string; mangaId: string; title: string; thumbnail: string; mediaType?: MediaType };
 type UniversalGroup = { entries: SourceEntry[] };
 
 // Keep blocked/catalog-only handlers out of Universal. A single dead source
@@ -54,11 +55,17 @@ function groupKey(item: MangaSummary): string {
 function isAnime(item: MangaSummary): boolean {
   return item.mediaType === "anime" || /anime/i.test(item.type);
 }
+function isNovel(item: MangaSummary): boolean {
+  return item.mediaType === "novel" || /^novel$/i.test(item.type);
+}
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error("source timeout")), ms))]);
 }
 function proxyMedia(sourceId: string, url: string): string {
-  return PROXIED_MEDIA_SOURCES.has(sourceId) && /^https:\/\//i.test(url)
+  // AnimeGG episode pages are HTML player embeds, not image media. Keep the
+  // original URL so its popup/player bootstrap can run in the iframe.
+  const isAnimeEmbed = sourceId === "en.animegg" && /\/embed\//i.test(url);
+  return !isAnimeEmbed && PROXIED_MEDIA_SOURCES.has(sourceId) && /^https:\/\//i.test(url)
     ? `/api/source-media?source=${encodeURIComponent(sourceId)}&url=${encodeURIComponent(url)}`
     : url;
 }
@@ -93,7 +100,8 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
         if (!item) continue;
         if (!opts.nsfw && item.isNsfw) continue;
         if (opts.media === "anime" && !isAnime(item)) continue;
-        if (opts.media === "manga" && isAnime(item)) continue;
+        if (opts.media === "manga" && (isAnime(item) || isNovel(item))) continue;
+        if (opts.media === "novel" && !isNovel(item)) continue;
         const key = groupKey(item);
         if (!key) continue;
         const entry: SourceEntry = { sourceId: sources[index].id, mangaId: item.id, title: item.title, thumbnail: item.thumbnail, mediaType: item.mediaType };
@@ -106,7 +114,12 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       // Source order is the popularity/priority order supplied by the working registry.
       // The first source title and cover are the representative card for the merged group.
       const representative = group.entries[0];
-      return { id: encodeGroup(group), title: representative.title, thumbnail: proxyMedia(representative.sourceId, representative.thumbnail), type: representative.mediaType === "anime" ? "Anime" : "Manga", isNsfw: false, mediaType: representative.mediaType } satisfies MangaSummary;
+      const type = representative.mediaType === "anime"
+        ? "Anime"
+        : representative.mediaType === "novel"
+          ? "Novel"
+          : "Manga";
+      return { id: encodeGroup(group), title: representative.title, thumbnail: proxyMedia(representative.sourceId, representative.thumbnail), type, isNsfw: false, mediaType: representative.mediaType } satisfies MangaSummary;
     });
     return { items, page: opts.page, hasNextPage: results.some(result => result.status === "fulfilled" && result.value.hasNextPage) };
   }
