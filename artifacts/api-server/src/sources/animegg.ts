@@ -6,7 +6,8 @@ const BASE = "https://www.animegg.org";
 const ANIMEGG_ICON = "/public/source-icons/en.animegg.svg";
 const BROWSE_FALLBACK = [["one-piece", "One Piece"], ["naruto-shippuden", "Naruto Shippuden"], ["detectiveconan", "Detective Conan"], ["bleach", "Bleach"]] as const;
 const ANIME_GENRES = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Sports", "Thriller", "Supernatural", "Historical", "School", "Shounen", "Shoujo", "Music", "Military", "Psychological"];
-const http = axios.create({ timeout: 25000, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36", Accept: "text/html,application/json;q=0.9,*/*;q=0.8", Referer: `${BASE}/` } });
+const HTML_REQUEST_TIMEOUT_MS = 40_000;
+const http = axios.create({ timeout: HTML_REQUEST_TIMEOUT_MS, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36", Accept: "text/html,application/json;q=0.9,*/*;q=0.8", Referer: `${BASE}/` } });
 const HTML_CACHE_TTL_MS = 15 * 60 * 1000;
 const HTML_STALE_TTL_MS = 24 * 60 * 60 * 1000;
 const htmlCache = new Map<string, { expiresAt: number; data: string }>();
@@ -91,7 +92,7 @@ function parseListing(document: cheerio.CheerioAPI, page: number): MangaListResp
 
 async function listing(path: string, page: number): Promise<MangaListResponse> {
   const separator = path.includes("?") ? "&" : "?";
-  const html = await getHtml(`${BASE}${path}${separator}limit=25&start=${(page - 1) * 25}`, 8000);
+  const html = await getHtml(`${BASE}${path}${separator}limit=25&start=${(page - 1) * 25}`, HTML_REQUEST_TIMEOUT_MS);
   return parseListing(cheerio.load(html), page);
 }
 
@@ -114,7 +115,7 @@ async function search(query: string, opts: ListOptions): Promise<MangaListRespon
   if (!query.trim() && genre) return listing(genre, opts.page).catch(() => fallbackListing(opts.page));
   if (!query.trim()) return listing("/popular-series", opts.page).catch(() => fallbackListing(opts.page));
   const searchPath = `/search/?q=${encodeURIComponent(query.trim())}&limit=25&start=${(opts.page - 1) * 25}`;
-  const html = await getHtml(`${BASE}${searchPath}`, 8000);
+  const html = await getHtml(`${BASE}${searchPath}`, HTML_REQUEST_TIMEOUT_MS);
   const $ = cheerio.load(html);
   const seen = new Set<string>();
   const items = $(".media.searchre").toArray().flatMap(el => {
@@ -132,7 +133,7 @@ async function details(id: string): Promise<MangaDetail> {
   const slug = slugFromId(id);
   let response: { data: string };
   try {
-    response = { data: await getHtml(`${BASE}/series/${encodeURIComponent(slug)}`, 8000) };
+    response = { data: await getHtml(`${BASE}/series/${encodeURIComponent(slug)}`, HTML_REQUEST_TIMEOUT_MS) };
   } catch {
     return fallbackDetail(slug);
   }
@@ -151,7 +152,7 @@ async function chapters(id: string): Promise<ChapterListResponse> {
   const slug = slugFromId(id);
   let response: { data: string };
   try {
-    response = { data: await getHtml(`${BASE}/series/${encodeURIComponent(slug)}`, 8000) };
+    response = { data: await getHtml(`${BASE}/series/${encodeURIComponent(slug)}`, HTML_REQUEST_TIMEOUT_MS) };
   } catch {
     return { items: [] };
   }
@@ -169,7 +170,7 @@ async function chapters(id: string): Promise<ChapterListResponse> {
 
 async function pages(chapterId: string): Promise<PageListResponse> {
   const episodeUrl = absolute(decodeURIComponent(chapterId));
-  const response = { data: await getHtml(episodeUrl, 8000) };
+  const response = { data: await getHtml(episodeUrl, HTML_REQUEST_TIMEOUT_MS) };
   const $ = cheerio.load(response.data);
   const tracks: VideoTrack[] = $("#videos a[data-toggle='tab']").toArray().flatMap((el) => {
     const version = ($(el).attr("data-version") || "").toLowerCase();

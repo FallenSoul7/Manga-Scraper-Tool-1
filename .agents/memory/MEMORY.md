@@ -15,3 +15,4 @@
 - [Scrapling browser dependency](scrapling-curl-cffi.md) — Scrapling 0.4.x lazily imports curl_cffi for StealthyFetcher; health must reflect browser-engine readiness.
 - [Web workspace dependency repair](web-workspace-dependencies.md) — workspace-scoped pnpm install may be needed when the package installer targets the monorepo root.
 - [Type contract drift](type-contract-drift.md) — source routes must use MangaSource details/chapters/pages, and Plyr's bundled declarations need an explicit default-import exception.
+- [AnimeGG response latency](animegg-response-latency.md) — valid series pages can take 23–30s; short timeouts cause false Cloudflare fallbacks, so retain successful HTML in cache.
