@@ -11,6 +11,7 @@ import type {
 } from "./types";
 
 export const UNIVERSAL_SOURCE_ID = "builtin.universal";
+const ANIMEGG_ICON = "/public/source-icons/en.animegg.svg";
 type MediaType = NonNullable<MangaSummary["mediaType"]>;
 type SourceEntry = { sourceId: string; mangaId: string; title: string; thumbnail: string; mediaType?: MediaType };
 type UniversalGroup = { entries: SourceEntry[] };
@@ -59,6 +60,12 @@ function groupKey(item: MangaSummary): string {
 }
 function isAnime(item: MangaSummary): boolean {
   return item.mediaType === "anime" || /anime/i.test(item.type);
+}
+function preferredEntry(group: UniversalGroup): SourceEntry {
+  // In the All view, a title such as One Piece can exist in both manga and
+  // anime sources. Prefer the anime entry so Universal keeps its media type,
+  // icon, chapters, and video-player route instead of becoming a manga card.
+  return group.entries.find(entry => entry.mediaType === "anime") ?? group.entries[0];
 }
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error("source timeout")), ms))]);
@@ -115,10 +122,9 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       }
     }
     const items = Array.from(groups.values()).map(group => {
-      // Source order is the popularity/priority order supplied by the working registry.
-      // The first source title and cover are the representative card for the merged group.
-      const representative = group.entries[0];
-      return { id: encodeGroup(group), title: representative.title, thumbnail: proxyMedia(representative.sourceId, representative.thumbnail), type: representative.mediaType === "anime" ? "Anime" : "Manga", isNsfw: false, mediaType: representative.mediaType } satisfies MangaSummary;
+      const representative = preferredEntry(group);
+      const thumbnail = representative.thumbnail || (representative.mediaType === "anime" ? ANIMEGG_ICON : "");
+      return { id: encodeGroup(group), title: representative.title, thumbnail: proxyMedia(representative.sourceId, thumbnail), type: representative.mediaType === "anime" ? "Anime" : "Manga", isNsfw: false, mediaType: representative.mediaType } satisfies MangaSummary;
     });
     return { items, page: opts.page, hasNextPage: results.some(result => result.status === "fulfilled" && result.value.hasNextPage) };
   }
@@ -150,11 +156,13 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
     details: async (id, opts: DetailOptions): Promise<MangaDetail> => {
       const group = decodeGroup(id);
       const sources = workingSources();
-      const entry = group.entries.find(item => sources.some(source => source.id === item.sourceId));
-      if (!entry) throw new Error("Universal source is unavailable");
+      const availableEntries = group.entries.filter(item => sources.some(source => source.id === item.sourceId));
+      if (availableEntries.length === 0) throw new Error("Universal source is unavailable");
+      const entry = preferredEntry({ entries: availableEntries });
       const source = sources.find(item => item.id === entry.sourceId)!;
        const detail = await withTimeout(source.details(entry.mangaId, opts), sourceTimeout(source.id));
-      return { ...detail, id: encodeGroup(group), title: detail.title || entry.title, thumbnail: proxyMedia(entry.sourceId, detail.thumbnail) };
+      const thumbnail = detail.thumbnail || entry.thumbnail || (entry.mediaType === "anime" ? ANIMEGG_ICON : "");
+      return { ...detail, id: encodeGroup(group), title: detail.title || entry.title, thumbnail: proxyMedia(entry.sourceId, thumbnail) };
     },
     chapters: async (mangaId, dedupe): Promise<ChapterListResponse> => {
       const group = decodeGroup(mangaId);
