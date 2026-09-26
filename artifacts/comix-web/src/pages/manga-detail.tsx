@@ -374,15 +374,9 @@ export default function MangaDetail() {
       .map(([code, count]) => ({ code, count, name: LANG_NAMES[code] ?? code.toUpperCase() }));
   }, [allChapters]);
 
-  const didAutoLang = useRef(false);
-  useEffect(() => {
-    if (didAutoLang.current || availableLanguages.length === 0) return;
-    didAutoLang.current = true;
-    const hasEn = availableLanguages.some(l => l.code === "en");
-    setSelectedLang(hasEn ? "en" : availableLanguages[0]!.code);
-  }, [availableLanguages]);
-
-  useEffect(() => { didAutoLang.current = false; setSelectedLang(null); }, [id]);
+  // Do not silently select English. Universal may contain several languages
+  // and translation groups; the initial view must show them all.
+  useEffect(() => { setSelectedLang(null); }, [id]);
 
   const scanlatorGroups = useMemo(() => {
     const map = new Map<string, { name: string; count: number; hasOfficial: boolean }>();
@@ -406,9 +400,11 @@ export default function MangaDetail() {
     if (selectedLang) list = list.filter((ch: any) => (ch.lang ?? null) === selectedLang);
     list = selectedScanlator
       ? list.filter((ch: any) => (ch.scanlator || "Unknown") === selectedScanlator)
-      : dedupeChapters(list);
+      : effectiveSourceForKey === "builtin.universal"
+        ? list
+        : dedupeChapters(list);
     return [...list].sort((a, b) => sortAsc ? a.number - b.number : b.number - a.number);
-  }, [allChapters, selectedLang, selectedScanlator, sortAsc]);
+  }, [allChapters, selectedLang, selectedScanlator, sortAsc, effectiveSourceForKey]);
 
   const firstChapter = useMemo(() => {
     if (visibleChapters.length === 0) return null;
@@ -992,6 +988,7 @@ export default function MangaDetail() {
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <span>{format(new Date(chapter.date * 1000), 'MMM d, yyyy')}</span>
+                        {chapter.lang && chapter.lang !== "all" && <><span>·</span><span className="font-medium text-primary/80">{LANG_NAMES[chapter.lang] ?? chapter.lang.toUpperCase()}</span></>}
                         {chapter.scanlator && <><span>·</span><span className="truncate">{chapter.scanlator}</span></>}
                       </div>
                     </div>

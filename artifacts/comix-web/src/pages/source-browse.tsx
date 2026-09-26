@@ -170,7 +170,7 @@ export default function SourceBrowsePage() {
   const [searchQuery, setSearchQuery] = useState(
     () => storedSnapshot?.searchQuery ?? urlQ
   );
-  const isAllManga = sourceId === "en.allmanga";
+  const isAllManga = sourceId === "en.allmanga" || sourceId === "builtin.universal";
   const [mediaType, setMediaType] = useState<"all" | "manga" | "anime">(
     () => urlMediaType !== "all" ? urlMediaType : (storedSnapshot?.mediaType ?? "all"),
   );

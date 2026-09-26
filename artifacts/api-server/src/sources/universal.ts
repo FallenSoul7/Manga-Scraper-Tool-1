@@ -7,11 +7,22 @@ import type {
   MangaSource,
   MangaSummary,
   PageListResponse,
+  SourceTag,
 } from "./types";
 
 export const UNIVERSAL_SOURCE_ID = "builtin.universal";
 type SourceEntry = { sourceId: string; mangaId: string; title: string; thumbnail: string; mediaType?: "manga" | "anime" };
 type UniversalGroup = { entries: SourceEntry[] };
+
+// Keep blocked/catalog-only handlers out of Universal. A single dead source
+// must not make every browse request wait for the full timeout.
+const UNIVERSAL_SOURCE_IDS = new Set([
+  "all.mangadex", "en.asurascans", "all.webtoons", "all.atsu",
+  "en.resetscans", "all.thunderscans", "en.novelfull", "en.novelhall",
+  "en.animegg", "en.mangafreak", "en.comickfan",
+]);
+const REQUEST_TIMEOUT_MS = 7_000;
+const TAG_TIMEOUT_MS = 4_000;
 
 function encodeTuple(parts: [string, string]): string {
   return `universal:${Buffer.from(JSON.stringify(parts), "utf8").toString("base64url")}`;
@@ -40,21 +51,28 @@ function groupKey(item: MangaSummary): string {
 function isAnime(item: MangaSummary): boolean {
   return item.mediaType === "anime" || /anime/i.test(item.type);
 }
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error("source timeout")), ms))]);
+}
 
 /** Universal is a virtual source: it discovers titles across working sources,
  * groups matching series into one card, and routes every selected item back to
  * its original source. */
 export function createUniversalSource(getSources: () => MangaSource[]): MangaSource {
-  const workingSources = () => getSources().filter(source => source.id !== UNIVERSAL_SOURCE_ID && ![
-    "en.comix", "en.comickfan", "en.utoon", "en.manhuaplus", "en.elftoon", "en.allmanga",
-  ].includes(source.id));
+  const workingSources = () => getSources().filter(source => UNIVERSAL_SOURCE_IDS.has(source.id));
+  const sourceOpts = (source: MangaSource, opts: ListOptions): ListOptions => {
+    const tagIds = (opts.tagIds ?? []).flatMap(id => {
+      try {
+        const [sourceId, rawTag] = decodeTuple(id);
+        return sourceId === source.id ? [rawTag] : [];
+      } catch { return []; }
+    });
+    return { ...opts, tagIds };
+  };
 
-  async function aggregate(loader: (source: MangaSource) => Promise<MangaListResponse>, opts: ListOptions): Promise<MangaListResponse> {
+  async function aggregate(loader: (source: MangaSource, opts: ListOptions) => Promise<MangaListResponse>, opts: ListOptions): Promise<MangaListResponse> {
     const sources = workingSources();
-    const results = await Promise.allSettled(sources.map(source => Promise.race([
-      loader(source),
-      new Promise<MangaListResponse>((_, reject) => setTimeout(() => reject(new Error("source timeout")), 20_000)),
-    ])));
+    const results = await Promise.allSettled(sources.map(source => withTimeout(loader(source, sourceOpts(source, opts)), REQUEST_TIMEOUT_MS)));
     const groups = new Map<string, UniversalGroup>();
     results.forEach((result, index) => {
       if (result.status !== "fulfilled") return;
@@ -84,16 +102,32 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
     name: "Universal",
     lang: "all",
     isNsfw: false,
-    popular: opts => aggregate(source => source.popular(opts), opts),
-    latest: opts => aggregate(source => source.latest(opts), opts),
-    search: (query, opts) => aggregate(source => source.search(query, opts), opts),
+    popular: opts => aggregate((source, nextOpts) => source.popular(nextOpts), opts),
+    latest: opts => aggregate((source, nextOpts) => source.latest(nextOpts), opts),
+    search: (query, opts) => aggregate((source, nextOpts) => source.search(query, nextOpts), opts),
+    tags: async (): Promise<SourceTag[]> => {
+      const sources = workingSources();
+      const results = await Promise.allSettled(sources.filter(source => source.tags).map(async source => ({ source, tags: await withTimeout(source.tags!(), TAG_TIMEOUT_MS) })));
+      const tags: SourceTag[] = [];
+      const seen = new Set<string>();
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        for (const tag of result.value.tags) {
+          const key = `${result.value.source.id}|${tag.id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          tags.push({ id: encodeTuple([result.value.source.id, tag.id]), name: `${tag.name} · ${result.value.source.name}`, group: tag.group || result.value.source.name, count: tag.count });
+        }
+      }
+      return tags;
+    },
     details: async (id, opts: DetailOptions): Promise<MangaDetail> => {
       const group = decodeGroup(id);
       const sources = workingSources();
       const entry = group.entries.find(item => sources.some(source => source.id === item.sourceId));
       if (!entry) throw new Error("Universal source is unavailable");
       const source = sources.find(item => item.id === entry.sourceId)!;
-      const detail = await source.details(entry.mangaId, opts);
+      const detail = await withTimeout(source.details(entry.mangaId, opts), REQUEST_TIMEOUT_MS);
       return { ...detail, id: encodeGroup(group), title: detail.title || entry.title };
     },
     chapters: async (mangaId, dedupe): Promise<ChapterListResponse> => {
@@ -102,7 +136,9 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       const results = await Promise.allSettled(group.entries.map(async entry => {
         const source = sources.find(item => item.id === entry.sourceId);
         if (!source) throw new Error("source unavailable");
-        const response = await source.chapters(entry.mangaId, dedupe);
+        // Universal must receive every translation; source-level dedupe often
+        // intentionally keeps only one chapter number.
+        const response = await withTimeout(source.chapters(entry.mangaId, false), REQUEST_TIMEOUT_MS);
         return { entry, source, chapters: response.items };
       }));
       const seen = new Set<string>();
@@ -110,7 +146,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
         if (result.status !== "fulfilled") return [];
         return result.value.chapters.map(chapter => {
           const lang = chapter.lang || result.value.source.lang || "all";
-          const scanlator = chapter.scanlator || result.value.source.name;
+          const scanlator = chapter.scanlator?.trim() || result.value.source.name;
           // Keep translations distinct. Only an exact duplicate from the same
           // source/language/scanlator is collapsed.
           const key = `${result.value.entry.sourceId}|${lang}|${scanlator}|${chapter.number}|${chapter.title}`;
@@ -130,7 +166,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       const [sourceId, sourceChapterId] = decodeTuple(chapterId);
       const source = workingSources().find(item => item.id === sourceId);
       if (!source) throw new Error(`Universal source ${sourceId} is unavailable`);
-      const response = await source.pages(sourceChapterId);
+      const response = await withTimeout(source.pages(sourceChapterId), REQUEST_TIMEOUT_MS);
       return { ...response, chapterId, pages: response.pages };
     },
   };
