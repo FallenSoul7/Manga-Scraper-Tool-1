@@ -128,6 +128,16 @@ export const DEFAULT_SOURCE: InstalledSource = {
   isPinned: false,
 };
 
+export const UNIVERSAL_SOURCE: InstalledSource = {
+  id: 'builtin.universal',
+  name: 'Universal',
+  lang: 'all',
+  isNsfw: false,
+  iconUrl: null,
+  installedAt: 0,
+  isPinned: true,
+};
+
 const StoreStateSchema = z.object({
   library: z.record(z.string(), SavedMangaSchema),
   categories: z.array(CategorySchema),
@@ -171,8 +181,8 @@ const DEFAULT_STATE: StoreState = {
   searchHistory: [],
   scanlatorPrefs: {},
   chapterSortAsc: {},
-  installedSources: {},
-  activeSourceId: "",
+  installedSources: { [UNIVERSAL_SOURCE.id]: UNIVERSAL_SOURCE },
+  activeSourceId: UNIVERSAL_SOURCE.id,
   readingTimeMs: 0,
   sourceReaderDirections: {},
 };
@@ -228,6 +238,7 @@ function loadState(): StoreState {
       if (!validated.data.categories.find(c => c.id === 'default')) {
         validated.data.categories = [...DEFAULT_CATEGORIES, ...validated.data.categories];
       }
+      validated.data.installedSources[UNIVERSAL_SOURCE.id] ??= UNIVERSAL_SOURCE;
       // Comix is no longer pre-installed. Drop the legacy auto-installed copy
       // (installedAt === 0) so it behaves like any other optional source; a
       // copy the user installed manually (installedAt > 0) is kept.
@@ -237,7 +248,7 @@ function loadState(): StoreState {
       }
       // Make sure activeSourceId points at an installed source (or is empty)
       if (!validated.data.installedSources[validated.data.activeSourceId]) {
-        validated.data.activeSourceId = Object.keys(validated.data.installedSources)[0] ?? "";
+        validated.data.activeSourceId = UNIVERSAL_SOURCE.id;
       }
       // Migration: rename "My Koofr Library" → "K-Cafe" and ensure it is not pinned
       if (validated.data.installedSources["local.koofr"]) {
@@ -725,6 +736,7 @@ export const storeActions = {
   },
 
   uninstallSource(id: string) {
+    if (id === UNIVERSAL_SOURCE.id) return;
     if (!memoryState.installedSources[id]) return;
     const next = { ...memoryState.installedSources };
     delete next[id];

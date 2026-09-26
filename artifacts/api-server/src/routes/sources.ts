@@ -4,10 +4,21 @@ import catalogRaw from "../sources/catalog.generated.json" assert { type: "json"
 
 const router = Router();
 
+const universal = {
+  id: "builtin.universal",
+  slug: "builtin-universal",
+  name: "Universal",
+  lang: "all",
+  isNsfw: false,
+  versionCode: 1,
+  iconUrl: null,
+  supported: true,
+};
+
 const enriched = {
   generatedAt: catalogRaw.generatedAt,
-  count: catalogRaw.count,
-  extensions: (catalogRaw.extensions as Array<Record<string, unknown>>).map((ext) => ({
+  count: catalogRaw.count + 1,
+  extensions: [universal, ...(catalogRaw.extensions as Array<Record<string, unknown>>).map((ext) => ({
     id: ext.id,
     slug: ext.slug,
     name: ext.name,
@@ -18,7 +29,7 @@ const enriched = {
       ? `/public/source-icons/${ext.icon as string}`
       : ext.id === "all.atsu" ? "https://atsu.moe/favicon.ico" : null,
     supported: isSupported(ext.id as string),
-  })),
+  }))],
 };
 
 router.get("/catalog", (_req, res) => {

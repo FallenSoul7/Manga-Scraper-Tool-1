@@ -23,6 +23,7 @@ import { RoyalRoadSource } from "./royalroad";
 import { AnimeGGSource } from "./animegg";
 import { NovelFullSource, NovelHallSource } from "./novelsites";
 import { AtsuSource } from "./atsu";
+import { createUniversalSource } from "./universal";
 import catalogJson from "./catalog.generated.json" with { type: "json" };
 
 interface CatalogExtension {
@@ -123,6 +124,8 @@ register(createMangaThemesiaSource({
   lang: "all",
   mangaUrlDirectory: "/comics",
 }));
+
+register(createUniversalSource(() => Array.from(SOURCES_BY_ID.values())));
 
 export function getSource(id: string | undefined | null): MangaSource {
   const key = id && id.trim() ? id : "";
