@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 export const UNIVERSAL_SOURCE_ID = "builtin.universal";
-type MediaType = "manga" | "anime" | "novel";
+type MediaType = "manga" | "anime";
 type SourceEntry = { sourceId: string; mangaId: string; title: string; thumbnail: string; mediaType?: MediaType };
 type UniversalGroup = { entries: SourceEntry[] };
 
@@ -55,9 +55,6 @@ function groupKey(item: MangaSummary): string {
 function isAnime(item: MangaSummary): boolean {
   return item.mediaType === "anime" || /anime/i.test(item.type);
 }
-function isNovel(item: MangaSummary): boolean {
-  return item.mediaType === "novel" || /^novel$/i.test(item.type);
-}
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error("source timeout")), ms))]);
 }
@@ -100,8 +97,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
         if (!item) continue;
         if (!opts.nsfw && item.isNsfw) continue;
         if (opts.media === "anime" && !isAnime(item)) continue;
-        if (opts.media === "manga" && (isAnime(item) || isNovel(item))) continue;
-        if (opts.media === "novel" && !isNovel(item)) continue;
+        if (opts.media === "manga" && isAnime(item)) continue;
         const key = groupKey(item);
         if (!key) continue;
         const entry: SourceEntry = { sourceId: sources[index].id, mangaId: item.id, title: item.title, thumbnail: item.thumbnail, mediaType: item.mediaType };
@@ -114,12 +110,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       // Source order is the popularity/priority order supplied by the working registry.
       // The first source title and cover are the representative card for the merged group.
       const representative = group.entries[0];
-      const type = representative.mediaType === "anime"
-        ? "Anime"
-        : representative.mediaType === "novel"
-          ? "Novel"
-          : "Manga";
-      return { id: encodeGroup(group), title: representative.title, thumbnail: proxyMedia(representative.sourceId, representative.thumbnail), type, isNsfw: false, mediaType: representative.mediaType } satisfies MangaSummary;
+      return { id: encodeGroup(group), title: representative.title, thumbnail: proxyMedia(representative.sourceId, representative.thumbnail), type: representative.mediaType === "anime" ? "Anime" : "Manga", isNsfw: false, mediaType: representative.mediaType } satisfies MangaSummary;
     });
     return { items, page: opts.page, hasNextPage: results.some(result => result.status === "fulfilled" && result.value.hasNextPage) };
   }
