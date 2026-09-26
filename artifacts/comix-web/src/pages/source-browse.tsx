@@ -46,6 +46,30 @@ interface PageSnapshot {
 type TagTriState = "include" | "exclude";
 type ActiveTab = "popular" | "latest" | "filter";
 
+function SourceBrowseNativeAd() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const script = document.createElement("script");
+    script.async = true;
+    script.setAttribute("data-cfasync", "false");
+    script.src = "https://pl31519546.profitableratecpmnetwork.com/8700fc654fef9a8cd748607dfb63f672/invoke.js";
+    container.appendChild(script);
+    return () => {
+      script.remove();
+      container.replaceChildren();
+    };
+  }, []);
+
+  return (
+    <div className="h-8 min-w-[116px] max-w-[150px] flex-1 overflow-hidden rounded-full border border-primary/20 bg-primary/5">
+      <div ref={containerRef} id="container-8700fc654fef9a8cd748607dfb63f672" className="h-full w-full" />
+    </div>
+  );
+}
+
 interface PopularSortOption { value: string; label: string; }
 interface CatalogEntry {
   id: string; name: string; lang: string; isNsfw: boolean;
@@ -702,6 +726,8 @@ export default function SourceBrowsePage() {
                 </PopoverContent>
               </Popover>
             )}
+
+            <SourceBrowseNativeAd />
 
             {inFilterMode && (
               <button

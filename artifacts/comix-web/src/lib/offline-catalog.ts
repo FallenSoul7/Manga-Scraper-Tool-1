@@ -2,8 +2,10 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { useStore, getStoreSnapshot, type StoreState } from "@/lib/storage";
 import { mediaImage } from "@/lib/utils";
 
-const STORAGE_KEY = "comihub-offline-catalog-v1";
-const SOURCE_CATALOG_KEY = "comihub-offline-source-catalog-v1";
+// Bump the cache namespace when catalog policy/visibility metadata changes so
+// clients do not keep rendering a pre-policy catalog indefinitely.
+const STORAGE_KEY = "comihub-offline-catalog-v2";
+const SOURCE_CATALOG_KEY = "comihub-offline-source-catalog-v2";
 
 export interface OfflineCatalogSnapshot {
   version: 1;
