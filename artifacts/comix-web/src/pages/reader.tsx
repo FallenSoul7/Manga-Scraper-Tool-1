@@ -383,8 +383,16 @@ export default function Reader() {
   };
 
   const goBack = () => {
-    if (window.history.length > 1) window.history.back();
-    else setLocation(mangaId ? `/manga/${mangaId}` : "/");
+    // Do not use browser history here: reader navigation and automatic chapter
+    // loading can leave alternating reader entries (4 → 5 → 4). Always return
+    // directly to the current title's chapter list.
+    if (mangaId && sourceId) {
+      setLocation(`/sources/${encodeURIComponent(sourceId)}/manga/${encodeURIComponent(mangaId)}`);
+    } else if (mangaId) {
+      setLocation(`/manga/${encodeURIComponent(mangaId)}`);
+    } else {
+      setLocation("/sources");
+    }
   };
 
   const handleKeydown = (e: KeyboardEvent) => {

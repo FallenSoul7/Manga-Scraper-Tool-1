@@ -80,9 +80,15 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
     const sources = workingSources();
     const results = await Promise.allSettled(sources.map(source => withTimeout(loader(source, sourceOpts(source, opts)), REQUEST_TIMEOUT_MS)));
     const groups = new Map<string, UniversalGroup>();
-    results.forEach((result, index) => {
-      if (result.status !== "fulfilled") return;
-      for (const item of result.value.items) {
+    const sourceItems = results.map(result => result.status === "fulfilled" ? result.value.items : []);
+    const maxItems = Math.max(0, ...sourceItems.map(items => items.length));
+    // Round-robin the source result windows. This keeps Universal visually
+    // mixed (MangaDex, AnimeGG, novels, manhwa, etc.) rather than showing a
+    // full block of four rows from one extension before the next extension.
+    for (let row = 0; row < maxItems; row += 1) {
+      for (let index = 0; index < sourceItems.length; index += 1) {
+        const item = sourceItems[index][row];
+        if (!item) continue;
         if (!opts.nsfw && item.isNsfw) continue;
         if (opts.media === "anime" && !isAnime(item)) continue;
         if (opts.media === "manga" && isAnime(item)) continue;
@@ -93,7 +99,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
         if (!group.entries.some(existing => existing.sourceId === entry.sourceId && existing.mangaId === entry.mangaId)) group.entries.push(entry);
         groups.set(key, group);
       }
-    });
+    }
     const items = Array.from(groups.values()).map(group => {
       // Source order is the popularity/priority order supplied by the working registry.
       // The first source title and cover are the representative card for the merged group.
