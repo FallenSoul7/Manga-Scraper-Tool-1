@@ -193,14 +193,9 @@ async function pages(chapterId: string): Promise<PageListResponse> {
     if (iframe) tracks.push({ id: "default", label: "Original / unavailable track details", url: absolute(iframe), kind: "original" });
   }
   if (!tracks.length) throw new Error(`AnimeGG has no playable embed for ${episodeUrl}`);
-  // Serve the original embed through the same-origin route while preserving
-  // its popup/player bootstrap scripts. This keeps the episode content
-  // playable without sanitizing the upstream player template.
-  const playableTracks = tracks.map(track => ({
-    ...track,
-    url: `/api/animegg/embed?url=${encodeURIComponent(track.url)}`,
-  }));
-  return { chapterId, pages: [{ index: 0, url: playableTracks[0].url, videoTracks: playableTracks }] };
+  // Keep the original AnimeGG embed origin so its user-gesture popup and
+  // first-party popup-frequency state work normally in the iframe.
+  return { chapterId, pages: [{ index: 0, url: tracks[0].url, videoTracks: tracks }] };
 }
 
 const AnimeGGSource: MangaSource = {
