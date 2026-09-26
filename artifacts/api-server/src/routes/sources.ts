@@ -11,9 +11,7 @@ const universal = {
   lang: "all",
   isNsfw: false,
   versionCode: 1,
-  // Universal contains anime sources as well as manga sources. Use the
-  // existing AnimeGG mark instead of leaving the virtual source header blank.
-  iconUrl: "/public/source-icons/en.animegg.svg",
+  iconUrl: "/public/source-icons/universal.svg",
   supported: true,
 };
 

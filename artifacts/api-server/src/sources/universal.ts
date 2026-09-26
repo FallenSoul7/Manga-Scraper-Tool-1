@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 export const UNIVERSAL_SOURCE_ID = "builtin.universal";
-const ANIMEGG_ICON = "/public/source-icons/en.animegg.svg";
+const UNIVERSAL_ICON = "/public/source-icons/universal.svg";
 type MediaType = NonNullable<MangaSummary["mediaType"]>;
 type SourceEntry = { sourceId: string; mangaId: string; title: string; thumbnail: string; mediaType?: MediaType };
 type UniversalGroup = { entries: SourceEntry[] };
@@ -123,7 +123,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
     }
     const items = Array.from(groups.values()).map(group => {
       const representative = preferredEntry(group);
-      const thumbnail = representative.thumbnail || (representative.mediaType === "anime" ? ANIMEGG_ICON : "");
+      const thumbnail = representative.thumbnail || (representative.mediaType === "anime" ? UNIVERSAL_ICON : "");
       return { id: encodeGroup(group), title: representative.title, thumbnail: proxyMedia(representative.sourceId, thumbnail), type: representative.mediaType === "anime" ? "Anime" : "Manga", isNsfw: false, mediaType: representative.mediaType } satisfies MangaSummary;
     });
     return { items, page: opts.page, hasNextPage: results.some(result => result.status === "fulfilled" && result.value.hasNextPage) };
@@ -161,7 +161,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       const entry = preferredEntry({ entries: availableEntries });
       const source = sources.find(item => item.id === entry.sourceId)!;
        const detail = await withTimeout(source.details(entry.mangaId, opts), sourceTimeout(source.id));
-      const thumbnail = detail.thumbnail || entry.thumbnail || (entry.mediaType === "anime" ? ANIMEGG_ICON : "");
+      const thumbnail = detail.thumbnail || entry.thumbnail || (entry.mediaType === "anime" ? UNIVERSAL_ICON : "");
       return { ...detail, id: encodeGroup(group), title: detail.title || entry.title, thumbnail: proxyMedia(entry.sourceId, thumbnail) };
     },
     chapters: async (mangaId, dedupe): Promise<ChapterListResponse> => {
