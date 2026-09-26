@@ -28,7 +28,7 @@ export default function VideoPlayer({ url, title, subtitle, tracks = [], onBack 
   const [selectedTrackId, setSelectedTrackId] = useState(tracks[0]?.id || "");
   const selectedTrack = tracks.find(track => track.id === selectedTrackId) || tracks[0];
   const playUrl = selectedTrack?.url || url;
-  const isEmbed = /animegg\.org\/embed\//i.test(playUrl);
+  const isEmbed = /animegg\.org\/embed\//i.test(playUrl) || /\/api\/animegg\/embed(?:\?|$)/i.test(playUrl);
   const videoRef = useRef<HTMLVideoElement>(null);
   const plyrRef = useRef<Plyr | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);

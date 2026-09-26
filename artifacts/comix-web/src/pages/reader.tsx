@@ -124,6 +124,7 @@ export default function Reader() {
   const [appendedChapters, setAppendedChapters] = useState<AppendedChapter[]>([]);
   const [loadingNextChapter, setLoadingNextChapter] = useState(false);
   const appendedIdsRef = useRef<Set<string>>(new Set());
+  const novelEndHandledRef = useRef(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -413,7 +414,24 @@ export default function Reader() {
     /\.(mp4|webm|mov|mkv|avi)$/i.test(decodeURIComponent(url)) ||
     /\/api\/allmanga\/video(\?|$)/i.test(url) ||
     /\/api\/koofr\/proxy\?.*video/i.test(decodeURIComponent(url)) ||
-    /animegg\.org\/embed\//i.test(url);
+    /animegg\.org\/embed\//i.test(url) || /\/api\/animegg\/embed(?:\?|$)/i.test(url);
+
+  const textPage = effectivePages.find((page) => Boolean(page.text));
+  useEffect(() => {
+    novelEndHandledRef.current = false;
+  }, [chapterId]);
+
+  useEffect(() => {
+    if (!textPage?.text || !nextChapter || novelEndHandledRef.current) return;
+    const onNovelScroll = () => {
+      const atEnd = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 56;
+      if (!atEnd || novelEndHandledRef.current) return;
+      novelEndHandledRef.current = true;
+      setLocation(readerUrl(nextChapter.id, mangaId || "", sourceId));
+    };
+    window.addEventListener("scroll", onNovelScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onNovelScroll);
+  }, [textPage?.text, nextChapter?.id, mangaId, sourceId, setLocation]);
 
   if (effectiveLoading) {
     return (
@@ -477,14 +495,22 @@ export default function Reader() {
   }
 
   // ── Text content → render dedicated novel reader ────────────────────────
-  const textPage = effectivePages.find((page) => Boolean(page.text));
   if (textPage?.text) {
     const novelTitle = effectiveMangaData?.title ?? "Novel";
     const chapterTitle = textPage.title || effectiveChapterData.find(c => String(c.id) === chapterId)?.title || "Chapter";
     const novelDark = novelBackground === "dark";
     return (
-      <div className={`min-h-[100dvh] ${novelDark ? "bg-[#171717] text-[#e7e5e4]" : "bg-[#f4f1ea] text-[#27231f]"}`} onClick={(e) => e.stopPropagation()}>
-        <div className={`sticky top-0 z-20 border-b backdrop-blur px-3 py-3 sm:px-6 ${novelDark ? "border-white/10 bg-[#171717]/95" : "border-black/10 bg-[#f4f1ea]/95"}`}>
+      <div
+        className={`min-h-[100dvh] ${novelDark ? "bg-[#171717] text-[#e7e5e4]" : "bg-[#f4f1ea] text-[#27231f]"}`}
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("button, [role=dialog], input, select")) return;
+          void toggleReaderControls();
+        }}
+      >
+        <div
+          className={`fixed inset-x-0 top-0 z-20 border-b backdrop-blur px-3 py-3 sm:px-6 transition-[transform,opacity] duration-300 ${novelDark ? "border-white/10 bg-[#171717]/95" : "border-black/10 bg-[#f4f1ea]/95"}`}
+          style={{ transform: showControls ? "translateY(0)" : "translateY(-110%)", opacity: showControls ? 1 : 0, pointerEvents: showControls ? "auto" : "none" }}
+        >
           <div className="mx-auto flex max-w-3xl items-center gap-3">
             <Button variant="ghost" size="icon" className={novelDark ? "text-white/80 hover:text-white" : ""} onClick={goBack} aria-label="Go back"><ChevronLeft className="h-5 w-5" /></Button>
             <div className="min-w-0 flex-1">
@@ -514,7 +540,7 @@ export default function Reader() {
           </div>
         </div>
         <article
-          className={`mx-auto max-w-3xl px-5 py-8 sm:px-8 sm:py-12 prose-p:leading-8 prose-headings:font-semibold ${novelDark ? "prose-invert" : "prose-stone"}`}
+          className={`mx-auto max-w-3xl px-5 pt-24 pb-8 sm:px-8 sm:pt-28 sm:pb-12 prose-p:leading-8 prose-headings:font-semibold ${novelDark ? "prose-invert" : "prose-stone"}`}
           dangerouslySetInnerHTML={{ __html: textPage.text }}
         />
       </div>

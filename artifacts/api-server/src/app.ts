@@ -10,6 +10,7 @@ import path from "path";
 import * as fs from "fs";
 import * as nodePath from "path";
 import axios from "axios";
+import * as cheerio from "cheerio";
 import { getKoofrCover, koofrStream, koofrThumbnail, isProxySafe, CACHE_ROOT as KOOFR_CACHE_ROOT } from "./sources/koofr.js";
 
 const app: Express = express();
@@ -185,6 +186,42 @@ app.get("/api/allmanga/video", async (req, res) => {
     logger.error("AllManga video proxy failed");
     if (!res.headersSent) return res.status(502).json({ error: "Failed to stream AllManga video" });
     return;
+  }
+});
+
+// AnimeGG embeds include a third-party popunder script which can prevent the
+// player from starting when the browser blocks the popup. Proxy only the
+// allow-listed AnimeGG embed page and remove ad scripts before framing it.
+app.get("/api/animegg/embed", async (req, res) => {
+  const rawUrl = String(req.query.url ?? "");
+  let target: URL;
+  try { target = new URL(rawUrl); } catch { return res.status(400).send("Invalid AnimeGG embed URL"); }
+  if (target.protocol !== "https:" || target.hostname !== "www.animegg.org" || !/^\/embed\//.test(target.pathname)) {
+    return res.status(403).send("AnimeGG embed URL is not allowed");
+  }
+  try {
+    const upstream = await axios.get<string>(target.toString(), {
+      timeout: 20_000,
+      headers: { "User-Agent": VIDEO_PROXY_UA, Referer: "https://www.animegg.org/" },
+      responseType: "text",
+    });
+    const $ = cheerio.load(upstream.data);
+    $("script[src]").each((_i, el) => {
+      const src = String($(el).attr("src") ?? "").toLowerCase();
+      if (/imidesestreat|bugyeed|visariomedia|cloudfront\.net\/assets\/scripts|jdygobphcbh|rnnkub|ad[sx]?\b/.test(src)) $(el).remove();
+    });
+    $("script:not([src])").each((_i, el) => {
+      const text = $(el).html() ?? "";
+      if (/popunder|popunders|topmostlayer|daae0314ee9b087bdd5e991fc425b009/i.test(text)) $(el).remove();
+      else if (/window\.open\s*\(/i.test(text)) $(el).html(text.replace(/window\.open\s*\([^;]+;?/gi, "void 0;"));
+    });
+    if ($("head base").length === 0) $("head").prepend(`<base href="${target.origin}${target.pathname.replace(/[^/]+$/, "")}">`);
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "private, max-age=60");
+    return res.send($.html());
+  } catch {
+    return res.status(502).send("AnimeGG player is temporarily unavailable");
   }
 });
 

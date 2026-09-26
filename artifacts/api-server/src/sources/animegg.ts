@@ -183,7 +183,11 @@ async function pages(chapterId: string): Promise<PageListResponse> {
     if (iframe) tracks.push({ id: "default", label: "Original / unavailable track details", url: absolute(iframe), kind: "original" });
   }
   if (!tracks.length) throw new Error(`AnimeGG has no playable embed for ${episodeUrl}`);
-  return { chapterId, pages: [{ index: 0, url: tracks[0].url, videoTracks: tracks }] };
+  const safeTracks = tracks.map(track => ({
+    ...track,
+    url: `/api/animegg/embed?url=${encodeURIComponent(track.url)}`,
+  }));
+  return { chapterId, pages: [{ index: 0, url: safeTracks[0].url, videoTracks: safeTracks }] };
 }
 
 const AnimeGGSource: MangaSource = {
