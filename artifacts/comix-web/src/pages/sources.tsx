@@ -34,6 +34,20 @@ interface CatalogResponse {
   generatedAt: number; count: number; supportedIds: string[]; extensions: CatalogExtension[];
 }
 
+async function loadCatalogWithFallback(): Promise<CatalogResponse> {
+  try {
+    return await customFetch<CatalogResponse>("/api/sources/catalog");
+  } catch (backendError) {
+    // The catalog is bundled with Vercel so a new device can still see and
+    // install source metadata when Render is suspended or temporarily down.
+    // Content requests still correctly use the backend and will report its
+    // unavailable state instead of pretending that scraping works offline.
+    const fallback = await fetch("/source-catalog.json", { cache: "no-cache" });
+    if (!fallback.ok) throw backendError;
+    return await fallback.json() as CatalogResponse;
+  }
+}
+
 // Prefix relative /api/... paths with the Render backend origin so that
 // <img> tags (which don't go through customFetch) load from the right host.
 const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
@@ -298,7 +312,7 @@ export default function SourcesPage() {
     refetch: refetchCatalog,
   } = useQuery<CatalogResponse>({
     queryKey: ["sources-catalog"],
-    queryFn: () => customFetch<CatalogResponse>("/api/sources/catalog"),
+    queryFn: loadCatalogWithFallback,
     // Catalog loading is safe to attempt even when navigator.onLine is stale
     // inside a preview iframe. React Query keeps cached data visible if the
     // request fails, while other source actions still honor the online flag.

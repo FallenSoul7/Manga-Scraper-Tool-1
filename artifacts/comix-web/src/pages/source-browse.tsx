@@ -99,6 +99,16 @@ function resolveAssetUrl(url: string | null | undefined): string | null {
   return url.startsWith("/") && API_ORIGIN ? `${API_ORIGIN}${url}` : url;
 }
 
+async function loadCatalogWithFallback(): Promise<{ extensions: CatalogEntry[] }> {
+  try {
+    return await customFetch<{ extensions: CatalogEntry[] }>("/api/sources/catalog");
+  } catch (backendError) {
+    const fallback = await fetch("/source-catalog.json", { cache: "no-cache" });
+    if (!fallback.ok) throw backendError;
+    return await fallback.json() as { extensions: CatalogEntry[] };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -122,7 +132,7 @@ export default function SourceBrowsePage() {
   // For non-installed (catalog-only) sources
   const { data: catalogData } = useQuery<{ extensions: CatalogEntry[] }>({
     queryKey: ["catalog"],
-    queryFn: () => customFetch<{ extensions: CatalogEntry[] }>("/api/sources/catalog"),
+    queryFn: loadCatalogWithFallback,
     enabled: online && !installedSource && !!sourceId,
     staleTime: Infinity,
   });
