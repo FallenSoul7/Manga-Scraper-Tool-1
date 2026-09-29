@@ -1,3 +1,5 @@
+const { Readable } = require("node:stream");
+
 const PRIMARY_BACKEND =
   process.env.COMIHUB_PRIMARY_BACKEND || "https://manga-scraper-tool-2.onrender.com";
 const FALLBACK_BACKEND =
@@ -18,6 +20,8 @@ const HOP_BY_HOP_RESPONSE_HEADERS = new Set([
   "keep-alive",
   "transfer-encoding",
   "upgrade",
+  "content-encoding",
+  "content-length",
 ]);
 
 function backendOrigin(value) {
@@ -70,10 +74,16 @@ async function fetchBackend(req, origin, body) {
 async function streamResponse(res, response) {
   copyResponseHeaders(res, response);
   res.status(response.status);
-  if (response.body) {
-    for await (const chunk of response.body) res.write(chunk);
+  if (!response.body) {
+    res.end();
+    return;
   }
-  res.end();
+  await new Promise((resolve, reject) => {
+    const stream = Readable.fromWeb(response.body);
+    stream.once("error", reject);
+    res.once("finish", resolve);
+    stream.pipe(res);
+  });
 }
 
 module.exports = async function handler(req, res) {
