@@ -112,8 +112,10 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
         const item = sourceItems[index][row];
         if (!item) continue;
         if (!opts.nsfw && item.isNsfw) continue;
-        if (opts.media === "anime" && !isAnime(item)) continue;
-        if (opts.media === "manga" && isAnime(item)) continue;
+        // The default Universal view is the manga/all section. Anime is a
+        // separate tab and must not be mixed into the manga detail flow.
+        // Only an explicit media=anime request may include anime entries.
+        if (opts.media === "anime" ? !isAnime(item) : isAnime(item)) continue;
         const key = groupKey(item);
         if (!key) continue;
         const entry: SourceEntry = { sourceId: sources[index].id, mangaId: item.id, title: item.title, thumbnail: item.thumbnail, mediaType: item.mediaType };
