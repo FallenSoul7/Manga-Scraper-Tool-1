@@ -2,8 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useStore, storeActions } from "@/lib/storage";
 import { setCachedUser, clearCachedUser } from "@/lib/auth-cache";
-
-const API = "https://comihub-backend.onrender.com";
+import { apiUrl } from "@/lib/api-url";
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
@@ -45,7 +44,7 @@ export default function LoginPage() {
       const endpoint = isLoginMode ? "/api/auth/login" : "/api/auth/register";
       const bodyData = isLoginMode ? { email, password } : { email, username, password, consentAccepted: true, consentVersion: "2026-09-22" };
 
-      const res = await fetch(`${API}${endpoint}`, {
+      const res = await fetch(apiUrl(endpoint), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -59,7 +58,7 @@ export default function LoginPage() {
         if (data.user) setCachedUser(data.user);
         else clearCachedUser();
 
-        await fetch(`${API}/api/library/sync`, {
+        await fetch(apiUrl("/api/library/sync"), {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -67,7 +66,7 @@ export default function LoginPage() {
         }).catch(() => {});
 
         try {
-          const getRes = await fetch(`${API}/api/library/sync`, { credentials: "include" });
+          const getRes = await fetch(apiUrl("/api/library/sync"), { credentials: "include" });
           if (getRes.ok) {
             const syncData = await getRes.json();
             if (syncData.data) storeActions.restoreCloudSync(syncData.data);
