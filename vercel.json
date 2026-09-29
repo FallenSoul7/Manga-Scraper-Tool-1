@@ -2,6 +2,10 @@
   "installCommand": "pnpm install --no-frozen-lockfile",
   "rewrites": [
     {
+      "source": "/api/((?!_proxy(?:/|$)).*)",
+      "destination": "/api/_proxy?__path=$1"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
