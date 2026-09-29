@@ -80,6 +80,7 @@ const NOT_WORKING_SOURCE_IDS = new Set([
   "en.utoon",
   "en.manhuaplus",
   "en.elftoon",
+  "en.onlythebesthentai",
   "en.allmanga",
 ]);
 
