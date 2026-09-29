@@ -24,6 +24,7 @@ const UNIVERSAL_SOURCE_IDS = new Set([
   "en.animegg", "en.mangafreak", "en.comickfan",
 ]);
 const REQUEST_TIMEOUT_MS = 7_000;
+const UNIVERSAL_PAGE_SIZE = 20;
 const SOURCE_REQUEST_TIMEOUTS: Record<string, number> = {
   // AnimeGG can take 23–30 seconds to return a valid Cloudflare-protected
   // HTML page. Keep the short timeout for every other Universal source.
@@ -126,7 +127,15 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
       const thumbnail = representative.thumbnail || (representative.mediaType === "anime" ? UNIVERSAL_ICON : "");
       return { id: encodeGroup(group), title: representative.title, thumbnail: proxyMedia(representative.sourceId, thumbnail), type: representative.mediaType === "anime" ? "Anime" : "Manga", isNsfw: false, mediaType: representative.mediaType } satisfies MangaSummary;
     });
-    return { items, page: opts.page, hasNextPage: results.some(result => result.status === "fulfilled" && result.value.hasNextPage) };
+    // Each source returns its own page window. The aggregate must expose a
+    // single bounded window too; otherwise page 1 expands to every source's
+    // page (often 200+ cards) and the frontend never gets a chance to load
+    // incrementally as the user scrolls.
+    return {
+      items: items.slice(0, UNIVERSAL_PAGE_SIZE),
+      page: opts.page,
+      hasNextPage: items.length > UNIVERSAL_PAGE_SIZE || results.some(result => result.status === "fulfilled" && result.value.hasNextPage),
+    };
   }
 
   return {
