@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'comihub-static-v13';
-const API_CACHE    = 'comihub-api-v8';
+const STATIC_CACHE = 'comihub-static-v14';
+const API_CACHE    = 'comihub-api-v9';
 const IMAGE_CACHE  = 'comihub-images-v1';
 const CHAPTER_IMAGE_CACHE = 'comihub-chapter-images-v1';
 const OFFLINE_IMAGE_CACHE = 'comihub-offline-v1';
@@ -45,6 +45,10 @@ self.addEventListener('activate', (event) => {
 
 function isApiRequest(url) {
   return API_PATTERNS.some((p) => url.pathname.includes(p));
+}
+function isFastCachedApiRequest(url) {
+  return ['/api/sources/catalog', '/api/popular', '/api/latest', '/api/search', '/api/tags']
+    .some((p) => url.pathname.includes(p));
 }
 function isImageRequest(url) {
   return IMAGE_PATTERNS.some((p) => url.pathname.includes(p)) ||
@@ -214,9 +218,12 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (isApiRequest(url)) {
-    // The catalogue must not remain stuck on an old response after a deploy.
-    // Use the network first, with the cache only as an offline fallback.
-    event.respondWith(networkFirst(event.request, API_CACHE, 24 * 3600));
+    // Browse data is safe to show from the previous request immediately while
+    // refreshing it in the background. sourceCacheKey keeps different source
+    // headers isolated, and a first visit still waits for the network.
+    event.respondWith(isFastCachedApiRequest(url)
+      ? staleWhileRevalidate(event.request, API_CACHE)
+      : networkFirst(event.request, API_CACHE, 24 * 3600));
   } else if (isHashedAsset(url) || isCodeAsset(url)) {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, null));
   } else if (isStaticAsset(url)) {

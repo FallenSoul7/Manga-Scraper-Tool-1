@@ -21,7 +21,7 @@ type UniversalGroup = { entries: SourceEntry[] };
 const UNIVERSAL_SOURCE_IDS = new Set([
   "all.mangadex", "en.asurascans", "all.webtoons", "all.atsu",
   "en.resetscans", "all.thunderscans", "en.novelfull",
-  "en.animegg", "en.mangafreak", "en.comickfan",
+  "en.animegg", "en.mangafreak",
 ]);
 const REQUEST_TIMEOUT_MS = 7_000;
 const UNIVERSAL_PAGE_SIZE = 20;
@@ -99,7 +99,7 @@ export function createUniversalSource(getSources: () => MangaSource[]): MangaSou
   };
 
   async function aggregate(loader: (source: MangaSource, opts: ListOptions) => Promise<MangaListResponse>, opts: ListOptions): Promise<MangaListResponse> {
-    const sources = workingSources();
+    const sources = workingSources().filter(source => opts.media === "anime" || source.id !== "en.animegg");
     const results = await Promise.allSettled(sources.map(source => withTimeout(loader(source, sourceOpts(source, opts)), sourceTimeout(source.id))));
     const groups = new Map<string, UniversalGroup>();
     const sourceItems = results.map(result => result.status === "fulfilled" ? result.value.items : []);
