@@ -115,15 +115,15 @@ router.get("/search", wrap(async (req) => {
 router.get("/manga/:id", wrap(async (req) => {
   const src = getSource(getSourceId(req));
   const q = req.query as Record<string, string>;
-  return src.details(String(req.params.id), {
-    poster: (["small", "medium", "large"].includes(q.poster)
-      ? q.poster
-      : "medium") as PosterQuality,
-    alt: q.alt === "true",
-    score: (["top", "bottom", "none"].includes(q.score)
-      ? q.score
-      : "none") as "top" | "bottom" | "none",
-  });
+  return cached(req, 5 * 60 * 1000, () => src.details(String(req.params.id), {
+      poster: (["small", "medium", "large"].includes(q.poster)
+        ? q.poster
+        : "medium") as PosterQuality,
+      alt: q.alt === "true",
+      score: (["top", "bottom", "none"].includes(q.score)
+        ? q.score
+        : "none") as "top" | "bottom" | "none",
+    }));
 }));
 
 // ── Chapter list ───────────────────────────────────────────────────────────
@@ -131,7 +131,7 @@ router.get("/manga/:id", wrap(async (req) => {
 router.get("/manga/:id/chapters", wrap(async (req) => {
   const src = getSource(getSourceId(req));
   const dedupe = req.query.dedupe !== "false";
-  return src.chapters(String(req.params.id), dedupe);
+  return cached(req, 5 * 60 * 1000, () => src.chapters(String(req.params.id), dedupe));
 }));
 
 // ── Chapter pages ──────────────────────────────────────────────────────────

@@ -131,6 +131,7 @@ export default function Reader() {
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   // Stores measured heights of rendered pages so off-screen placeholders keep correct scroll position
   const pageHeightsRef = useRef<Record<number, number>>({});
+  const novelScrollRestoredRef = useRef(false);
 
   const retryPage = (idx: number) => {
     setFailedImgs(prev => ({ ...prev, [idx]: false }));
@@ -427,7 +428,45 @@ export default function Reader() {
   const textPage = effectivePages.find((page) => Boolean(page.text));
   useEffect(() => {
     novelEndHandledRef.current = false;
+    novelScrollRestoredRef.current = false;
   }, [chapterId]);
+
+  // Text chapters have one logical page, so page indexes cannot preserve the
+  // reader's position. Store the document offset and restore it after the
+  // chapter HTML has been mounted.
+  useEffect(() => {
+    if (!textPage?.text || novelScrollRestoredRef.current) return;
+    const offset = currentProgress?.scrollOffset;
+    const restore = () => {
+      if (typeof offset === "number" && offset > 0) window.scrollTo({ top: offset, behavior: "auto" });
+      novelScrollRestoredRef.current = true;
+    };
+    requestAnimationFrame(restore);
+  }, [textPage?.text, currentProgress?.scrollOffset]);
+
+  useEffect(() => {
+    if (!textPage?.text || !mangaId || !effectiveMangaData || !effectiveChapterData.length) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const saveNovelPosition = () => {
+      const chapter = effectiveChapterData.find(c => sameChapterId(c.id, chapterId));
+      if (!chapter) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        storeActions.recordProgress({
+          mangaId, chapterId: chapter.id, chapterNumber: chapter.number,
+          chapterTitle: chapter.title, mangaTitle: effectiveMangaData.title,
+          mangaThumbnail: effectiveMangaData.thumbnail, totalPages: 1,
+          lastPageRead: 0, scrollOffset: Math.max(0, Math.round(window.scrollY)),
+          isRead: currentProgress?.isRead ?? false,
+        });
+      }, 350);
+    };
+    window.addEventListener("scroll", saveNovelPosition, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", saveNovelPosition);
+      clearTimeout(timer);
+    };
+  }, [textPage?.text, mangaId, effectiveMangaData, effectiveChapterData, chapterId, currentProgress?.isRead]);
 
   useEffect(() => {
     if (!textPage?.text || !nextChapter || novelEndHandledRef.current) return;

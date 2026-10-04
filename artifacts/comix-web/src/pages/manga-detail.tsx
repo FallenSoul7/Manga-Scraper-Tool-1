@@ -576,7 +576,7 @@ export default function MangaDetail() {
           {/* Blurred background — extends behind the floating top buttons */}
           <div className="absolute inset-0 overflow-hidden">
             <img
-              src={mediaImage(manga.thumbnail, sourceContext ?? undefined)}
+              src={mediaImage(manga.thumbnail, effectiveSourceForKey ?? undefined)}
               alt=""
               style={{ filter: "blur(24px)", objectFit: "cover", width: "100%", height: "100%" }}
             />
@@ -605,7 +605,7 @@ export default function MangaDetail() {
               title="Tap to zoom"
             >
               <img
-                src={mediaImage(manga.thumbnail, sourceContext ?? undefined)}
+                src={mediaImage(manga.thumbnail, effectiveSourceForKey ?? undefined)}
                 alt={manga.title}
                 className="w-full h-full object-cover"
               />
@@ -1069,7 +1069,7 @@ export default function MangaDetail() {
             <X className="h-5 w-5 text-white" />
           </button>
           <img
-            src={mediaImage(manga.thumbnail, sourceContext ?? undefined)}
+            src={mediaImage(manga.thumbnail, effectiveSourceForKey ?? undefined)}
             alt={manga.title}
             className="max-h-[85dvh] max-w-[85vw] rounded-xl shadow-2xl object-contain"
             onClick={e => e.stopPropagation()}

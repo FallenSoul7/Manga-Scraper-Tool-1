@@ -49,6 +49,7 @@ const ChapterProgressSchema = z.object({
   mangaThumbnail: z.string(),
   totalPages: z.number(),
   lastPageRead: z.number(),
+  scrollOffset: z.number().optional(),
   isRead: z.boolean(),
   updatedAt: z.number(),
 });
