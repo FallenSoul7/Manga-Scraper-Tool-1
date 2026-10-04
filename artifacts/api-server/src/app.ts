@@ -222,11 +222,44 @@ app.get("/api/animegg/embed", async (req, res) => {
 const SOURCE_MEDIA_HOSTS: Record<string, { hosts: string[]; referer: string }> = {
   "all.webtoons": { hosts: ["webtoon-phinf.pstatic.net"], referer: "https://www.webtoons.com/" },
   "all.atsu": { hosts: ["cdn.atsu.moe"], referer: "https://atsu.moe/" },
-  "en.resetscans": { hosts: ["cdn.resetscans.net", "www.resetscans.net"], referer: "https://www.resetscans.net/" },
+  "en.resetscans": { hosts: ["cdn.resetscans.net", "resetscans.net", ".resetscans.net"], referer: "https://www.resetscans.net/" },
   "en.novelfull": { hosts: ["novelfull.com", ".novelfull.com"], referer: "https://novelfull.com/" },
   "all.mangadex": { hosts: ["uploads.mangadex.org"], referer: "https://mangadex.org/" },
   "en.animegg": { hosts: ["vidcache.net", ".vidcache.net", "animegg.org", ".animegg.org"], referer: "https://www.animegg.org/" },
 };
+
+type MediaCacheEntry = { body: Buffer; contentType: string; expiresAt: number };
+const sourceMediaCache = new Map<string, MediaCacheEntry>();
+const sourceMediaInflight = new Map<string, Promise<MediaCacheEntry>>();
+const SOURCE_MEDIA_CACHE_TTL = 6 * 60 * 60 * 1000;
+const SOURCE_MEDIA_CACHE_MAX = 160;
+
+async function fetchSourceMedia(sourceId: string, targetUrl: string, source: { referer: string }): Promise<MediaCacheEntry> {
+  const key = `${sourceId}|${targetUrl}`;
+  const hit = sourceMediaCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit;
+  const pending = sourceMediaInflight.get(key);
+  if (pending) return pending;
+  const request = axios.get<ArrayBuffer>(targetUrl, {
+    responseType: "arraybuffer",
+    headers: { Referer: source.referer, Origin: new URL(source.referer).origin, "User-Agent": VIDEO_PROXY_UA, Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
+    timeout: 45_000, maxRedirects: 5, validateStatus: () => true,
+  }).then(upstream => {
+    const contentType = String(upstream.headers["content-type"] ?? "");
+    if (upstream.status >= 400 || contentType.includes("text/html")) throw new Error("Source media is temporarily unavailable");
+    const body = Buffer.from(upstream.data);
+    if (body.length > 12 * 1024 * 1024) throw new Error("Source media is too large");
+    if (sourceMediaCache.size >= SOURCE_MEDIA_CACHE_MAX && !sourceMediaCache.has(key)) {
+      const oldest = sourceMediaCache.keys().next().value;
+      if (oldest) sourceMediaCache.delete(oldest);
+    }
+    const entry = { body, contentType: contentType || "application/octet-stream", expiresAt: Date.now() + SOURCE_MEDIA_CACHE_TTL };
+    sourceMediaCache.set(key, entry);
+    return entry;
+  }).finally(() => sourceMediaInflight.delete(key));
+  sourceMediaInflight.set(key, request);
+  return request;
+}
 
 app.get("/api/source-media", async (req, res) => {
   const sourceId = String(req.query.source ?? "");
@@ -240,23 +273,11 @@ app.get("/api/source-media", async (req, res) => {
     return res.status(403).json({ error: "Media host is not allowed for this source" });
   }
   try {
-    const upstream = await axios.get(target.toString(), {
-      responseType: "stream",
-      headers: { Referer: source.referer, Origin: new URL(source.referer).origin, "User-Agent": VIDEO_PROXY_UA, Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
-      timeout: 120_000, maxRedirects: 5, validateStatus: () => true,
-    });
-    const contentType = String(upstream.headers["content-type"] ?? "");
-    if (upstream.status >= 400 || contentType.includes("text/html")) {
-      (upstream.data as any).destroy();
-      return res.status(502).json({ error: "Source media is temporarily unavailable" });
-    }
-    res.status(upstream.status);
-    res.setHeader("Cache-Control", "public, max-age=3600");
-    if (contentType) res.setHeader("Content-Type", contentType);
-    if (upstream.headers["content-length"]) res.setHeader("Content-Length", upstream.headers["content-length"] as string);
-    (upstream.data as NodeJS.ReadableStream).pipe(res);
-    (upstream.data as NodeJS.ReadableStream).on("error", () => { if (!res.headersSent) res.status(502).end(); });
-    return;
+    const media = await fetchSourceMedia(sourceId, target.toString(), source);
+    res.setHeader("Cache-Control", "public, max-age=21600, stale-while-revalidate=86400");
+    res.setHeader("Content-Type", media.contentType);
+    res.setHeader("Content-Length", media.body.length);
+    return res.send(media.body);
   } catch {
     logger.error({ sourceId }, "Source media proxy failed");
     if (!res.headersSent) return res.status(502).json({ error: "Failed to fetch source media" });

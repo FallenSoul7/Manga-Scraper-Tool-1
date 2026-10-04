@@ -1,6 +1,6 @@
-const STATIC_CACHE = 'comihub-static-v14';
+const STATIC_CACHE = 'comihub-static-v15';
 const API_CACHE    = 'comihub-api-v9';
-const IMAGE_CACHE  = 'comihub-images-v1';
+const IMAGE_CACHE  = 'comihub-images-v2';
 const CHAPTER_IMAGE_CACHE = 'comihub-chapter-images-v1';
 const OFFLINE_IMAGE_CACHE = 'comihub-offline-v1';
 const OFFLINE_PAGES_CACHE = 'comihub-offline-pages-v1';
@@ -15,7 +15,7 @@ const OWNED_CACHES = [
 ];
 
 const API_PATTERNS = ['/api/sources/catalog', '/api/popular', '/api/latest', '/api/search', '/api/tags', '/api/details', '/api/chapters', '/api/pages', '/api/manga', '/api/chapter'];
-const IMAGE_PATTERNS = ['/api/image'];
+const IMAGE_PATTERNS = ['/api/image', '/api/source-media'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

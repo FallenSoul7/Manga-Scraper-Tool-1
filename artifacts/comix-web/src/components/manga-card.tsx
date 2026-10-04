@@ -57,7 +57,7 @@ export const MangaCard = memo(function MangaCard({
     <div className="group relative cursor-pointer select-none">
       <div
         className={[
-          "relative aspect-[3/4] overflow-hidden rounded-xl bg-muted shadow-sm transition-all duration-300",
+              "relative aspect-[3/4] overflow-hidden rounded-xl bg-muted/60 shadow-sm transition-all duration-300",
           !isSelecting && "hover-elevate group-hover:shadow-md",
           isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "",
         ].filter(Boolean).join(" ")}
@@ -67,7 +67,7 @@ export const MangaCard = memo(function MangaCard({
             src={thumbnail}
             alt={manga.title}
             className={[
-              "h-full w-full object-cover object-center bg-black/10 transition-all duration-300",
+              "h-full w-full object-cover object-center bg-muted/60 transition-opacity duration-300",
               isSelected && "opacity-70",
             ].filter(Boolean).join(" ")}
             loading="lazy"

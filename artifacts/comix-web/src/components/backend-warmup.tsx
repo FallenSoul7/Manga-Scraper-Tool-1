@@ -35,6 +35,12 @@ export function BackendWarmup() {
   }, [queryClient]);
 
   useEffect(() => {
+    // Make the Extensions tab usable immediately. The static catalog is part
+    // of the Vercel bundle, so it does not depend on Render waking up.
+    void fetch("/source-catalog.json", { cache: "force-cache" })
+      .then(response => response.ok ? response.json() : null)
+      .then(catalog => { if (catalog) queryClient.setQueryData(["sources-catalog"], catalog); })
+      .catch(() => undefined);
     const controller = new AbortController();
     const showTimer = window.setTimeout(() => setVisible(true), SHOW_AFTER_MS);
     const timeoutTimer = window.setTimeout(() => setState("timeout"), GIVE_UP_AFTER_MS);
