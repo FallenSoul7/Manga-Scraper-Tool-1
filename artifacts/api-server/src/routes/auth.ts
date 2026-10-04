@@ -2,9 +2,10 @@ import { Router } from "express";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
+import postgres from "postgres";
 
 import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase";
-import { getDb } from "../db";
+import { getDb, isDbConfigured } from "../db";
 import { users } from "../schema";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
@@ -106,49 +107,47 @@ async function loadUser(id: string): Promise<GoogleUser | null> {
 
 class SupabaseSessionStore extends session.Store {
   private tableReady = false;
+  private sql: ReturnType<typeof postgres> | null = null;
+
+  private getSql() {
+    if (!this.sql && process.env["DATABASE_URL"]) {
+      this.sql = postgres(process.env["DATABASE_URL"], { ssl: "require", max: 5 });
+    }
+    return this.sql;
+  }
 
   private async ensureTable() {
     if (this.tableReady) return;
-    const sb = getSupabaseAdmin() as any;
-    if (!sb) return;
-    await sb.rpc("exec_sql", {
-      sql: `
+    const sql = this.getSql();
+    if (!sql) return;
+    try {
+      await sql`
         CREATE TABLE IF NOT EXISTS comihub_sessions (
-          sid  TEXT PRIMARY KEY,
+          sid TEXT PRIMARY KEY,
           data TEXT NOT NULL,
           expires_at TIMESTAMPTZ NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS comihub_sessions_expires_idx
-          ON comihub_sessions (expires_at);
-      `,
-    }).then(({ error }: { error?: { message?: string } }) => {
-      if (error) {
-        if (!error.message?.includes("already exists")) {
-          logger.warn("Session table setup warning");
-        }
-      } else {
-        this.tableReady = true;
-      }
-    }).catch(() => {});
-    this.tableReady = true;
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS comihub_sessions_expires_idx ON comihub_sessions (expires_at)`;
+      this.tableReady = true;
+    } catch {
+      logger.warn("Session table setup warning");
+    }
   }
 
   get(sid: string, callback: (err: any, session?: session.SessionData | null) => void) {
-    const sb = getSupabaseAdmin() as any;
-    if (!sb) return callback(null, null);
+    const sql = this.getSql();
+    if (!sql) return callback(null, null);
     this.ensureTable().then(async () => {
       try {
-        const { data, error } = await sb
-          .from("comihub_sessions")
-          .select("data, expires_at")
-          .eq("sid", sid)
-          .maybeSingle();
-        if (error || !data) return callback(null, null);
-        if (new Date((data as any).expires_at) < new Date()) {
-          await sb.from("comihub_sessions").delete().eq("sid", sid).then(() => {});
+        const rows = await sql`SELECT data, expires_at FROM comihub_sessions WHERE sid = ${sid} LIMIT 1`;
+        const data = rows[0] as { data: string; expires_at: Date } | undefined;
+        if (!data) return callback(null, null);
+        if (new Date(data.expires_at) < new Date()) {
+          await sql`DELETE FROM comihub_sessions WHERE sid = ${sid}`;
           return callback(null, null);
         }
-        callback(null, JSON.parse((data as any).data));
+        callback(null, JSON.parse(data.data));
       } catch (err) {
         callback(err);
       }
@@ -156,17 +155,18 @@ class SupabaseSessionStore extends session.Store {
   }
 
   set(sid: string, sessionData: session.SessionData, callback?: (err?: any) => void) {
-    const sb = getSupabaseAdmin() as any;
-    if (!sb) return callback?.();
+    const sql = this.getSql();
+    if (!sql) return callback?.();
     const expiresAt = (sessionData.cookie?.expires instanceof Date)
       ? sessionData.cookie.expires
       : new Date(Date.now() + SESSION_MAX_AGE);
     this.ensureTable().then(async () => {
       try {
-        await sb.from("comihub_sessions").upsert(
-          { sid, data: JSON.stringify(sessionData), expires_at: expiresAt.toISOString() },
-          { onConflict: "sid" },
-        );
+        await sql`
+          INSERT INTO comihub_sessions (sid, data, expires_at)
+          VALUES (${sid}, ${JSON.stringify(sessionData)}, ${expiresAt.toISOString()})
+          ON CONFLICT (sid) DO UPDATE SET data = EXCLUDED.data, expires_at = EXCLUDED.expires_at
+        `;
         callback?.();
       } catch (err) {
         callback?.(err);
@@ -175,31 +175,26 @@ class SupabaseSessionStore extends session.Store {
   }
 
   destroy(sid: string, callback?: (err?: any) => void) {
-    const sb = getSupabaseAdmin() as any;
-    if (!sb) return callback?.();
-    (getSupabaseAdmin() as any)!
-      .from("comihub_sessions")
-      .delete()
-      .eq("sid", sid)
+    const sql = this.getSql();
+    if (!sql) return callback?.();
+    sql`DELETE FROM comihub_sessions WHERE sid = ${sid}`
       .then(() => callback?.())
       .catch((err: any) => callback?.(err));
   }
 
   touch(sid: string, sessionData: session.SessionData, callback?: (err?: any) => void) {
-    const sb = getSupabaseAdmin() as any;
-    if (!sb) return callback?.();
+    const sql = this.getSql();
+    if (!sql) return callback?.();
     const expiresAt = (sessionData.cookie?.expires instanceof Date)
       ? sessionData.cookie.expires
       : new Date(Date.now() + SESSION_MAX_AGE);
-    sb.from("comihub_sessions")
-      .update({ expires_at: expiresAt.toISOString() })
-      .eq("sid", sid)
+    sql`UPDATE comihub_sessions SET expires_at = ${expiresAt.toISOString()} WHERE sid = ${sid}`
       .then(() => callback?.())
       .catch((err: any) => callback?.(err));
   }
 }
 
-const sessionStore = isSupabaseConfigured() ? new SupabaseSessionStore() : undefined;
+const sessionStore = isDbConfigured() ? new SupabaseSessionStore() : (isSupabaseConfigured() ? new SupabaseSessionStore() : undefined);
 
 export function buildSessionMiddleware() {
   return session({
