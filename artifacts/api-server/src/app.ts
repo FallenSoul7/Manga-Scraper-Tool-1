@@ -76,7 +76,13 @@ app.use((req, res, next) => {
   return next();
 });
 
-app.use(express.json({ limit: "4mb" }));
+app.use(express.json({
+  limit: "4mb",
+  verify: (req, _res, buffer) => {
+    // Paddle signs the exact raw JSON payload. Keep it only for webhook verification.
+    if ((req.url ?? "").includes("/paddle/webhook")) (req as any).rawBody = Buffer.from(buffer);
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: "256kb" }));
 
 // Apply session + passport globally so ALL routes (including /api/library) can use req.isAuthenticated()

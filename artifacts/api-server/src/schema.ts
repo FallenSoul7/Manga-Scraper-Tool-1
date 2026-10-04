@@ -22,7 +22,8 @@ export const librarySync = pgTable("library_sync", {
 export const subscriptions = pgTable("subscriptions", {
   userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   planKey: text("plan_key").notNull(),
-  paypalSubscriptionId: text("paypal_subscription_id").notNull().unique(),
+  // Keep the physical column name for compatibility with the existing production table.
+  paddleSubscriptionId: text("paypal_subscription_id").notNull().unique(),
   status: text("status").notNull().default("APPROVAL_PENDING"),
   expiresAt: timestamp("expires_at"),
   lastEvent: text("last_event"),

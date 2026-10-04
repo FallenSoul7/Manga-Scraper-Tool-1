@@ -81,7 +81,7 @@ router.post("/create-subscription", requireAuth, async (req, res) => {
     if (!approve) return res.status(502).json({ error: "PayPal did not return an approval URL." });
     if (isDbConfigured()) {
       const db = getDb();
-      await db.insert(subscriptions).values({ userId, planKey: key, paypalSubscriptionId: response.data.id, status: response.data.status || "APPROVAL_PENDING" }).onConflictDoUpdate({ target: subscriptions.userId, set: { planKey: key, paypalSubscriptionId: response.data.id, status: response.data.status || "APPROVAL_PENDING", updatedAt: new Date() } });
+      await db.insert(subscriptions).values({ userId, planKey: key, paddleSubscriptionId: response.data.id, status: response.data.status || "APPROVAL_PENDING" }).onConflictDoUpdate({ target: subscriptions.userId, set: { planKey: key, paddleSubscriptionId: response.data.id, status: response.data.status || "APPROVAL_PENDING", updatedAt: new Date() } });
     }
     res.json({ approvalUrl: approve, subscriptionId: response.data.id });
     return;
@@ -98,10 +98,10 @@ router.post("/cancel", requireAuth, async (req, res) => {
   const db = getDb();
   const rows = await db.select().from(subscriptions).where(eq(subscriptions.userId, userId));
   const subscription = rows[0];
-  if (!subscription?.paypalSubscriptionId) return res.status(404).json({ error: "No active subscription found." });
+  if (!subscription?.paddleSubscriptionId) return res.status(404).json({ error: "No active subscription found." });
   try {
     const token = await accessToken();
-    await axios.post(`${paypalBase()}/v1/billing/subscriptions/${subscription.paypalSubscriptionId}/cancel`, { reason: "Canceled by customer in ComiHub" }, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, timeout: 20_000 });
+    await axios.post(`${paypalBase()}/v1/billing/subscriptions/${subscription.paddleSubscriptionId}/cancel`, { reason: "Canceled by customer in ComiHub" }, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, timeout: 20_000 });
     await db.update(subscriptions).set({ status: "CANCEL_PENDING", updatedAt: new Date(), lastEvent: "CUSTOMER.CANCEL_REQUESTED" }).where(eq(subscriptions.userId, userId));
     return res.json({ ok: true });
   } catch (error: any) {
@@ -136,7 +136,7 @@ router.post("/webhook", async (req, res) => {
       const db = getDb();
       const status = activeEvents.includes(event) ? "ACTIVE" : inactiveEvents.includes(event) ? "INACTIVE" : String(resource.status || "");
       if (status) {
-        await db.update(subscriptions).set({ status, updatedAt: new Date(), lastEvent: event, expiresAt: resource.billing_info?.next_billing_time ? new Date(resource.billing_info.next_billing_time) : undefined }).where(userId ? eq(subscriptions.userId, userId) : eq(subscriptions.paypalSubscriptionId, id));
+        await db.update(subscriptions).set({ status, updatedAt: new Date(), lastEvent: event, expiresAt: resource.billing_info?.next_billing_time ? new Date(resource.billing_info.next_billing_time) : undefined }).where(userId ? eq(subscriptions.userId, userId) : eq(subscriptions.paddleSubscriptionId, id));
       }
     }
     res.status(204).end();

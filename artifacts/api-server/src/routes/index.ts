@@ -8,6 +8,7 @@ import lockRouter from "./lock";
 import libraryRouter from "./library";
 import pandachaikaPageRouter from "./pandachaika-page";
 import paypalRouter from "./paypal";
+import paddleRouter from "./paddle";
 
 const router: IRouter = Router();
 
@@ -18,6 +19,7 @@ router.use("/auth", authRouter);
 router.use("/auth", lockRouter);
 router.use("/library", libraryRouter);
 router.use("/pandachaika-page", pandachaikaPageRouter);
+router.use("/paddle", paddleRouter);
 router.use("/paypal", paypalRouter);
 router.use(mangaRouter);
 
