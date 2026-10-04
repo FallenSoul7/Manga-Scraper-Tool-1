@@ -5,7 +5,11 @@ import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/api-url";
 import { getCachedUser } from "@/lib/auth-cache";
 
+declare global { interface Window { Paddle?: any } }
+
 type PlanKey = "weekly_1" | "weekly_2" | "monthly" | "quarterly";
+const paddleEnvironment = (import.meta.env.VITE_PADDLE_ENVIRONMENT as string | undefined) ?? "sandbox";
+const paddleToken = (import.meta.env.VITE_PADDLE_CLIENT_TOKEN as string | undefined) ?? "";
 const priceIds: Record<PlanKey, string> = {
   weekly_1: (import.meta.env.VITE_PADDLE_PRICE_WEEKLY_1 as string | undefined) ?? "",
   weekly_2: (import.meta.env.VITE_PADDLE_PRICE_WEEKLY_2 as string | undefined) ?? "",
@@ -24,6 +28,17 @@ const benefits = [
   "Cloud library limit increased from 650 to 1,350 titles",
   "Premium status activated only from verified Paddle webhooks",
 ];
+
+function loadPaddle(): Promise<any> {
+  if (window.Paddle) return Promise.resolve(window.Paddle);
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[src="https://cdn.paddle.com/paddle/v2/paddle.js"]');
+    const script = existing ?? document.createElement("script");
+    script.onload = () => resolve(window.Paddle);
+    script.onerror = () => reject(new Error("Paddle checkout could not be loaded."));
+    if (!existing) { script.src = "https://cdn.paddle.com/paddle/v2/paddle.js"; script.async = true; document.head.appendChild(script); }
+  });
+}
 
 export default function SubscriptionPage() {
   const [busy, setBusy] = useState<PlanKey | null>(null);
@@ -51,8 +66,16 @@ export default function SubscriptionPage() {
         body: JSON.stringify({ plan: plan.key }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.checkoutUrl) throw new Error(data.error || "Paddle checkout could not be created.");
-      window.location.assign(data.checkoutUrl);
+      if (!response.ok || !data.transactionId) throw new Error(data.error || "Paddle checkout could not be created.");
+      const Paddle = await loadPaddle();
+      if (paddleEnvironment === "sandbox") Paddle.Environment.set("sandbox");
+      Paddle.Initialize({ token: paddleToken });
+      Paddle.Checkout.open({
+        transactionId: data.transactionId,
+        settings: { displayMode: "overlay", theme: "light", locale: "en" },
+        successCallback: () => { setBusy(null); setMessage("Payment received. Premium will activate after Paddle confirms the subscription."); setTimeout(() => window.location.reload(), 1800); },
+        closeCallback: () => setBusy(null),
+      });
     } catch (error) { setMessage(error instanceof Error ? error.message : "Paddle checkout could not be started."); setBusy(null); }
   }
 

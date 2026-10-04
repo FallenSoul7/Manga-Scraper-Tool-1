@@ -87,13 +87,14 @@ router.post("/checkout", requireAuth, async (req, res) => {
         custom_data: { userId: String((req.user as any).id), planKey: plan },
       }),
     });
-    const payload = await response.json().catch(() => ({})) as { data?: { checkout?: { url?: string } }; error?: { detail?: string } };
+    const payload = await response.json().catch(() => ({})) as { data?: { id?: string; checkout?: { url?: string } }; error?: { detail?: string } };
     const checkoutUrl = payload.data?.checkout?.url;
-    if (!response.ok || !checkoutUrl) {
+    const transactionId = payload.data?.id;
+    if (!response.ok || !transactionId) {
       logger.error({ status: response.status, detail: payload.error?.detail }, "Paddle hosted checkout creation failed");
       return res.status(502).json({ error: "Paddle could not create the checkout. Please try again." });
     }
-    return res.json({ checkoutUrl });
+    return res.json({ transactionId, checkoutUrl: checkoutUrl ?? null });
   } catch (error) {
     logger.error({ error }, "Paddle hosted checkout request failed");
     return res.status(502).json({ error: "Paddle checkout is temporarily unavailable." });
