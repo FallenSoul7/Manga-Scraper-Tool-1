@@ -5,11 +5,7 @@ import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/api-url";
 import { getCachedUser } from "@/lib/auth-cache";
 
-declare global { interface Window { Paddle?: any } }
-
 type PlanKey = "weekly_1" | "weekly_2" | "monthly" | "quarterly";
-const paddleEnvironment = (import.meta.env.VITE_PADDLE_ENVIRONMENT as string | undefined) ?? "sandbox";
-const paddleToken = (import.meta.env.VITE_PADDLE_CLIENT_TOKEN as string | undefined) ?? "";
 const priceIds: Record<PlanKey, string> = {
   weekly_1: (import.meta.env.VITE_PADDLE_PRICE_WEEKLY_1 as string | undefined) ?? "",
   weekly_2: (import.meta.env.VITE_PADDLE_PRICE_WEEKLY_2 as string | undefined) ?? "",
@@ -29,23 +25,11 @@ const benefits = [
   "Premium status activated only from verified Paddle webhooks",
 ];
 
-function loadPaddle(): Promise<any> {
-  if (window.Paddle) return Promise.resolve(window.Paddle);
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[src="https://cdn.paddle.com/paddle/v2/paddle.js"]');
-    const script = existing ?? document.createElement("script");
-    script.onload = () => resolve(window.Paddle);
-    script.onerror = () => reject(new Error("Paddle checkout could not be loaded."));
-    if (!existing) { script.src = "https://cdn.paddle.com/paddle/v2/paddle.js"; script.async = true; document.head.appendChild(script); }
-  });
-}
-
 export default function SubscriptionPage() {
   const [busy, setBusy] = useState<PlanKey | null>(null);
   const [message, setMessage] = useState("");
   const [active, setActive] = useState<{ plan: string | null; expiresAt: string | null }>({ plan: null, expiresAt: null });
-  const [paddleReady, setPaddleReady] = useState(false);
-  const configured = useMemo(() => !!paddleToken && Object.values(priceIds).every(Boolean), []);
+  const configured = useMemo(() => Object.values(priceIds).every(Boolean), []);
 
   useEffect(() => {
     fetch(apiUrl("/api/paddle/status"), { credentials: "include" })
@@ -54,29 +38,21 @@ export default function SubscriptionPage() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!configured) return;
-    loadPaddle().then(Paddle => {
-      if (paddleEnvironment === "sandbox") Paddle.Environment.set("sandbox");
-      Paddle.Initialize({ token: paddleToken });
-      setPaddleReady(true);
-    }).catch(error => setMessage(error instanceof Error ? error.message : "Paddle checkout could not be loaded."));
-  }, [configured]);
-
-  function startCheckout(plan: (typeof plans)[number]) {
+  async function startCheckout(plan: (typeof plans)[number]) {
     const user = getCachedUser();
     if (!user) { setMessage("Sign in before starting a subscription."); return; }
-    if (!paddleReady || !priceIds[plan.key]) { setMessage("Premium checkout is being configured. Please try again shortly."); return; }
+    if (!configured || !priceIds[plan.key]) { setMessage("Premium checkout is being configured. Please try again shortly."); return; }
     setBusy(plan.key); setMessage("");
     try {
-      window.Paddle.Checkout.open({
-        items: [{ priceId: priceIds[plan.key], quantity: 1 }],
-        customData: { userId: user.id, planKey: plan.key },
-        customer: { email: user.email },
-        settings: { displayMode: "overlay", theme: "light", locale: "en" },
-        successCallback: () => { setBusy(null); setMessage("Payment received. Premium will activate as soon as Paddle's signed webhook is processed."); setTimeout(() => window.location.reload(), 1800); },
-        closeCallback: () => setBusy(null),
+      const response = await fetch(apiUrl("/api/paddle/checkout"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: plan.key }),
       });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.checkoutUrl) throw new Error(data.error || "Paddle checkout could not be created.");
+      window.location.assign(data.checkoutUrl);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Paddle checkout could not be started."); setBusy(null); }
   }
 

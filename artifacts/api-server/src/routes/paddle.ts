@@ -68,6 +68,38 @@ router.get("/config", (_req, res) => {
   });
 });
 
+router.post("/checkout", requireAuth, async (req, res) => {
+  const plan = typeof req.body?.plan === "string" ? req.body.plan as PlanKey : "";
+  const apiKey = process.env.PADDLE_API_KEY;
+  const id = priceId(plan as PlanKey);
+  if (!PLAN_KEYS.includes(plan as PlanKey) || !id) return res.status(400).json({ error: "That plan is not configured." });
+  if (!apiKey) return res.status(503).json({ error: "Hosted checkout is not configured yet." });
+  const apiBase = process.env.PADDLE_ENVIRONMENT === "production"
+    ? "https://api.paddle.com"
+    : "https://sandbox-api.paddle.com";
+  try {
+    const response = await fetch(`${apiBase}/transactions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [{ price_id: id, quantity: 1 }],
+        collection_mode: "automatic",
+        custom_data: { userId: String((req.user as any).id), planKey: plan },
+      }),
+    });
+    const payload = await response.json().catch(() => ({})) as { data?: { checkout?: { url?: string } }; error?: { detail?: string } };
+    const checkoutUrl = payload.data?.checkout?.url;
+    if (!response.ok || !checkoutUrl) {
+      logger.error({ status: response.status, detail: payload.error?.detail }, "Paddle hosted checkout creation failed");
+      return res.status(502).json({ error: "Paddle could not create the checkout. Please try again." });
+    }
+    return res.json({ checkoutUrl });
+  } catch (error) {
+    logger.error({ error }, "Paddle hosted checkout request failed");
+    return res.status(502).json({ error: "Paddle checkout is temporarily unavailable." });
+  }
+});
+
 router.get("/status", requireAuth, async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: "Database is not configured." });
   const userId = String((req.user as any).id);
