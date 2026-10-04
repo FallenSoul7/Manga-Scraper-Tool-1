@@ -3,6 +3,12 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
+@keyframes warmup-progress {
+  0% { transform: translateX(-120%); }
+  50% { transform: translateX(170%); }
+  100% { transform: translateX(360%); }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /* Browser mode keeps the original translate-up behavior. In standalone mode,
