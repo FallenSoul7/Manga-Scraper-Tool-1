@@ -23,6 +23,12 @@ const SESSION_MAX_AGE = 90 * 24 * 3600 * 1000;
 function getFrontendURL() {
   return (process.env["FRONTEND_URL"] ?? "").replace(/\/+$/, "");
 }
+function getOwnerEmails() {
+  return new Set((process.env["OWNER_EMAILS"] ?? "").split(",").map(email => email.trim().toLowerCase()).filter(Boolean));
+}
+function isOwner(req: any) {
+  return !!req.isAuthenticated?.() && getOwnerEmails().has(String(req.user?.email ?? "").toLowerCase());
+}
 function getGoogleCreds() {
   return {
     clientID: process.env["GOOGLE_CLIENT_ID"] ?? "",
@@ -385,6 +391,32 @@ router.post("/password-reset-request", rateLimit({ windowMs: 15 * 60 * 1000, max
     // Keep this response generic so the endpoint cannot be used to enumerate accounts.
   }
   res.json({ message: "If an account exists for that email, a password reset link has been sent." });
+});
+
+router.get("/owner-recovery/users", async (req, res) => {
+  if (!isOwner(req)) return res.status(403).json({ error: "Owner access required." });
+  const sb = getSupabaseAdmin();
+  if (!sb) return res.status(500).json({ error: "Database not configured" });
+  const owners = getOwnerEmails();
+  const { data, error } = await sb.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (error) return res.status(502).json({ error: "Unable to load owner accounts." });
+  return res.json({ users: data.users.filter(user => owners.has((user.email ?? "").toLowerCase())).map(user => ({ id: user.id, email: user.email })) });
+});
+
+router.post("/owner-recovery/reset", async (req, res) => {
+  if (!isOwner(req)) return res.status(403).json({ error: "Owner access required." });
+  const userId = typeof req.body?.userId === "string" ? req.body.userId : "";
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
+  if (!userId || password.length < 8) return res.status(400).json({ error: "A user and a password of at least 8 characters are required." });
+  const sb = getSupabaseAdmin();
+  if (!sb) return res.status(500).json({ error: "Database not configured" });
+  const owners = getOwnerEmails();
+  const { data: target, error: lookupError } = await sb.auth.admin.getUserById(userId);
+  if (lookupError || !target.user?.email || !owners.has(target.user.email.toLowerCase())) return res.status(404).json({ error: "Owner account not found." });
+  const { error } = await sb.auth.admin.updateUserById(userId, { password });
+  if (error) return res.status(502).json({ error: "Unable to update the password." });
+  try { await sb.auth.admin.signOut(userId, "global"); } catch { /* password update already succeeded */ }
+  return res.json({ ok: true, message: "Password updated. Existing sessions were signed out." });
 });
 
 router.post("/refresh", (_req, res) => {

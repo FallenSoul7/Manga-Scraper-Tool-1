@@ -37,6 +37,7 @@ const ComiAIPage           = lazy(() => import("@/pages/comi-ai"));
 const CachePage            = lazy(() => import("@/pages/cache"));
 const InstallPage          = lazy(() => import("@/pages/install"));
 const LoginPage            = lazy(() => import("@/pages/login"));
+const OwnerRecoveryPage    = lazy(() => import("@/pages/owner-recovery"));
 const ResetPasswordPage    = lazy(() => import("@/pages/reset-password"));
 const ProfilePage          = lazy(() => import("@/pages/profile"));
 const AboutPage            = lazy(() => import("@/pages/about"));
@@ -266,6 +267,9 @@ function AppContent() {
               </Route>
               <Route path="/login">
                 <Lazy><LoginPage /></Lazy>
+              </Route>
+              <Route path="/owner-recovery">
+                <Lazy><OwnerRecoveryPage /></Lazy>
               </Route>
               <Route path="/reset-password">
                 <Lazy><ResetPasswordPage /></Lazy>
