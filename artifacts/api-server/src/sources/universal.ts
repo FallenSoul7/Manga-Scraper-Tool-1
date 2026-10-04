@@ -32,7 +32,7 @@ const SOURCE_REQUEST_TIMEOUTS: Record<string, number> = {
 };
 const TAG_TIMEOUT_MS = 4_000;
 const PROXIED_MEDIA_SOURCES = new Set([
-  "all.webtoons", "all.atsu", "en.resetscans", "en.novelfull", "all.mangadex", "en.animegg",
+  "all.webtoons", "all.atsu", "en.novelfull", "all.mangadex", "en.animegg",
 ]);
 
 function encodeTuple(parts: [string, string]): string {

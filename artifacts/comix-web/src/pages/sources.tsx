@@ -136,7 +136,7 @@ function SourceAvatar({ src, size = 40 }: { src: { name: string; iconUrl: string
       <img
         src={resolvedIcon} alt="" width={size} height={size} loading="lazy"
         onError={() => setErrored(true)}
-        className="shrink-0 object-contain"
+        className="shrink-0 object-contain rounded-xl bg-muted/60"
         style={{ width: size, height: size, aspectRatio: "1 / 1" }}
       />
     );
