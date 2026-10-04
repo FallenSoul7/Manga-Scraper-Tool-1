@@ -419,24 +419,6 @@ router.post("/owner-recovery/reset", async (req, res) => {
   return res.json({ ok: true, message: "Password updated. Existing sessions were signed out." });
 });
 
-// Temporary bootstrap only: remove this endpoint and rotate the key after initial recovery.
-router.post("/owner-recovery/bootstrap-reset", async (req, res) => {
-  const suppliedKey = req.header("x-owner-bootstrap-key") ?? "";
-  if (!suppliedKey || suppliedKey !== (process.env["OWNER_BOOTSTRAP_KEY"] ?? "")) return res.status(403).json({ error: "Bootstrap access denied." });
-  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-  const password = typeof req.body?.password === "string" ? req.body.password : "";
-  if (!getOwnerEmails().has(email) || password.length < 8) return res.status(400).json({ error: "Owner email and valid password required." });
-  const sb = getSupabaseAdmin();
-  if (!sb) return res.status(500).json({ error: "Database not configured" });
-  const { data: usersData, error: listError } = await sb.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  const target = (usersData?.users as any[] | undefined)?.find(user => (user.email ?? "").toLowerCase() === email);
-  if (listError || !target) return res.status(404).json({ error: "Owner account not found." });
-  const { error } = await sb.auth.admin.updateUserById(target.id, { password });
-  if (error) return res.status(502).json({ error: "Unable to update the password." });
-  try { await sb.auth.admin.signOut(target.id, "global"); } catch { /* password update already succeeded */ }
-  return res.json({ ok: true });
-});
-
 router.post("/refresh", (_req, res) => {
   res.status(410).json({ error: "Token refresh endpoint retired; sign in again." });
 });
