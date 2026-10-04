@@ -14,6 +14,7 @@ import { Loader2 } from "lucide-react";
 import { isUnlockedThisSession, setUnlocked, shouldLockCurrentMode, refreshServerLock } from "@/lib/lock";
 import NotFound from "@/pages/not-found";
 import { OfflineCatalogPersistence, useOnlineStatus } from "@/lib/offline-catalog";
+import { BackendWarmup } from "@/components/backend-warmup";
 
 const SearchPage           = lazy(() => import("@/pages/search"));
 const MangaDetail          = lazy(() => import("@/pages/manga-detail"));
@@ -54,6 +55,8 @@ const queryClient = new QueryClient({
     queries: {
       refetchOnWindowFocus: false,
       staleTime: 5 * 60 * 1000,
+      retry: 2,
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 4000),
     },
   },
 });
@@ -175,6 +178,7 @@ function AppContent() {
   return (
     <div className="min-h-[100dvh] flex flex-col">
       <OfflineCatalogPersistence />
+      <BackendWarmup />
       <Switch>
         {/* Reader: no header, no nav */}
         <Route path="/reader/:chapterId">
