@@ -37,6 +37,7 @@ const ComiAIPage           = lazy(() => import("@/pages/comi-ai"));
 const CachePage            = lazy(() => import("@/pages/cache"));
 const InstallPage          = lazy(() => import("@/pages/install"));
 const LoginPage            = lazy(() => import("@/pages/login"));
+const ResetPasswordPage    = lazy(() => import("@/pages/reset-password"));
 const ProfilePage          = lazy(() => import("@/pages/profile"));
 const AboutPage            = lazy(() => import("@/pages/about"));
 const ContactPage          = lazy(() => import("@/pages/contact"));
@@ -117,7 +118,7 @@ function LockGate({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [locked, setLocked] = useState(() => !isUnlockedThisSession() && shouldLockCurrentMode());
   const onLockRoute = location === "/lock";
-  const isPublicComplianceRoute = ["/privacy", "/terms", "/advertising", "/about", "/contact", "/dmca"].includes(location);
+  const isPublicComplianceRoute = ["/privacy", "/terms", "/advertising", "/about", "/contact", "/dmca", "/reset-password"].includes(location);
 
   // Initial check — also cover logged-in users whose PIN lives on the server
   // (fresh device with no local cache). Skip when already unlocked.
@@ -265,6 +266,9 @@ function AppContent() {
               </Route>
               <Route path="/login">
                 <Lazy><LoginPage /></Lazy>
+              </Route>
+              <Route path="/reset-password">
+                <Lazy><ResetPasswordPage /></Lazy>
               </Route>
               <Route path="/profile">
                 <Lazy><ProfilePage /></Lazy>

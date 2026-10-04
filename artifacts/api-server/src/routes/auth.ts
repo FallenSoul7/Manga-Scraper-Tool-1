@@ -367,6 +367,26 @@ router.post("/login", rateLimit({ windowMs: 15 * 60 * 1000, max: 10 }), async (r
   }
 });
 
+router.post("/password-reset-request", rateLimit({ windowMs: 15 * 60 * 1000, max: 5 }), async (req, res) => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  const sb = getSupabaseAdmin();
+  if (!sb) {
+    res.status(500).json({ error: "Database not configured" });
+    return;
+  }
+  if (!email || !email.includes("@")) {
+    res.status(400).json({ error: "Please provide a valid email address." });
+    return;
+  }
+  try {
+    const redirectTo = `${getFrontendURL() || "https://www.comihub.top"}/reset-password`;
+    await sb.auth.resetPasswordForEmail(email, { redirectTo });
+  } catch {
+    // Keep this response generic so the endpoint cannot be used to enumerate accounts.
+  }
+  res.json({ message: "If an account exists for that email, a password reset link has been sent." });
+});
+
 router.post("/refresh", (_req, res) => {
   res.status(410).json({ error: "Token refresh endpoint retired; sign in again." });
 });

@@ -15,6 +15,7 @@ export default function LoginPage() {
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   // ✅ Read EVERYTHING we want to sync
   const localLibrary = useStore(s => s.library);
@@ -78,6 +79,30 @@ export default function LoginPage() {
       } else {
         setStep("verify");
       }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    setError("");
+    setResetSent(false);
+    if (!email.includes("@")) {
+      setError("Enter your email address first, then choose Forgot password.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await fetch(apiUrl("/api/auth/password-reset-request"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Unable to send a reset email.");
+      setResetSent(true);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -149,6 +174,12 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
+              {isLoginMode && (
+                <button type="button" onClick={handlePasswordReset} disabled={isLoading} className="w-full text-right text-xs text-primary underline disabled:opacity-50">
+                  Forgot password?
+                </button>
+              )}
+              {resetSent && <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-600">If an account exists for that email, a reset link has been sent. Check your inbox and spam folder.</p>}
               {!isLoginMode && (
                 <label className="flex items-start gap-2 text-xs text-muted-foreground leading-relaxed">
                   <input type="checkbox" className="mt-0.5" checked={consentAccepted} onChange={(e) => setConsentAccepted(e.target.checked)} />
