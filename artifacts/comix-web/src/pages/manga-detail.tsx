@@ -764,7 +764,7 @@ export default function MangaDetail() {
           ) : latestProgress ? (
             <Button
               className="w-full h-12 text-base font-semibold rounded-xl"
-              onClick={() => setLocation(readerUrl(latestProgress.chapterId, manga.id, sourceContext ?? activeSourceId, !online))}
+              onClick={() => setLocation(readerUrl(latestProgress.chapterId, manga.id, effectiveSourceForKey ?? activeSourceId, !online))}
             >
               {isKoofrVideo ? <Play className="mr-2 h-5 w-5" /> : <BookOpen className="mr-2 h-5 w-5" />}
               {isKoofrVideo ? 'Continue watching' : isRule34 ? "View artwork" : `Continue reading · Ch. ${latestProgress.chapterNumber}`}
@@ -772,7 +772,7 @@ export default function MangaDetail() {
           ) : firstChapter ? (
             <Button
               className="w-full h-12 text-base font-semibold rounded-xl"
-              onClick={() => setLocation(readerUrl(firstChapter.id, manga.id, sourceContext ?? activeSourceId, !online))}
+              onClick={() => setLocation(readerUrl(firstChapter.id, manga.id, effectiveSourceForKey ?? activeSourceId, !online))}
             >
               <Play className="mr-2 h-5 w-5" />
               {isKoofrVideo ? 'Watch' : isRule34 ? "View artwork" : "Start reading"}
@@ -951,7 +951,7 @@ export default function MangaDetail() {
                           totalPages: 0, lastPageRead: 0, isRead: false,
                         });
                       }
-                      setLocation(readerUrl(chapter.id, manga.id, sourceContext ?? activeSourceId, !online));
+                      setLocation(readerUrl(chapter.id, manga.id, effectiveSourceForKey ?? activeSourceId, !online));
                     }}
                     onContextMenu={e => {
                       e.preventDefault();
