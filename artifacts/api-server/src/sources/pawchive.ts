@@ -142,6 +142,12 @@ async function creators(): Promise<Creator[]> {
   return Array.isArray(data) ? data : [];
 }
 
+function filterByTags(items: Creator[], tagIds?: string[]): Creator[] {
+  if (!tagIds?.length) return items;
+  const services = new Set(tagIds.filter(tag => tag.startsWith("service:")).map(tag => tag.slice(8)));
+  return services.size ? items.filter(creator => services.has(String(creator.service ?? "unknown"))) : items;
+}
+
 async function creatorPosts(service: string, user: string): Promise<Post[]> {
   const data = await request<Post[]>(`/${encodeURIComponent(service)}/user/${encodeURIComponent(user)}`);
   return Array.isArray(data) ? data : [];
@@ -167,7 +173,8 @@ export const PawchiveSource: MangaSource = {
   imageReferer: "https://pawchive.pw/",
 
   async popular(opts: ListOptions): Promise<MangaListResponse> {
-    const all = (await creators()).sort((a, b) => Number(b.favorited ?? 0) - Number(a.favorited ?? 0));
+    const all = filterByTags(await creators(), opts.tagIds)
+      .sort((a, b) => Number(b.favorited ?? 0) - Number(a.favorited ?? 0));
     const start = ((opts.page ?? 1) - 1) * PAGE_SIZE;
     return {
       items: await creatorSummaries(all.slice(start, start + PAGE_SIZE)),
@@ -177,7 +184,8 @@ export const PawchiveSource: MangaSource = {
   },
 
   async latest(opts: ListOptions): Promise<MangaListResponse> {
-    const all = (await creators()).sort((a, b) => Number(b.updated ?? 0) - Number(a.updated ?? 0));
+    const all = filterByTags(await creators(), opts.tagIds)
+      .sort((a, b) => Number(b.updated ?? 0) - Number(a.updated ?? 0));
     const start = ((opts.page ?? 1) - 1) * PAGE_SIZE;
     return {
       items: await creatorSummaries(all.slice(start, start + PAGE_SIZE)),
@@ -188,7 +196,7 @@ export const PawchiveSource: MangaSource = {
 
   async search(query: string, opts: ListOptions): Promise<MangaListResponse> {
     const needle = query.trim().toLowerCase();
-    const all = (await creators()).filter(c =>
+    const all = filterByTags(await creators(), opts.tagIds).filter(c =>
       !needle || `${c.name ?? ""} ${c.service ?? ""} ${c.id}`.toLowerCase().includes(needle),
     );
     const start = ((opts.page ?? 1) - 1) * PAGE_SIZE;
@@ -261,4 +269,14 @@ export const PawchiveSource: MangaSource = {
     { value: "favorites", label: "Most favorited creators" },
     { value: "updated", label: "Recently updated creators" },
   ],
+
+  async tags() {
+    const services = [...new Set((await creators()).map(creator => String(creator.service ?? "unknown")))]
+      .sort((a, b) => a.localeCompare(b));
+    return services.map(service => ({
+      id: `service:${service}`,
+      name: service.charAt(0).toUpperCase() + service.slice(1),
+      group: "Platform",
+    }));
+  },
 };

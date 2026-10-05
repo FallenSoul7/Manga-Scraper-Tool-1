@@ -26,6 +26,15 @@ export function shouldProxySourceMedia(source?: string | null): boolean {
   return !!source && PROXIED_MEDIA_SOURCES.has(source);
 }
 
+export function mediaVideo(url: string | undefined, source?: string): string {
+  if (!url) return "";
+  const apiOrigin = (import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL ?? "").replace(/\/+$/, "");
+  if (source === "all.pawchive" && /^https:\/\//i.test(url)) {
+    return `${apiOrigin}/api/source-video?source=${encodeURIComponent(source)}&url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
+
 /** Build a reader URL that remains one route segment even when an extension
  * uses a path/query string as its chapter ID (notably Webtoons). */
 export function readerUrl(

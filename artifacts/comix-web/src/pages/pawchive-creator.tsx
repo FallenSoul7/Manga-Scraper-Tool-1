@@ -53,6 +53,7 @@ export default function PawchiveCreatorPage() {
   const [, setLocation] = useLocation();
   const creatorId = decodeRoutePart(params?.creatorId);
   const [search, setSearch] = useState("");
+  const [mediaFilter, setMediaFilter] = useState<"all" | "image" | "video" | "mixed">("all");
 
   const details = useQuery<Creator>({
     queryKey: ["pawchive-creator", creatorId],
@@ -72,8 +73,12 @@ export default function PawchiveCreatorPage() {
 
   const visiblePosts = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return (posts.data?.items ?? []).filter(post => !needle || post.title.toLowerCase().includes(needle));
-  }, [posts.data, search]);
+    return (posts.data?.items ?? []).filter(post => {
+      const matchesSearch = !needle || post.title.toLowerCase().includes(needle);
+      const matchesMedia = mediaFilter === "all" || post.mediaType === mediaFilter;
+      return matchesSearch && matchesMedia;
+    });
+  }, [posts.data, search, mediaFilter]);
 
   const title = details.data?.title ?? "Pawchive creator";
 
@@ -115,10 +120,32 @@ export default function PawchiveCreatorPage() {
               className="h-16 w-16 rounded-2xl object-cover"
               loading="eager"
             />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h2 className="truncate text-xl font-bold">{title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{visiblePosts.length} posts · images, GIFs, videos and attachments</p>
             </div>
+          </div>
+        )}
+
+        {!posts.isLoading && !posts.isError && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <label htmlFor="pawchive-media-filter" className="text-xs font-medium text-muted-foreground">Category</label>
+            <select
+              id="pawchive-media-filter"
+              value={mediaFilter}
+              onChange={event => setMediaFilter(event.target.value as typeof mediaFilter)}
+              className="rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs font-medium outline-none focus:ring-2 focus:ring-primary/40"
+            >
+              <option value="all">All posts</option>
+              <option value="image">Images / GIFs</option>
+              <option value="video">Video only</option>
+              <option value="mixed">Mixed media</option>
+            </select>
+            {mediaFilter !== "all" && (
+              <button type="button" onClick={() => setMediaFilter("all")} className="text-xs text-muted-foreground hover:text-foreground">
+                Clear filter
+              </button>
+            )}
           </div>
         )}
 

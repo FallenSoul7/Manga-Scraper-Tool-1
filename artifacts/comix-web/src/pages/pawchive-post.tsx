@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { ArrowLeft, Download, FileImage, Heart, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { mediaImage } from "@/lib/utils";
+import { mediaImage, mediaVideo } from "@/lib/utils";
 import { saveChapterToFile } from "@/lib/save-to-file";
 
 type Page = { index: number; url: string };
@@ -28,7 +28,7 @@ function mediaUrl(url: string): string {
 function videoUrl(url: string): string {
   // Keep video bytes off Render: the browser downloads and decodes the media
   // on the user's device instead of making the backend buffer a long file.
-  return url;
+  return mediaVideo(url, "all.pawchive");
 }
 
 export default function PawchivePostPage() {

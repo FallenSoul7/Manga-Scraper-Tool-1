@@ -195,6 +195,55 @@ app.get("/api/allmanga/video", async (req, res) => {
   }
 });
 
+// Pawchive videos need the source referer and byte-range support. Direct CDN
+// URLs may appear to load forever in browsers that refuse the cross-origin
+// response, while a stream proxy also makes seeking and mobile playback work.
+app.get("/api/source-video", async (req, res) => {
+  if (String(req.query.source ?? "") !== "all.pawchive") {
+    return res.status(403).json({ error: "Video source is not allowed" });
+  }
+  const rawUrl = String(req.query.url ?? "");
+  let target: URL;
+  try { target = new URL(rawUrl); } catch { return res.status(400).json({ error: "Invalid video URL" }); }
+  if (target.protocol !== "https:" || !["file.pawchive.pw", "pawchive.pw"].includes(target.hostname)) {
+    return res.status(403).json({ error: "Video host is not allowed" });
+  }
+  try {
+    const range = req.headers.range;
+    const upstream = await axios.get(target.toString(), {
+      responseType: "stream",
+      headers: {
+        Referer: "https://pawchive.pw/",
+        Origin: "https://pawchive.pw",
+        "User-Agent": VIDEO_PROXY_UA,
+        Accept: "video/*,application/octet-stream;q=0.9,*/*;q=0.5",
+        ...(range ? { Range: range } : {}),
+      },
+      timeout: 120_000,
+      maxRedirects: 5,
+      validateStatus: () => true,
+    });
+    const contentType = String(upstream.headers["content-type"] ?? "");
+    if (upstream.status >= 400 || contentType.includes("text/html")) {
+      (upstream.data as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
+      return res.status(502).json({ error: "Pawchive video is temporarily unavailable" });
+    }
+    res.status(upstream.status);
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    for (const header of ["content-type", "content-length", "content-range"]) {
+      if (upstream.headers[header]) res.setHeader(header, upstream.headers[header] as string);
+    }
+    (upstream.data as NodeJS.ReadableStream).pipe(res);
+    (upstream.data as NodeJS.ReadableStream).on("error", () => { if (!res.headersSent) res.status(502).end(); });
+    return;
+  } catch {
+    logger.error("Pawchive video proxy failed");
+    if (!res.headersSent) return res.status(502).json({ error: "Failed to stream Pawchive video" });
+    return;
+  }
+});
+
 // AnimeGG embeds require their original popup/player bootstrap behavior. Proxy
 // only the allow-listed embed page, but do not sanitize its scripts: removing
 // window.open/popunder code makes the episode player fail to initialize.
