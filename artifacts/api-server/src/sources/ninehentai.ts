@@ -284,12 +284,13 @@ interface TagListResponseBody {
 }
 
 const TAG_TYPE_MAP: Array<{ type: number; group: string; maxPages: number }> = [
-  { type: 6, group: "Category",  maxPages: 2  },
-  { type: 1, group: "Tag",       maxPages: 10 },
-  { type: 3, group: "Parody",    maxPages: 5  },
-  { type: 5, group: "Character", maxPages: 5  },
-  { type: 4, group: "Artist",    maxPages: 5  },
-  { type: 2, group: "Group",     maxPages: 5  },
+  // Keep the filter picker responsive instead of sweeping the full catalogue.
+  { type: 6, group: "Category",  maxPages: 1 },
+  { type: 1, group: "Tag",       maxPages: 1 },
+  { type: 3, group: "Parody",    maxPages: 1 },
+  { type: 5, group: "Character", maxPages: 1 },
+  { type: 4, group: "Artist",    maxPages: 1 },
+  { type: 2, group: "Group",     maxPages: 1 },
 ];
 
 async function fetchTags(): Promise<SourceTag[]> {

@@ -14,7 +14,7 @@ const WP_API = `${BASE}/wp-json/wp/v2`;
 
 const client = axios.create({
   baseURL: WP_API,
-  timeout: 20000,
+  timeout: 35000,
   headers: {
     "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
     Accept: "application/json",
@@ -86,18 +86,18 @@ export const OnlyTheBestHentaiSource: MangaSource = {
   imageReferer: `${BASE}/`,
 
   async popular(opts: ListOptions): Promise<MangaListResponse> {
-    const posts = await fetchPosts({ per_page: 24, page: opts.page, orderby: "date", order: "desc" });
-    return { items: posts.map(toSummary), page: opts.page, hasNextPage: posts.length === 24 };
+    const posts = await fetchPosts({ per_page: 12, page: opts.page, orderby: "date", order: "desc" });
+    return { items: posts.map(toSummary), page: opts.page, hasNextPage: posts.length === 12 };
   },
 
   async latest(opts: ListOptions): Promise<MangaListResponse> {
-    const posts = await fetchPosts({ per_page: 24, page: opts.page, orderby: "date", order: "desc" });
-    return { items: posts.map(toSummary), page: opts.page, hasNextPage: posts.length === 24 };
+    const posts = await fetchPosts({ per_page: 12, page: opts.page, orderby: "date", order: "desc" });
+    return { items: posts.map(toSummary), page: opts.page, hasNextPage: posts.length === 12 };
   },
 
   async search(query: string, opts: ListOptions): Promise<MangaListResponse> {
-    const posts = await fetchPosts({ per_page: 24, page: opts.page, search: query });
-    return { items: posts.map(toSummary), page: opts.page, hasNextPage: posts.length === 24 };
+    const posts = await fetchPosts({ per_page: 12, page: opts.page, search: query });
+    return { items: posts.map(toSummary), page: opts.page, hasNextPage: posts.length === 12 };
   },
 
   async details(id: string, opts: DetailOptions): Promise<MangaDetail> {

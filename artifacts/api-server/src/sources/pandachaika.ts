@@ -108,7 +108,9 @@ const TAG_SCOPES = ["language", "artist", "group", "parody", "female", "male", "
 // Panda Chaika's autocomplete endpoint caps every response at ten choices and
 // does not expose pagination. Querying each scope with character prefixes lets
 // us discover the full catalogue instead of keeping only the first ten tags.
-const TAG_QUERY_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789".split("");
+// The autocomplete endpoint is capped; a small bounded sample is enough to
+// populate the picker without firing 200+ requests at once.
+const TAG_QUERY_CHARS = "abc123".split("");
 let cachedTags: Array<{ id: string; name: string; group: string }> | null = null;
 
 function tagParams(o: ListOptions): Record<string, string> {

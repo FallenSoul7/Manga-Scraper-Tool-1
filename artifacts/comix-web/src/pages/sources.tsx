@@ -51,6 +51,7 @@ async function loadCatalogWithFallback(): Promise<CatalogResponse> {
 // Prefix relative /api/... paths with the Render backend origin so that
 // <img> tags (which don't go through customFetch) load from the right host.
 const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const GLOBAL_SEARCH_TIMEOUT_MS = 15_000;
 function resolveIconUrl(url: string | null): string | null {
   if (!url) return null;
   if (url.startsWith("/") && API_ORIGIN) return `${API_ORIGIN}${url}`;
@@ -282,19 +283,32 @@ export default function SourcesPage() {
     const initial: SourceResults[] = installed.map(src => ({ source: src, items: [], loading: true }));
     setGlobalResults(initial);
 
-    // Fetch each source individually and update as results arrive
+    // Fetch each source individually and update as results arrive. A blocked
+    // extension must not leave the global search spinner running forever.
+    const controllers = new Set<AbortController>();
     installed.forEach(async (src) => {
+      const controller = new AbortController();
+      controllers.add(controller);
+      const timeout = window.setTimeout(() => controller.abort(), GLOBAL_SEARCH_TIMEOUT_MS);
       try {
-        const res = await fetch(`${API_ORIGIN}/api/search?query=${encodeURIComponent(urlQ)}&page=1`, { headers: { "X-Source": src.id } });
+        const res = await fetch(`${API_ORIGIN}/api/search?query=${encodeURIComponent(urlQ)}&page=1`, {
+          headers: { "X-Source": src.id },
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`Source returned ${res.status}`);
         const data = await res.json();
         const items = (data.items ?? []).slice(0, 12);
         setGlobalResults(prev => prev.map(r => r.source.id === src.id ? { ...r, items, loading: false } : r));
       } catch {
         setGlobalResults(prev => prev.map(r => r.source.id === src.id ? { ...r, items: [], loading: false } : r));
+      } finally {
+        window.clearTimeout(timeout);
+        controllers.delete(controller);
       }
     });
 
     setIsSearching(false);
+    return () => controllers.forEach(controller => controller.abort());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlQ, online]);
 
