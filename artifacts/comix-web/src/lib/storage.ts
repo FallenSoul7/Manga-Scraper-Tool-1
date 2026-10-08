@@ -27,6 +27,9 @@ const SavedMangaSchema = z.object({
   author: z.string().optional(),
   status: z.string().optional(),
   sourceId: z.string().optional(),
+  mediaType: z.enum(['image', 'video', 'mixed']).optional(),
+  creatorId: z.string().optional(),
+  creatorTitle: z.string().optional(),
   addedAt: z.number(),
   // updatedAt is stamped on every mutation so the cloud merge can always pick
   // the truly-newest version of a manga entry, regardless of addedAt.

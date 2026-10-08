@@ -368,7 +368,13 @@ export default function LibraryPage() {
                 manga={manga as any}
                 sourceId={(manga as any).sourceId}
                 href={manga.sourceId === "all.pawchive"
-                  ? `/sources/all.pawchive/post/${encodeURIComponent(manga.id)}`
+                  ? `/sources/all.pawchive/post/${encodeURIComponent(manga.id)}?${new URLSearchParams({
+                      from: "library",
+                      cat: activeTab,
+                      postTitle: manga.title,
+                      ...(manga.creatorId ? { creatorId: manga.creatorId } : {}),
+                      ...(manga.creatorTitle ? { creatorTitle: manga.creatorTitle } : {}),
+                    }).toString()}`
                   : manga.sourceId
                   ? `/sources/${encodeURIComponent(manga.sourceId)}/manga/${encodeURIComponent(manga.id)}?from=library&cat=${encodeURIComponent(activeTab)}`
                   : `/manga/${encodeURIComponent(manga.id)}?from=library&cat=${encodeURIComponent(activeTab)}`}

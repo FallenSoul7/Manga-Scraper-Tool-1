@@ -49,6 +49,8 @@ export default function PawchivePostPage() {
   const creatorId = searchParams.get("creatorId") ?? "";
   const postTitle = searchParams.get("postTitle") ?? "Pawchive post";
   const creatorTitle = searchParams.get("creatorTitle") ?? "Pawchive";
+  const fromLibrary = searchParams.get("from") === "library";
+  const libraryCategoryId = searchParams.get("cat") ?? "default";
   const categories = useStore(state => state.categories);
   const savedPost = useStore(state => state.library[postId]);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
@@ -59,6 +61,15 @@ export default function PawchivePostPage() {
   const [showScrollUp, setShowScrollUp] = useState(false);
   const lastScrollY = useRef(0);
   const scrollButtonTimer = useRef<number | null>(null);
+
+  function goBack() {
+    if (fromLibrary) {
+      const params = new URLSearchParams({ cat: libraryCategoryId, from: "library" });
+      setLocation(`/?${params.toString()}`);
+      return;
+    }
+    setLocation(creatorId ? `/sources/all.pawchive/creator/${encodeURIComponent(creatorId)}` : "/sources/all.pawchive");
+  }
 
   useEffect(() => {
     lastScrollY.current = window.scrollY;
@@ -91,6 +102,8 @@ export default function PawchivePostPage() {
   }
 
   function saveFavorite() {
+    const hasVideo = media.some(page => isVideo(page.url));
+    const hasImage = media.some(page => !isVideo(page.url));
     storeActions.addToLibrary({
       id: postId,
       title: postTitle,
@@ -99,6 +112,9 @@ export default function PawchivePostPage() {
       thumbnail: media.find(page => !isVideo(page.url))?.url ?? "/public/source-icons/all.pawchive.svg",
       type: media.some(page => isVideo(page.url)) ? "Pawchive video post" : "Pawchive post",
       sourceId: "all.pawchive",
+      mediaType: hasVideo ? (hasImage ? "mixed" : "video") : "image",
+      creatorId: creatorId || undefined,
+      creatorTitle: creatorTitle || undefined,
       addedAt: Date.now(),
       categoryIds: selectedCategories.length ? selectedCategories : ["default"],
       lastChapterCountSeen: 1,
@@ -135,6 +151,34 @@ export default function PawchivePostPage() {
   const media = useMemo(() => pages.data?.pages ?? [], [pages.data]);
   const allVideo = media.length > 0 && media.every(page => isVideo(page.url));
 
+  useEffect(() => {
+    if (!savedPost || !pages.data) return;
+    const hasVideo = media.some(page => isVideo(page.url));
+    const hasImage = media.some(page => !isVideo(page.url));
+    const mediaType = hasVideo ? (hasImage ? "mixed" : "video") : "image";
+    const thumbnail = hasVideo && (!savedPost.thumbnail || isVideo(savedPost.thumbnail))
+      ? media.find(page => !isVideo(page.url))?.url ?? "/public/source-icons/all.pawchive.svg"
+      : savedPost.thumbnail;
+    const type = hasVideo ? "Pawchive video post" : (savedPost.type ?? "Pawchive post");
+    const nextCreatorId = savedPost.creatorId ?? (creatorId || undefined);
+    const nextCreatorTitle = savedPost.creatorTitle ?? ((savedPost.creatorId || creatorId) ? creatorTitle : undefined);
+
+    if (
+      savedPost.mediaType !== mediaType || savedPost.type !== type ||
+      savedPost.thumbnail !== thumbnail || savedPost.creatorId !== nextCreatorId ||
+      savedPost.creatorTitle !== nextCreatorTitle
+    ) {
+      storeActions.addToLibrary({
+        ...savedPost,
+        mediaType,
+        type,
+        thumbnail,
+        creatorId: nextCreatorId,
+        creatorTitle: nextCreatorTitle,
+      });
+    }
+  }, [savedPost, pages.data, media, creatorId, creatorTitle]);
+
   async function download() {
     setDownloadError("");
     setDownloadProgress(0);
@@ -156,7 +200,7 @@ export default function PawchivePostPage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <header className="sticky top-0 z-40 flex h-14 items-center gap-2 border-b border-white/10 bg-black/90 px-3 backdrop-blur">
-        <Button variant="ghost" size="icon" onClick={() => setLocation(creatorId ? `/sources/all.pawchive/creator/${creatorId}` : "/sources/all.pawchive")} className="text-white hover:bg-white/10" aria-label="Close post">
+        <Button variant="ghost" size="icon" onClick={goBack} className="text-white hover:bg-white/10" aria-label="Close post">
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="min-w-0 flex-1">
@@ -177,7 +221,7 @@ export default function PawchivePostPage() {
         <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 px-6 text-center text-white/60">
           <FileImage className="h-10 w-10" />
           <p>Unable to load this Pawchive post.</p>
-          <Button variant="outline" onClick={() => setLocation(creatorId ? `/sources/all.pawchive/creator/${creatorId}` : "/sources/all.pawchive")}>Go back</Button>
+          <Button variant="outline" onClick={goBack}>Go back</Button>
         </div>
       ) : media.length === 0 ? (
         <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 text-white/60">
@@ -188,12 +232,12 @@ export default function PawchivePostPage() {
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-black p-3">
            <video
              key={videoSource(media[0].url)}
-             src={videoSource(media[0].url)}
-             type={videoType(media[0].url)}
              onError={() => useVideoFallback(media[0].url)}
              controls playsInline preload="auto" autoPlay muted
              className="max-h-[calc(100vh-5rem)] w-full max-w-5xl rounded-xl"
-           />
+           >
+             <source src={videoSource(media[0].url)} type={videoType(media[0].url)} />
+           </video>
         </div>
       ) : media.length === 1 && !isVideo(media[0].url) ? (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-black p-3">
@@ -204,12 +248,12 @@ export default function PawchivePostPage() {
            {media.map(page => isVideo(page.url) ? (
              <video
                key={page.index}
-               src={videoSource(page.url)}
-               type={videoType(page.url)}
                onError={() => useVideoFallback(page.url)}
                controls playsInline preload="auto" muted
                className="w-full rounded-xl bg-black"
-             />
+             >
+               <source src={videoSource(page.url)} type={videoType(page.url)} />
+             </video>
           ) : (
              <img key={page.index} src={mediaUrl(page.url)} alt={`Attachment ${page.index + 1}`} loading="lazy" className="w-full rounded-xl object-contain" />
           ))}

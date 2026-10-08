@@ -52,8 +52,10 @@ export const MangaCard = memo(function MangaCard({
 }: MangaCardProps) {
   const { settings } = useSettings();
   const [imageFailed, setImageFailed] = useState(false);
+  const savedMediaType = (manga as MangaSummary & { mediaType?: string }).mediaType;
   const isPawchiveVideo = sourceId === "all.pawchive" && (
     /\.(mp4|webm|mov|mkv|avi|m4v)(\?|$)/i.test(manga.thumbnail) ||
+    savedMediaType === "video" || savedMediaType === "mixed" ||
     /pawchive\s+video/i.test(manga.type ?? "")
   );
   const thumbnail = isPawchiveVideo
