@@ -284,6 +284,12 @@ export default function SourcesPage() {
       return;
     }
     if (!urlQ) { setGlobalResults([]); setSearchedQuery(""); return; }
+    if (!backendReady) {
+      setGlobalResults([]);
+      setSearchedQuery("");
+      setIsSearching(true);
+      return;
+    }
     if (urlQ === searchedQuery && globalResults.length > 0) return;
     setIsSearching(true);
     setSearchedQuery(urlQ);
@@ -319,7 +325,7 @@ export default function SourcesPage() {
     setIsSearching(false);
     return () => controllers.forEach(controller => controller.abort());
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlQ, online]);
+  }, [urlQ, online, backendReady]);
 
   const clearSearch = () => { setLocation("/sources"); setGlobalResults([]); setSearchedQuery(""); };
   const showGlobalSearch = !!(urlQ || isSearching || globalResults.length > 0);

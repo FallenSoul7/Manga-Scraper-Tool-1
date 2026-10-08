@@ -33,6 +33,11 @@ export function BackendWarmup() {
         });
         if (response.ok) {
           lastBackendReadyAt.current = Date.now();
+          // Some page queries may have started during Render's cold start and
+          // still be pending when health turns green. Cancel them first so the
+          // invalidate below starts fresh requests against the awake service.
+          await queryClient.cancelQueries();
+          if (signal?.aborted) return;
           queryClient.setQueryData(["backend-ready"], true);
           // Don't hold the app shell while active pages refetch after the backend
           // wakes; those pages already show their own loading states.

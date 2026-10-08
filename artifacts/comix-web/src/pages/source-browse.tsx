@@ -21,6 +21,7 @@ import type { SourceTag } from "@/lib/header-search";
 import { useOnlineStatus } from "@/lib/offline-catalog";
 import { getClientSourceAdapter } from "@/lib/client-sources";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
+import { requestBackendRefresh } from "@/components/backend-warmup";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -114,6 +115,13 @@ async function loadCatalogWithFallback(): Promise<{ extensions: CatalogEntry[] }
 // ---------------------------------------------------------------------------
 export default function SourceBrowsePage() {
   const online = useOnlineStatus();
+  const { data: backendReady = false } = useQuery<boolean>({
+    queryKey: ["backend-ready"],
+    queryFn: async () => false,
+    initialData: false,
+    staleTime: Infinity,
+    enabled: false,
+  });
   const [, setLocation] = useLocation();
   const [, params] = useRoute("/sources/:id");
   const sourceId = params?.id || "";
@@ -295,7 +303,7 @@ export default function SourceBrowsePage() {
     queryFn: () => serverFetch<SourceTag[]>(`/api/tags`),
     // Tag discovery can be much slower than the first browse request for
     // sources with large tag catalogues. Never make it block the main list.
-    enabled: online && !!sourceId && !!source && tagsEnabled,
+    enabled: online && backendReady && !!sourceId && !!source && tagsEnabled,
     staleTime: 60 * 60 * 1000,
   });
 
@@ -312,7 +320,7 @@ export default function SourceBrowsePage() {
     queryFn: () => clientAdapter
       ? clientAdapter.popular(popularPage).catch(() => serverFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
       : serverFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
-    enabled: online && !!sourceId && !!source && tab === "popular" && !isFiltering,
+    enabled: online && backendReady && !!sourceId && !!source && tab === "popular" && !isFiltering,
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
@@ -322,7 +330,7 @@ export default function SourceBrowsePage() {
     queryFn: () => clientAdapter
       ? clientAdapter.latest(latestPage).catch(() => serverFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
       : serverFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
-    enabled: online && !!sourceId && !!source && tab === "latest" && !isFiltering,
+    enabled: online && backendReady && !!sourceId && !!source && tab === "latest" && !isFiltering,
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
@@ -342,7 +350,7 @@ export default function SourceBrowsePage() {
           page: String(filterPage),
           "tagIds[]": allTagIds,
         })}`),
-    enabled: online && !!sourceId && !!source && isFiltering,
+    enabled: online && backendReady && !!sourceId && !!source && isFiltering,
     staleTime: 30 * 1000,
     retry: 1,
   });
@@ -393,7 +401,7 @@ export default function SourceBrowsePage() {
   }, []);
 
   const activeQuery = isFiltering ? filterQuery : tab === "latest" ? latestQuery : popularQuery;
-  const isSourceError = activeQuery.isError;
+  const isSourceError = backendReady && activeQuery.isError;
 
   // Save snapshot
   useEffect(() => {
@@ -498,19 +506,19 @@ export default function SourceBrowsePage() {
 
   if (inSearchMode || inFilterMode) {
     gridItems = filterItems;
-    gridLoading = filterQuery.isFetching && filterItems.length === 0;
+    gridLoading = !backendReady || (filterQuery.isFetching && filterItems.length === 0);
     gridFetching = filterQuery.isFetching;
     gridHasNext = !!filterQuery.data?.hasNextPage;
     gridLoadMore = () => setFilterPage(p => p + 1);
   } else if (tab === "latest") {
     gridItems = latestItems;
-    gridLoading = latestQuery.isFetching && latestItems.length === 0;
+    gridLoading = !backendReady || (latestQuery.isFetching && latestItems.length === 0);
     gridFetching = latestQuery.isFetching;
     gridHasNext = !!latestQuery.data?.hasNextPage;
     gridLoadMore = () => setLatestPage(p => p + 1);
   } else {
     gridItems = popularItems;
-    gridLoading = popularQuery.isFetching && popularItems.length === 0;
+    gridLoading = !backendReady || (popularQuery.isFetching && popularItems.length === 0);
     gridFetching = popularQuery.isFetching;
     gridHasNext = !!popularQuery.data?.hasNextPage;
     gridLoadMore = () => setPopularPage(p => p + 1);
@@ -789,6 +797,15 @@ export default function SourceBrowsePage() {
 
       {/* Content */}
       <main className="flex-1 container mx-auto px-4 py-3 max-w-7xl">
+        {!backendReady && (
+          <div role="status" className="mb-4 flex items-center gap-2 rounded-xl border border-primary/15 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+            <span className="flex-1">Connecting to the content service…</span>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2" onClick={requestBackendRefresh}>
+              <RefreshCw className="h-3.5 w-3.5" /> Refresh
+            </Button>
+          </div>
+        )}
         {isSourceError && gridItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
             <AlertTriangle className="h-12 w-12 text-amber-500" />
