@@ -52,7 +52,13 @@ export const MangaCard = memo(function MangaCard({
 }: MangaCardProps) {
   const { settings } = useSettings();
   const [imageFailed, setImageFailed] = useState(false);
-  const thumbnail = manga.thumbnail ? mediaImage(manga.thumbnail, sourceId) : "";
+  const isPawchiveVideo = sourceId === "all.pawchive" && (
+    /\.(mp4|webm|mov|mkv|avi|m4v)(\?|$)/i.test(manga.thumbnail) ||
+    /pawchive\s+video/i.test(manga.type ?? "")
+  );
+  const thumbnail = isPawchiveVideo
+    ? mediaImage("/public/source-icons/all.pawchive.svg")
+    : manga.thumbnail ? mediaImage(manga.thumbnail, sourceId) : "";
   const inner = (
     <div className="group relative cursor-pointer select-none">
       <div
@@ -89,7 +95,7 @@ export const MangaCard = memo(function MangaCard({
             18+
           </div>
         )}
-        {(manga as MangaSummary & { mediaType?: "manga" | "anime" }).mediaType === "anime" && (
+        {((manga as MangaSummary & { mediaType?: "manga" | "anime" }).mediaType === "anime" || isPawchiveVideo) && (
           <div className="absolute bottom-2 right-2 rounded-md bg-black/75 px-1.5 py-1 text-white backdrop-blur-sm" title="Video">
             <Film className="h-3.5 w-3.5" />
           </div>

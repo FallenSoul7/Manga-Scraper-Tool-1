@@ -94,8 +94,10 @@ export default function PawchivePostPage() {
     storeActions.addToLibrary({
       id: postId,
       title: postTitle,
-      thumbnail: media[0]?.url ?? "",
-      type: "Pawchive post",
+      // Category cards must stay static: use an image preview when available,
+      // otherwise the Pawchive logo. Never store an MP4 as a card thumbnail.
+      thumbnail: media.find(page => !isVideo(page.url))?.url ?? "/public/source-icons/all.pawchive.svg",
+      type: media.some(page => isVideo(page.url)) ? "Pawchive video post" : "Pawchive post",
       sourceId: "all.pawchive",
       addedAt: Date.now(),
       categoryIds: selectedCategories.length ? selectedCategories : ["default"],
