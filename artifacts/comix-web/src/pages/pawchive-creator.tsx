@@ -107,7 +107,11 @@ export default function PawchiveCreatorPage() {
     const needle = search.trim().toLowerCase();
     return (posts.data?.items ?? []).filter(post => {
       const matchesSearch = !needle || post.title.toLowerCase().includes(needle);
-      const matchesMedia = mediaFilter === "all" || post.mediaType === mediaFilter;
+      // A Pawchive post is often mixed: a cover/preview image plus one or more
+      // MP4 attachments. Video-only must include those posts too.
+      const hasVideo = post.mediaType === "video" || post.mediaType === "mixed";
+      const matchesMedia = mediaFilter === "all"
+        || (mediaFilter === "video" ? hasVideo : post.mediaType === mediaFilter);
       return matchesSearch && matchesMedia;
     });
   }, [posts.data, search, mediaFilter]);
@@ -170,7 +174,7 @@ export default function PawchiveCreatorPage() {
             >
               <option value="all">All posts</option>
               <option value="image">Images / GIFs</option>
-              <option value="video">Video only</option>
+              <option value="video">Video posts</option>
               <option value="mixed">Mixed media</option>
             </select>
             {mediaFilter !== "all" && (
@@ -203,10 +207,12 @@ export default function PawchiveCreatorPage() {
                     loading="lazy"
                     className="h-full w-full object-cover transition group-hover:scale-105"
                   />
-                  <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white">
+                  <div title={post.mediaType === "video" || post.mediaType === "mixed" ? "Contains video" : "Image attachments"} className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white">
                     {post.mediaType === "video" || post.mediaType === "mixed"
                       ? <Youtube className="h-3 w-3 text-white/80" />
                       : <ImageIcon className="h-3 w-3 text-white/80" />}
+                    {post.mediaType === "video" || post.mediaType === "mixed" ? "Video" : "Images"}
+                    <span className="text-white/60">·</span>
                     {post.attachmentCount ?? 1}
                   </div>
                 </div>
