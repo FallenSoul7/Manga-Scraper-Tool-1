@@ -58,23 +58,13 @@ export const MangaCard = memo(function MangaCard({
     savedMediaType === "video" || savedMediaType === "mixed" ||
     /pawchive\s+video/i.test(manga.type ?? "")
   );
-  const thumbnailIsVideo = sourceId === "all.pawchive" &&
-    /\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(manga.thumbnail);
   const thumbnailIsPawchiveLogo = sourceId === "all.pawchive" &&
     /\/source-icons\/all\.pawchive\.svg(?:\?|$)/i.test(manga.thumbnail);
-  const thumbnailIsStatic = (manga as MangaSummary & { thumbnailIsStatic?: boolean }).thumbnailIsStatic;
-  const thumbnailMayAnimate = sourceId === "all.pawchive" &&
-    !thumbnailIsStatic && /\.(gif|apng|webp|avif)(?:[?#&]|$)/i.test(manga.thumbnail);
-  const hasStaticPawchivePreview = !!manga.thumbnail && !thumbnailIsVideo &&
-    !thumbnailIsPawchiveLogo && !thumbnailMayAnimate && (
-      thumbnailIsStatic || /\.(jpe?g|png)(?:[?#&]|$)/i.test(manga.thumbnail)
-    );
-  // Only use covers the Pawchive API has verified as static. If a video-only
-  // post has no poster/GIF preview, show a neutral static video tile instead
-  // of repeating the Pawchive logo for every saved post.
+  // Pawchive video covers are intentionally blank black tiles. Do not start a
+  // slow remote poster/GIF request for these cards; other sources keep theirs.
   const thumbnail = isPawchiveVideo
-    ? hasStaticPawchivePreview ? mediaImage(manga.thumbnail, sourceId) : ""
-    : manga.thumbnail && !thumbnailIsVideo && !thumbnailIsPawchiveLogo
+    ? ""
+    : manga.thumbnail && !thumbnailIsPawchiveLogo
       ? mediaImage(manga.thumbnail, sourceId)
       : "";
   const inner = (
@@ -100,12 +90,7 @@ export const MangaCard = memo(function MangaCard({
             onError={() => setImageFailed(true)}
           />
         ) : isPawchiveVideo ? (
-          <div className="h-full w-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-900 via-zinc-800 to-black text-white" aria-label={`${manga.title} video preview unavailable`}>
-            <span className="flex h-14 w-14 items-center justify-center rounded-full border border-white/30 bg-white/10">
-              <Film className="h-7 w-7" />
-            </span>
-            <span className="text-xs font-semibold tracking-widest text-white/80">VIDEO</span>
-          </div>
+          <div className="h-full w-full bg-black" aria-label={`${manga.title} video cover`} />
         ) : (
           <div
             className="h-full w-full flex flex-col items-center justify-center gap-2 bg-muted px-2 text-center text-muted-foreground"
