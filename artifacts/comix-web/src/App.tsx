@@ -82,7 +82,8 @@ import { useLibrarySync } from "@/hooks/use-library-sync";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
       staleTime: 5 * 60 * 1000,
       retry: 2,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 4000),

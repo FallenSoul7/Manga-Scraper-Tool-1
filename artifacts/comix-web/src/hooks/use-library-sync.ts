@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { apiUrl } from "@/lib/api-url";
 import { useStore, storeActions, getStoreSnapshot } from "@/lib/storage";
 import { getCachedUser } from "@/lib/auth-cache";
@@ -14,27 +15,41 @@ export function useLibrarySync() {
   const [state, setState] = useState<SyncState>("idle");
   const [message, setMessage] = useState("");
   
-  // Prevent the change-watcher from firing during startup sync
+  // Track the first ready transition so startup sync owns the initial merge.
   const isFirstRender = useRef(true);
   const startupSyncDone = useRef(false);
+  const syncInProgress = useRef(false);
+  const { data: backendReady = false } = useQuery<boolean>({
+    queryKey: ["backend-ready"],
+    queryFn: async () => false,
+    initialData: false,
+    staleTime: Infinity,
+    enabled: false,
+  });
+  const backendWasReady = useRef(backendReady);
 
   // ── Startup sync ───────────────────────────────────────────────────────────
-  // On every app open (browser OR PWA), if the user is logged in:
+  // On every app open, once the backend is healthy, if the user is logged in:
   //   1. Push local state to cloud (merge) so local-only new items go up
   //   2. Pull the merged result back so cloud-only new items come down
   // This keeps browser and PWA in sync automatically without user action.
   useEffect(() => {
-    if (startupSyncDone.current) return;
-    startupSyncDone.current = true;
+    if (!backendReady) {
+      if (!syncInProgress.current) startupSyncDone.current = false;
+      return;
+    }
+    if (startupSyncDone.current || syncInProgress.current) return;
     if (!getCachedUser()) return;
 
+    startupSyncDone.current = true;
+    syncInProgress.current = true;
     const snap = getStoreSnapshot();
 
     (async () => {
       setSyncStatus("syncing");
       try {
         // Step 1: push local → cloud (merge)
-        await fetch(apiUrl("/api/library/sync"), {
+        const upload = await fetch(apiUrl("/api/library/sync"), {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -45,28 +60,39 @@ export function useLibrarySync() {
             strategy: "merge",
           }),
         });
+        if (!upload.ok) throw new Error("Cloud sync upload failed");
 
         // Step 2: pull merged cloud state back into local store
         const res = await fetch(apiUrl("/api/library/sync"), {
           credentials: "include",
           headers: {},
         });
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.data) storeActions.restoreCloudSync(data.data);
-        }
+        if (!res.ok) throw new Error("Cloud sync download failed");
+        const data = await res.json();
+        if (data?.data) storeActions.restoreCloudSync(data.data);
         setSyncStatus("done");
       } catch {
-        // Offline or network error — silently skip, local data is fine
+        // Keep local data intact and allow another attempt after recovery.
         setSyncStatus("error");
+        startupSyncDone.current = false;
+      } finally {
+        syncInProgress.current = false;
       }
     })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [backendReady]);
 
   // ── Change-watcher: push to cloud whenever local data changes ──────────────
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
+      return;
+    }
+    if (!backendReady) {
+      backendWasReady.current = false;
+      return;
+    }
+    if (!backendWasReady.current) {
+      backendWasReady.current = true;
       return;
     }
 
@@ -78,7 +104,7 @@ export function useLibrarySync() {
       body: JSON.stringify({ library, categories, installedSources, strategy: "merge" }),
     }).catch(() => {});
 
-  }, [library, categories, installedSources]);
+  }, [library, categories, installedSources, backendReady]);
 
   const uploadLibrary = useCallback(async () => {
     setState("uploading");

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BookOpen, RefreshCw, WifiOff } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
@@ -18,6 +18,8 @@ export function BackendWarmup() {
   const [visible, setVisible] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
+  const lastBackendReadyAt = useRef(0);
+  const wasHidden = useRef(false);
 
   const warmBackend = useCallback(async (signal?: AbortSignal) => {
     let retryDelayMs = 2_000;
@@ -30,6 +32,7 @@ export function BackendWarmup() {
           signal,
         });
         if (response.ok) {
+          lastBackendReadyAt.current = Date.now();
           queryClient.setQueryData(["backend-ready"], true);
           // Don't hold the app shell while active pages refetch after the backend
           // wakes; those pages already show their own loading states.
@@ -66,8 +69,31 @@ export function BackendWarmup() {
       setState("warming");
       setAttempt(value => value + 1);
     };
+    const resume = () => {
+      if (document.visibilityState === "hidden") {
+        wasHidden.current = true;
+        return;
+      }
+      if (!wasHidden.current) return;
+      wasHidden.current = false;
+
+      const backendReady = queryClient.getQueryData<boolean>(["backend-ready"]) === true;
+      const recentlyHealthy = Date.now() - lastBackendReadyAt.current < 10 * 60 * 1000;
+      if (!backendReady || !recentlyHealthy) refresh();
+    };
+    const markHidden = () => { wasHidden.current = true; };
     window.addEventListener(BACKEND_REFRESH_EVENT, refresh);
-    return () => window.removeEventListener(BACKEND_REFRESH_EVENT, refresh);
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("focus", resume);
+    window.addEventListener("pagehide", markHidden);
+    window.addEventListener("pageshow", resume);
+    return () => {
+      window.removeEventListener(BACKEND_REFRESH_EVENT, refresh);
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("pagehide", markHidden);
+      window.removeEventListener("pageshow", resume);
+    };
   }, [queryClient]);
 
   useEffect(() => {
@@ -81,7 +107,9 @@ export function BackendWarmup() {
     const controller = new AbortController();
     const showTimer = attempt === 0 ? window.setTimeout(() => setVisible(true), SHOW_AFTER_MS) : undefined;
     const releaseTimer = window.setTimeout(() => setVisible(false), RELEASE_SHELL_AFTER_MS);
-    const timeoutTimer = window.setTimeout(() => setState("timeout"), GIVE_UP_AFTER_MS);
+    const timeoutTimer = window.setTimeout(() => {
+      setState(current => current === "warming" ? "timeout" : current);
+    }, GIVE_UP_AFTER_MS);
     void warmBackend(controller.signal);
 
     return () => {
