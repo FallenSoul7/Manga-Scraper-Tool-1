@@ -35,16 +35,40 @@ function PawchiveThumbnail({
   loading?: "lazy" | "eager";
 }) {
   const [failed, setFailed] = useState(false);
+  const [imageLoading, setImageLoading] = useState(Boolean(src));
+  const [attempt, setAttempt] = useState(0);
   const fallback = "/public/source-icons/all.pawchive.svg";
+  useEffect(() => {
+    setFailed(false);
+    setImageLoading(Boolean(src));
+    setAttempt(0);
+  }, [src]);
+  useEffect(() => {
+    if (!src || !failed || attempt >= 2) return;
+    const timer = window.setTimeout(() => {
+      setImageLoading(true);
+      setFailed(false);
+      setAttempt(value => value + 1);
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [attempt, failed, src]);
+  const baseSrc = !src || failed ? fallback : mediaImage(src, "all.pawchive");
+  const imageSrc = attempt > 0 && baseSrc !== fallback
+    ? `${baseSrc}${baseSrc.includes("?") ? "&" : "?"}pawchive_retry=${attempt}`
+    : baseSrc;
   return (
-    <img
-      src={!failed && src ? mediaImage(src, "all.pawchive") : fallback}
-      alt={alt}
-      loading={loading}
-      onError={() => setFailed(true)}
-      className={className}
-      draggable={false}
-    />
+    <div className={`relative overflow-hidden bg-muted ${className}`}>
+      <img
+        src={imageSrc}
+        alt={alt}
+        loading={loading}
+        onLoad={() => { setImageLoading(false); setFailed(false); }}
+        onError={() => { setImageLoading(false); setFailed(true); }}
+        className="h-full w-full object-cover"
+        draggable={false}
+      />
+      {imageLoading && <div className="absolute inset-0 flex items-center justify-center bg-muted/80"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
+    </div>
   );
 }
 

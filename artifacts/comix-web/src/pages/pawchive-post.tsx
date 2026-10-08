@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRoute, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
-import { ArrowLeft, Check, Download, FileImage, Heart, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, Download, FileImage, Heart, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { mediaImage, mediaVideo } from "@/lib/utils";
 import { saveChapterToFile } from "@/lib/save-to-file";
@@ -56,6 +56,30 @@ export default function PawchivePostPage() {
   const [videoFallbacks, setVideoFallbacks] = useState<Set<string>>(() => new Set());
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState("");
+  const [showScrollUp, setShowScrollUp] = useState(false);
+  const lastScrollY = useRef(0);
+  const scrollButtonTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    lastScrollY.current = window.scrollY;
+    const onScroll = () => {
+      const currentY = window.scrollY;
+      const movingUp = currentY < lastScrollY.current - 2;
+      lastScrollY.current = currentY;
+      if (scrollButtonTimer.current !== null) window.clearTimeout(scrollButtonTimer.current);
+      if (movingUp && currentY > 280) {
+        setShowScrollUp(true);
+        scrollButtonTimer.current = window.setTimeout(() => setShowScrollUp(false), 220);
+      } else {
+        setShowScrollUp(false);
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (scrollButtonTimer.current !== null) window.clearTimeout(scrollButtonTimer.current);
+    };
+  }, []);
 
   function toggleFavorite() {
     if (savedPost) {
@@ -188,6 +212,11 @@ export default function PawchivePostPage() {
              <img key={page.index} src={mediaUrl(page.url)} alt={`Attachment ${page.index + 1}`} loading="lazy" className="w-full rounded-xl object-contain" />
           ))}
         </div>
+      )}
+      {showScrollUp && (
+        <button type="button" onClick={() => { setShowScrollUp(false); window.scrollTo({ top: 0, behavior: "smooth" }); }} aria-label="Back to top while scrolling up" title="Back to top" className="fixed bottom-6 right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/80 text-white shadow-lg backdrop-blur transition-opacity">
+          <ArrowUp className="h-5 w-5" />
+        </button>
       )}
       <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
         <DialogContent className="max-w-sm">
