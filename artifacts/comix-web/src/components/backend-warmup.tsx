@@ -4,7 +4,13 @@ import { BookOpen, RefreshCw, WifiOff } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
 
 const SHOW_AFTER_MS = 350;
+const RELEASE_SHELL_AFTER_MS = 3_500;
 const GIVE_UP_AFTER_MS = 45_000;
+const BACKEND_REFRESH_EVENT = "comihub:refresh-backend";
+
+export function requestBackendRefresh() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(BACKEND_REFRESH_EVENT));
+}
 
 export function BackendWarmup() {
   const queryClient = useQueryClient();
@@ -14,27 +20,58 @@ export function BackendWarmup() {
   const [messageIndex, setMessageIndex] = useState(0);
 
   const warmBackend = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await fetch(`${apiUrl("/api/healthz")}?warmup=${Date.now()}`, {
-        method: "GET",
-        cache: "no-store",
-        credentials: "omit",
-        signal,
-      });
-      if (response.ok) {
-        // Requests made by the first render may have failed while Render was
-        // asleep. Retry them immediately once the wake-up probe succeeds.
-        await queryClient.invalidateQueries();
-        setState("ready");
-        setVisible(false);
+    let retryDelayMs = 2_000;
+    while (!signal?.aborted) {
+      try {
+        const response = await fetch(`${apiUrl("/api/healthz")}?warmup=${Date.now()}`, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "omit",
+          signal,
+        });
+        if (response.ok) {
+          queryClient.setQueryData(["backend-ready"], true);
+          // Don't hold the app shell while active pages refetch after the backend
+          // wakes; those pages already show their own loading states.
+          void queryClient.invalidateQueries();
+          setState("ready");
+          setVisible(false);
+          return;
+        }
+      } catch {
+        if (signal?.aborted) return;
       }
-    } catch {
-      // The page can still be used from the local cache while the backend wakes.
-      // The timeout message is intentionally handled by the timer below.
+
+      if (signal?.aborted) return;
+      await new Promise<void>((resolve) => {
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          window.clearTimeout(timer);
+          signal?.removeEventListener("abort", finish);
+          resolve();
+        };
+        const timer = window.setTimeout(finish, retryDelayMs);
+        if (signal?.aborted) finish();
+        else signal?.addEventListener("abort", finish, { once: true });
+      });
+      retryDelayMs = Math.min(retryDelayMs * 2, 15_000);
     }
   }, [queryClient]);
 
   useEffect(() => {
+    const refresh = () => {
+      queryClient.setQueryData(["backend-ready"], false);
+      setState("warming");
+      setAttempt(value => value + 1);
+    };
+    window.addEventListener(BACKEND_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(BACKEND_REFRESH_EVENT, refresh);
+  }, [queryClient]);
+
+  useEffect(() => {
+    queryClient.setQueryData(["backend-ready"], false);
     // Make the Extensions tab usable immediately. The static catalog is part
     // of the Vercel bundle, so it does not depend on Render waking up.
     void fetch("/source-catalog.json", { cache: "force-cache" })
@@ -42,13 +79,15 @@ export function BackendWarmup() {
       .then(catalog => { if (catalog) queryClient.setQueryData(["sources-catalog"], catalog); })
       .catch(() => undefined);
     const controller = new AbortController();
-    const showTimer = window.setTimeout(() => setVisible(true), SHOW_AFTER_MS);
+    const showTimer = attempt === 0 ? window.setTimeout(() => setVisible(true), SHOW_AFTER_MS) : undefined;
+    const releaseTimer = window.setTimeout(() => setVisible(false), RELEASE_SHELL_AFTER_MS);
     const timeoutTimer = window.setTimeout(() => setState("timeout"), GIVE_UP_AFTER_MS);
     void warmBackend(controller.signal);
 
     return () => {
       controller.abort();
-      window.clearTimeout(showTimer);
+      if (showTimer !== undefined) window.clearTimeout(showTimer);
+      window.clearTimeout(releaseTimer);
       window.clearTimeout(timeoutTimer);
     };
   }, [attempt, warmBackend]);
@@ -64,6 +103,7 @@ export function BackendWarmup() {
   if (state === "ready" || !visible) return null;
 
   const retry = () => {
+    queryClient.setQueryData(["backend-ready"], false);
     setState("warming");
     setVisible(true);
     setAttempt((value) => value + 1);
@@ -111,15 +151,16 @@ export function BackendWarmup() {
             </div>
           </div>
         )}
+        <button
+          type="button"
+          onClick={retry}
+          className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90"
+        >
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          Refresh
+        </button>
         {state === "timeout" && (
-          <button
-            type="button"
-            onClick={retry}
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90"
-          >
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            Try again
-          </button>
+          <p className="mt-3 text-xs text-muted-foreground">The app is open; only live source data is still connecting.</p>
         )}
         <p className="mt-6 text-xs text-muted-foreground/70">Your local library remains available on this device.</p>
       </div>

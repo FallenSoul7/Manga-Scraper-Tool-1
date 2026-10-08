@@ -19,12 +19,14 @@ import {
   Settings2,
   Pin,
   WifiOff,
+  RefreshCw,
 } from "lucide-react";
 import { useStore, storeActions, type InstalledSource } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/hooks/use-settings";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 import { getCachedSourceCatalog, saveOfflineSourceCatalog, useOfflineCatalog, useOnlineStatus } from "@/lib/offline-catalog";
+import { requestBackendRefresh } from "@/components/backend-warmup";
 
 interface CatalogExtension {
   id: string; slug: string; name: string; lang: string;
@@ -249,6 +251,13 @@ function GlobalSearchResults({ query, results, isSearching, onClear }: {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SourcesPage() {
   const online = useOnlineStatus();
+  const { data: backendReady = false } = useQuery<boolean>({
+    queryKey: ["backend-ready"],
+    queryFn: async () => false,
+    initialData: false,
+    staleTime: Infinity,
+    enabled: false,
+  });
   const offlineCatalog = useOfflineCatalog();
   const installedMap = useStore(s => s.installedSources);
   const activeId     = useStore(s => s.activeSourceId);
@@ -346,6 +355,15 @@ export default function SourcesPage() {
 
   return (
     <main className="pb-8 max-w-3xl mx-auto">
+      {online && !backendReady && (
+        <div role="status" className="mx-4 mt-3 flex items-center gap-2 rounded-xl border border-primary/15 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+          <span className="flex-1">Connecting to the content service…</span>
+          <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2" onClick={requestBackendRefresh} aria-label="Refresh content service connection">
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          </Button>
+        </div>
+      )}
       {showGlobalSearch && !online ? (
         <div className="px-4 py-20 text-center">
           <WifiOff className="mx-auto h-10 w-10 text-muted-foreground/40" />
