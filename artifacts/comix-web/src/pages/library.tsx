@@ -378,6 +378,7 @@ export default function LibraryPage() {
                   : manga.sourceId
                   ? `/sources/${encodeURIComponent(manga.sourceId)}/manga/${encodeURIComponent(manga.id)}?from=library&cat=${encodeURIComponent(activeTab)}`
                   : `/manga/${encodeURIComponent(manga.id)}?from=library&cat=${encodeURIComponent(activeTab)}`}
+                onNavigate={() => sessionStorage.setItem("library-scroll", String(window.scrollY))}
                 isSelecting={selectionMode}
                 isSelected={selectedIds.has(manga.id)}
                 showSourceBadge

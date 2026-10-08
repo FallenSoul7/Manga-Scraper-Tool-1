@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 import { Link } from "wouter";
 import { mediaImage } from "@/lib/utils";
 import { Check } from "lucide-react";
-import { BookOpen, Film } from "lucide-react";
+import { BookOpen, Film, Play } from "lucide-react";
 import type { MangaSummary } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
 
@@ -58,9 +58,17 @@ export const MangaCard = memo(function MangaCard({
     savedMediaType === "video" || savedMediaType === "mixed" ||
     /pawchive\s+video/i.test(manga.type ?? "")
   );
-  const thumbnail = isPawchiveVideo
-    ? mediaImage("/public/source-icons/all.pawchive.svg")
-    : manga.thumbnail ? mediaImage(manga.thumbnail, sourceId) : "";
+  const thumbnailIsVideo = sourceId === "all.pawchive" &&
+    /\.(mp4|webm|mov|mkv|avi|m4v)(\?|$)/i.test(manga.thumbnail);
+  const thumbnailIsPawchiveLogo = sourceId === "all.pawchive" &&
+    /\/source-icons\/all\.pawchive\.svg(?:\?|$)/i.test(manga.thumbnail);
+  // Keep real still-image previews on video/mixed posts; only replace a raw
+  // video URL or the generic logo with the purpose-built video placeholder.
+  const hasVideoPlaceholder = isPawchiveVideo &&
+    (!manga.thumbnail || thumbnailIsVideo || thumbnailIsPawchiveLogo);
+  const thumbnail = manga.thumbnail && !thumbnailIsVideo && !thumbnailIsPawchiveLogo
+    ? mediaImage(manga.thumbnail, sourceId)
+    : "";
   const inner = (
     <div className="group relative cursor-pointer select-none">
       <div
@@ -83,6 +91,13 @@ export const MangaCard = memo(function MangaCard({
             draggable={false}
             onError={() => setImageFailed(true)}
           />
+        ) : hasVideoPlaceholder ? (
+          <div className="h-full w-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-900 via-zinc-800 to-black text-white" aria-label={`${manga.title} video post`}>
+            <span className="flex h-14 w-14 items-center justify-center rounded-full border border-white/30 bg-white/10">
+              <Play className="ml-1 h-7 w-7 fill-current" />
+            </span>
+            <span className="text-xs font-semibold tracking-widest text-white/80">VIDEO POST</span>
+          </div>
         ) : (
           <div
             className="h-full w-full flex flex-col items-center justify-center gap-2 bg-muted px-2 text-center text-muted-foreground"
