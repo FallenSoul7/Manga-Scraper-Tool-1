@@ -231,14 +231,14 @@ export default function LibraryPage() {
           for (const saved of entries) {
             const post = postsById.get(saved.id);
             if (
-              !post?.thumbnail || post.thumbnailIsStatic !== true ||
+              !post || post.thumbnailIsStatic !== true ||
               (post.mediaType !== "video" && post.mediaType !== "mixed")
             ) continue;
             const current = getStoreSnapshot().library[saved.id];
             if (!current || current.sourceId !== "all.pawchive") continue;
             storeActions.addToLibrary({
               ...current,
-              thumbnail: post.thumbnail,
+              thumbnail: post.thumbnail ?? "",
               thumbnailIsStatic: true,
               mediaType: post.mediaType,
               type: "Pawchive video post",

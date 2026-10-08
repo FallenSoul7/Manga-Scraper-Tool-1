@@ -151,11 +151,16 @@ function postThumbnail(post: Post): string {
   const files = postFiles(post);
   const hasVideo = postHasVideo(files);
   const images = files.filter(file => IMAGE_EXT.test(file.name ?? file.path ?? ""));
-  // Video/mixed cards must never inherit a looping GIF or animated WebP from
-  // an attachment. Use the same still image on Pawchive when available.
+  // Prefer a real still image for video/mixed cards. If the only image is a
+  // GIF, Pawchive's thumbnail CDN returns its single-frame WebP preview; never
+  // send the original looping GIF to a video card. A video-only post with no
+  // image preview gets an empty thumbnail so the UI can show a neutral video
+  // tile rather than the Pawchive source logo.
   const thumbnail = hasVideo
     ? images.find(file => STATIC_IMAGE_EXT.test(file.name ?? file.path ?? ""))
+      ?? images.find(file => /\.gif$/i.test(file.name ?? file.path ?? ""))
     : images[0];
+  if (hasVideo && !thumbnail) return "";
   return thumbnailUrl(thumbnail);
 }
 

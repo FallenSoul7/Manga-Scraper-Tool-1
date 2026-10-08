@@ -275,6 +275,7 @@ app.get("/api/animegg/embed", async (req, res) => {
 // Some source CDNs reject browser image requests when the source referer is
 // missing (notably Webtoons). Keep this proxy narrowly allow-listed.
 const SOURCE_MEDIA_HOSTS: Record<string, { hosts: string[]; referer: string }> = {
+  "all.pawchive": { hosts: ["img.pawchive.pw"], referer: "https://pawchive.pw/" },
   "all.webtoons": { hosts: ["webtoon-phinf.pstatic.net"], referer: "https://www.webtoons.com/" },
   "all.atsu": { hosts: ["cdn.atsu.moe"], referer: "https://atsu.moe/" },
   "en.resetscans": { hosts: ["cdn.resetscans.net", "resetscans.net", ".resetscans.net"], referer: "https://www.resetscans.net/" },
@@ -300,10 +301,17 @@ async function fetchSourceMedia(sourceId: string, targetUrl: string, source: { r
     headers: { Referer: source.referer, Origin: new URL(source.referer).origin, "User-Agent": VIDEO_PROXY_UA, Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
     timeout: 45_000, maxRedirects: 5, validateStatus: () => true,
   }).then(upstream => {
-    const contentType = String(upstream.headers["content-type"] ?? "");
+    let contentType = String(upstream.headers["content-type"] ?? "");
     if (upstream.status >= 400 || contentType.includes("text/html")) throw new Error("Source media is temporarily unavailable");
     const body = Buffer.from(upstream.data);
     if (body.length > 12 * 1024 * 1024) throw new Error("Source media is too large");
+    // Pawchive's GIF thumbnail route returns a one-frame WebP but can label it
+    // image/gif. Correct the MIME so browsers reliably decode the frozen cover.
+    if (
+      sourceId === "all.pawchive" &&
+      body.subarray(0, 4).toString("ascii") === "RIFF" &&
+      body.subarray(8, 12).toString("ascii") === "WEBP"
+    ) contentType = "image/webp";
     if (sourceMediaCache.size >= SOURCE_MEDIA_CACHE_MAX && !sourceMediaCache.has(key)) {
       const oldest = sourceMediaCache.keys().next().value;
       if (oldest) sourceMediaCache.delete(oldest);

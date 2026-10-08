@@ -62,19 +62,18 @@ export const MangaCard = memo(function MangaCard({
     /\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(manga.thumbnail);
   const thumbnailIsPawchiveLogo = sourceId === "all.pawchive" &&
     /\/source-icons\/all\.pawchive\.svg(?:\?|$)/i.test(manga.thumbnail);
-  const thumbnailMayAnimate = sourceId === "all.pawchive" &&
-    /\.(gif|apng|webp|avif)(?:[?#&]|$)/i.test(manga.thumbnail);
   const thumbnailIsStatic = (manga as MangaSummary & { thumbnailIsStatic?: boolean }).thumbnailIsStatic;
-  const hasStaticPawchivePreview = !thumbnailIsVideo && !thumbnailMayAnimate && (
-    thumbnailIsStatic || thumbnailIsPawchiveLogo || /\.(jpe?g|png)(?:[?#&]|$)/i.test(manga.thumbnail)
-  );
-  const pawchiveVideoThumbnail = hasStaticPawchivePreview && manga.thumbnail
-    ? manga.thumbnail
-    : "/public/source-icons/all.pawchive.svg";
-  // For video/mixed posts, show Pawchive's own static cover (or source icon),
-  // never an attachment whose format or URL might conceal animation.
+  const thumbnailMayAnimate = sourceId === "all.pawchive" &&
+    !thumbnailIsStatic && /\.(gif|apng|webp|avif)(?:[?#&]|$)/i.test(manga.thumbnail);
+  const hasStaticPawchivePreview = !!manga.thumbnail && !thumbnailIsVideo &&
+    !thumbnailIsPawchiveLogo && !thumbnailMayAnimate && (
+      thumbnailIsStatic || /\.(jpe?g|png)(?:[?#&]|$)/i.test(manga.thumbnail)
+    );
+  // Only use covers the Pawchive API has verified as static. If a video-only
+  // post has no poster/GIF preview, show a neutral static video tile instead
+  // of repeating the Pawchive logo for every saved post.
   const thumbnail = isPawchiveVideo
-    ? mediaImage(pawchiveVideoThumbnail, sourceId)
+    ? hasStaticPawchivePreview ? mediaImage(manga.thumbnail, sourceId) : ""
     : manga.thumbnail && !thumbnailIsVideo && !thumbnailIsPawchiveLogo
       ? mediaImage(manga.thumbnail, sourceId)
       : "";
@@ -100,6 +99,13 @@ export const MangaCard = memo(function MangaCard({
             draggable={false}
             onError={() => setImageFailed(true)}
           />
+        ) : isPawchiveVideo ? (
+          <div className="h-full w-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-900 via-zinc-800 to-black text-white" aria-label={`${manga.title} video preview unavailable`}>
+            <span className="flex h-14 w-14 items-center justify-center rounded-full border border-white/30 bg-white/10">
+              <Film className="h-7 w-7" />
+            </span>
+            <span className="text-xs font-semibold tracking-widest text-white/80">VIDEO</span>
+          </div>
         ) : (
           <div
             className="h-full w-full flex flex-col items-center justify-center gap-2 bg-muted px-2 text-center text-muted-foreground"

@@ -16,6 +16,9 @@ export function mediaImage(url: string | undefined, source?: string): string {
   const apiOrigin = (import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL ?? "")
     .replace(/\/+$/, "");
   if (url.startsWith('/api/') || url.startsWith('/public/')) return `${apiOrigin}${url}`;
+  if (source === "all.pawchive" && /^https:\/\/img\.pawchive\.pw\//i.test(url)) {
+    return `${apiOrigin}/api/source-media?source=${encodeURIComponent(source)}&url=${encodeURIComponent(url)}`;
+  }
   if (source && PROXIED_MEDIA_SOURCES.has(source) && /^https:\/\//i.test(url)) {
     return `${apiOrigin}/api/source-media?source=${encodeURIComponent(source)}&url=${encodeURIComponent(url)}`;
   }
