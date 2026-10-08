@@ -20,7 +20,34 @@ const SearchPage           = lazy(() => import("@/pages/search"));
 const MangaDetail          = lazy(() => import("@/pages/manga-detail"));
 const Reader               = lazy(() => import("@/pages/reader"));
 const SettingsPage         = lazy(() => import("@/pages/settings"));
-const SubscriptionPage     = lazy(() => import("@/pages/subscription"));
+function lazyWithChunkRecovery<T extends { default: React.ComponentType<any> }>(loader: () => Promise<T>, key: string) {
+  return lazy(async () => {
+    try {
+      const module = await loader();
+      try { sessionStorage.removeItem(`comihub:chunk-recovery:${key}`); } catch { /* storage may be restricted */ }
+      return module;
+    } catch (error) {
+      // An installed PWA can retain an old HTML shell while Vercel has already
+      // replaced its hashed lazy chunk. Clear stale app caches and reload once;
+      // the session flag prevents an infinite reload loop.
+      const recoveryKey = `comihub:chunk-recovery:${key}`;
+      let alreadyRetried = false;
+      try { alreadyRetried = sessionStorage.getItem(recoveryKey) === "1"; } catch { /* ignore */ }
+      if (!alreadyRetried) {
+        try { sessionStorage.setItem(recoveryKey, "1"); } catch { /* ignore */ }
+        try {
+          const registrations = await navigator.serviceWorker?.getRegistrations();
+          await Promise.all((registrations ?? []).map(registration => registration.unregister()));
+          const cacheKeys = await caches?.keys();
+          await Promise.all((cacheKeys ?? []).map(cacheKey => caches.delete(cacheKey)));
+        } catch { /* continue with a normal reload */ }
+        window.location.reload();
+      }
+      throw error;
+    }
+  });
+}
+const SubscriptionPage     = lazyWithChunkRecovery(() => import("@/pages/subscription"), "subscription");
 const LibraryPage          = lazy(() => import("@/pages/library"));
 const UpdatesPage          = lazy(() => import("@/pages/updates"));
 const HistoryPage          = lazy(() => import("@/pages/history"));
