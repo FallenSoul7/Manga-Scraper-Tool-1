@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback, memo } from "react";
 import { Link, useSearch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
-import { useStore, storeActions } from "@/lib/storage";
+import { useStore, storeActions, getStoreSnapshot } from "@/lib/storage";
 import { MangaCard } from "@/components/manga-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,25 @@ import { useSettings } from "@/hooks/use-settings";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 
 const FALLBACK_TAB = "default";
+
+type PawchivePostSummary = {
+  id: string | number;
+  thumbnail?: string;
+  thumbnailIsStatic?: boolean;
+  mediaType?: "image" | "video" | "mixed";
+};
+
+function creatorIdFromPawchivePostId(postId: string): string | null {
+  try {
+    const base64 = postId.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")));
+    if (!decoded?.service || !decoded?.user) return null;
+    return btoa(JSON.stringify({ service: String(decoded.service), user: String(decoded.user) }))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  } catch {
+    return null;
+  }
+}
 
 // ─── Selectable card wrapper ─────────────────────────────────────────────────
 // Handles the long-press timer and pointer plumbing entirely so library's JSX
@@ -88,6 +107,7 @@ export default function LibraryPage() {
   const categories = useStore(s => s.categories);
   const searchString = useSearch();
   const [, setLocation] = useLocation();
+  const pawchiveThumbnailBackfillAttemptedRef = useRef(new Set<string>());
 
   const sortedCategories = useMemo(
     () => [...categories].sort((a, b) => a.order - b.order),
@@ -171,6 +191,67 @@ export default function LibraryPage() {
   );
 
   const libraryItems = useMemo(() => Object.values(library), [library]);
+
+  // Upgrade older saved Pawchive cards in place. Earlier versions saved the
+  // video URL or an extensionless thumbnail URL; without the original filename
+  // neither can be distinguished safely from an animated preview. Ask the
+  // source for each saved creator's post summaries, then replace only video /
+  // mixed entries with the exact verified static cover used in Pawchive's grid.
+  useEffect(() => {
+    if (!online) return;
+    const groups = new Map<string, typeof libraryItems>();
+    for (const item of libraryItems) {
+      if (item.sourceId !== "all.pawchive") continue;
+      const thumbnail = item.thumbnail ?? "";
+      const oldOrUncertainThumbnail = item.thumbnailIsStatic !== true ||
+        /\/source-icons\/all\.pawchive\.svg(?:[?#]|$)/i.test(thumbnail) ||
+        /\.(mp4|webm|mov|mkv|avi|m4v|gif|apng|webp|avif)(?:[?#&]|$)/i.test(thumbnail);
+      if (!oldOrUncertainThumbnail || pawchiveThumbnailBackfillAttemptedRef.current.has(item.id)) continue;
+
+      pawchiveThumbnailBackfillAttemptedRef.current.add(item.id);
+      const creatorId = item.creatorId || creatorIdFromPawchivePostId(item.id);
+      if (!creatorId) continue;
+      const entries = groups.get(creatorId) ?? [];
+      entries.push(item);
+      groups.set(creatorId, entries);
+    }
+    if (!groups.size) return;
+
+    const queue = [...groups.entries()];
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < queue.length) {
+        const [creatorId, entries] = queue[cursor++];
+        try {
+          const response = await customFetch<{ items: PawchivePostSummary[] }>(
+            `/api/manga/${encodeURIComponent(creatorId)}/chapters?dedupe=false`,
+            { headers: { "X-Source": "all.pawchive" } },
+          );
+          const postsById = new Map(response.items.map(post => [String(post.id), post]));
+          for (const saved of entries) {
+            const post = postsById.get(saved.id);
+            if (
+              !post?.thumbnail || post.thumbnailIsStatic !== true ||
+              (post.mediaType !== "video" && post.mediaType !== "mixed")
+            ) continue;
+            const current = getStoreSnapshot().library[saved.id];
+            if (!current || current.sourceId !== "all.pawchive") continue;
+            storeActions.addToLibrary({
+              ...current,
+              thumbnail: post.thumbnail,
+              thumbnailIsStatic: true,
+              mediaType: post.mediaType,
+              type: "Pawchive video post",
+              creatorId: current.creatorId ?? creatorId,
+            });
+          }
+        } catch {
+          // Keep the saved entry intact when Pawchive or the API is unavailable.
+        }
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(4, queue.length) }, () => worker()));
+  }, [libraryItems, online]);
 
   const filteredItems = useMemo(() => {
     const q = filterText.trim().toLowerCase();
