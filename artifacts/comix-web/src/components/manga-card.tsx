@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { mediaImage } from "@/lib/utils";
 import { Check } from "lucide-react";
@@ -53,20 +53,24 @@ export const MangaCard = memo(function MangaCard({
   const { settings } = useSettings();
   const [imageFailed, setImageFailed] = useState(false);
   const savedMediaType = (manga as MangaSummary & { mediaType?: string }).mediaType;
-  const isPawchiveVideo = sourceId === "all.pawchive" && (
+  const isPawchiveSource = sourceId === "all.pawchive";
+  const isPawchiveVideo = isPawchiveSource && (
     /\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(manga.thumbnail) ||
     savedMediaType === "video" || savedMediaType === "mixed" ||
     /pawchive\s+video/i.test(manga.type ?? "")
   );
-  const thumbnailIsPawchiveLogo = sourceId === "all.pawchive" &&
+  const thumbnailIsPawchiveLogo = isPawchiveSource &&
     /\/source-icons\/all\.pawchive\.svg(?:\?|$)/i.test(manga.thumbnail);
-  // Pawchive video covers are intentionally blank black tiles. Do not start a
-  // slow remote poster/GIF request for these cards; other sources keep theirs.
+  const pawchiveThumbnailIsStatic =
+    (manga as MangaSummary & { thumbnailIsStatic?: boolean }).thumbnailIsStatic === true;
   const thumbnail = isPawchiveVideo
-    ? ""
+    ? pawchiveThumbnailIsStatic && manga.thumbnail && !thumbnailIsPawchiveLogo
+      ? mediaImage(manga.thumbnail, sourceId)
+      : ""
     : manga.thumbnail && !thumbnailIsPawchiveLogo
       ? mediaImage(manga.thumbnail, sourceId)
       : "";
+  useEffect(() => setImageFailed(false), [thumbnail]);
   const inner = (
     <div className="group relative cursor-pointer select-none">
       <div
@@ -89,8 +93,15 @@ export const MangaCard = memo(function MangaCard({
             draggable={false}
             onError={() => setImageFailed(true)}
           />
-        ) : isPawchiveVideo ? (
-          <div className="h-full w-full bg-black" aria-label={`${manga.title} video cover`} />
+        ) : isPawchiveSource ? (
+          <img
+            src="/public/source-icons/all.pawchive.svg"
+            alt="Pawchive"
+            className="h-full w-full object-contain bg-black p-5"
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+          />
         ) : (
           <div
             className="h-full w-full flex flex-col items-center justify-center gap-2 bg-muted px-2 text-center text-muted-foreground"

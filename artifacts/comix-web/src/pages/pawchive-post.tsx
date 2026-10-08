@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { ArrowLeft, ArrowUp, Check, Download, FileImage, Heart, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { mediaImage, mediaVideo } from "@/lib/utils";
+import { mediaImage, mediaVideo, warmMediaImage } from "@/lib/utils";
 import { saveChapterToFile } from "@/lib/save-to-file";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useStore, storeActions } from "@/lib/storage";
@@ -55,6 +55,13 @@ export default function PawchivePostPage() {
   const libraryCategoryId = searchParams.get("cat") ?? "default";
   const categories = useStore(state => state.categories);
   const savedPost = useStore(state => state.library[postId]);
+  const { data: backendReady = false } = useQuery<boolean>({
+    queryKey: ["backend-ready"],
+    queryFn: async () => false,
+    initialData: false,
+    staleTime: Infinity,
+    enabled: false,
+  });
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(["default"]);
   const [videoFallbacks, setVideoFallbacks] = useState<Set<string>>(() => new Set());
@@ -109,13 +116,19 @@ export default function PawchivePostPage() {
     const staticPageThumbnail = media.find(page =>
       !isVideo(page.url) && /\.(jpe?g|png)(?:[?#&]|$)/i.test(page.url),
     )?.url;
-    const staticThumbnail = postThumbnailIsStatic && postThumbnail
+    const postThumbnailIsLogo = /\/source-icons\/all\.pawchive\.svg(?:[?#]|$)/i.test(postThumbnail);
+    const imageThumbnail = postThumbnail && !postThumbnailIsLogo
       ? postThumbnail
-      : staticPageThumbnail ?? "/public/source-icons/all.pawchive.svg";
+      : staticPageThumbnail ?? media.find(page => !isVideo(page.url))?.url;
+    const thumbnail = hasVideo
+      ? postThumbnailIsStatic && postThumbnail && !postThumbnailIsLogo
+        ? postThumbnail
+        : staticPageThumbnail ?? "/public/source-icons/all.pawchive.svg"
+      : imageThumbnail ?? "/public/source-icons/all.pawchive.svg";
     storeActions.addToLibrary({
       id: postId,
       title: postTitle,
-      thumbnail: hasVideo ? staticThumbnail : media.find(page => !isVideo(page.url))?.url ?? "/public/source-icons/all.pawchive.svg",
+      thumbnail,
       type: media.some(page => isVideo(page.url)) ? "Pawchive video post" : "Pawchive post",
       sourceId: "all.pawchive",
       mediaType: hasVideo ? (hasImage ? "mixed" : "video") : "image",
@@ -130,6 +143,7 @@ export default function PawchivePostPage() {
       updatesInitialized: false,
       trackedChapterIds: [],
     });
+    warmMediaImage(thumbnail, "all.pawchive");
     setCategoryDialogOpen(false);
   }
 
@@ -152,7 +166,7 @@ export default function PawchivePostPage() {
       `/api/chapter/${encodeURIComponent(postId)}/pages`,
       { headers: { "X-Source": "all.pawchive" } },
     ),
-    enabled: !!postId,
+    enabled: !!postId && backendReady,
   });
 
   const media = useMemo(() => pages.data?.pages ?? [], [pages.data]);
@@ -166,10 +180,21 @@ export default function PawchivePostPage() {
     const staticPageThumbnail = media.find(page =>
       !isVideo(page.url) && /\.(jpe?g|png)(?:[?#&]|$)/i.test(page.url),
     )?.url;
-    const thumbnail = hasVideo && !savedPost.thumbnailIsStatic
-      ? (postThumbnailIsStatic && postThumbnail ? postThumbnail : staticPageThumbnail ?? "/public/source-icons/all.pawchive.svg")
+    const postThumbnailIsLogo = /\/source-icons\/all\.pawchive\.svg(?:[?#]|$)/i.test(postThumbnail);
+    const imageThumbnail = postThumbnail && !postThumbnailIsLogo
+      ? postThumbnail
+      : staticPageThumbnail ?? media.find(page => !isVideo(page.url))?.url;
+    const bestThumbnail = hasVideo
+      ? postThumbnailIsStatic && postThumbnail && !postThumbnailIsLogo
+        ? postThumbnail
+        : staticPageThumbnail ?? "/public/source-icons/all.pawchive.svg"
+    : imageThumbnail ?? "/public/source-icons/all.pawchive.svg";
+    const oldFullSizeThumbnail = /^https:\/\/file\.pawchive\.pw\/data\//i.test(savedPost.thumbnail);
+    const thumbnail = !savedPost.thumbnail || oldFullSizeThumbnail || (hasVideo && !savedPost.thumbnailIsStatic) ||
+      isVideo(savedPost.thumbnail) || /\/source-icons\/all\.pawchive\.svg(?:[?#]|$)/i.test(savedPost.thumbnail)
+      ? bestThumbnail
       : savedPost.thumbnail;
-    const thumbnailIsStatic = hasVideo || savedPost.thumbnailIsStatic;
+    const thumbnailIsStatic = hasVideo;
     const type = hasVideo ? "Pawchive video post" : (savedPost.type ?? "Pawchive post");
     const nextCreatorId = savedPost.creatorId ?? (creatorId || undefined);
     const nextCreatorTitle = savedPost.creatorTitle ?? ((savedPost.creatorId || creatorId) ? creatorTitle : undefined);
@@ -188,6 +213,7 @@ export default function PawchivePostPage() {
         creatorId: nextCreatorId,
         creatorTitle: nextCreatorTitle,
       });
+      warmMediaImage(thumbnail, "all.pawchive");
     }
   }, [savedPost, pages.data, media, creatorId, creatorTitle]);
 
@@ -227,7 +253,7 @@ export default function PawchivePostPage() {
         </Button>
       </header>
 
-      {pages.isLoading ? (
+      {!backendReady || pages.isLoading ? (
         <div className="flex min-h-[70vh] items-center justify-center"><Loader2 className="h-9 w-9 animate-spin text-white/50" /></div>
       ) : pages.isError ? (
         <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 px-6 text-center text-white/60">

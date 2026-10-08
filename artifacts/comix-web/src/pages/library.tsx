@@ -19,6 +19,7 @@ import { useSettings } from "@/hooks/use-settings";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 
 const FALLBACK_TAB = "default";
+const PAWCHIVE_ICON = "/public/source-icons/all.pawchive.svg";
 
 type PawchivePostSummary = {
   id: string | number;
@@ -103,6 +104,13 @@ const SelectableCard = memo(function SelectableCard({
 export default function LibraryPage() {
   const { settings } = useSettings();
   const online = useOnlineStatus();
+  const { data: backendReady = false } = useQuery<boolean>({
+    queryKey: ["backend-ready"],
+    queryFn: async () => false,
+    initialData: false,
+    staleTime: Infinity,
+    enabled: false,
+  });
   const library   = useStore(s => s.library);
   const categories = useStore(s => s.categories);
   const searchString = useSearch();
@@ -192,20 +200,22 @@ export default function LibraryPage() {
 
   const libraryItems = useMemo(() => Object.values(library), [library]);
 
-  // Upgrade older saved Pawchive cards in place. Earlier versions saved the
-  // video URL or an extensionless thumbnail URL; without the original filename
-  // neither can be distinguished safely from an animated preview. Ask the
-  // source for each saved creator's post summaries, then replace only video /
-  // mixed entries with the exact verified static cover used in Pawchive's grid.
+  // Upgrade older Pawchive saves to the lightweight thumbnail used in the
+  // source grid. Video/mixed entries only accept API-verified static previews.
   useEffect(() => {
-    if (!online) return;
+    if (!online || !backendReady) return;
     const groups = new Map<string, typeof libraryItems>();
     for (const item of libraryItems) {
       if (item.sourceId !== "all.pawchive") continue;
       const thumbnail = item.thumbnail ?? "";
-      const oldOrUncertainThumbnail = item.thumbnailIsStatic !== true ||
+      const isVideoPost = item.mediaType === "video" || item.mediaType === "mixed" ||
+        /pawchive\s+video/i.test(item.type ?? "");
+      const oldOrUncertainThumbnail = !thumbnail ||
         /\/source-icons\/all\.pawchive\.svg(?:[?#]|$)/i.test(thumbnail) ||
-        /\.(mp4|webm|mov|mkv|avi|m4v|gif|apng|webp|avif)(?:[?#&]|$)/i.test(thumbnail);
+        /^https:\/\/file\.pawchive\.pw\/data\//i.test(thumbnail) ||
+        (isVideoPost && item.thumbnailIsStatic !== true) ||
+        /\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(thumbnail) ||
+        !item.mediaType;
       if (!oldOrUncertainThumbnail || pawchiveThumbnailBackfillAttemptedRef.current.has(item.id)) continue;
 
       pawchiveThumbnailBackfillAttemptedRef.current.add(item.id);
@@ -230,18 +240,19 @@ export default function LibraryPage() {
           const postsById = new Map(response.items.map(post => [String(post.id), post]));
           for (const saved of entries) {
             const post = postsById.get(saved.id);
-            if (
-              !post || post.thumbnailIsStatic !== true ||
-              (post.mediaType !== "video" && post.mediaType !== "mixed")
-            ) continue;
+            if (!post || !post.mediaType) continue;
+            const isVideoPost = post.mediaType === "video" || post.mediaType === "mixed";
+            const thumbnail = isVideoPost
+              ? post.thumbnailIsStatic && post.thumbnail ? post.thumbnail : PAWCHIVE_ICON
+              : post.thumbnail || PAWCHIVE_ICON;
             const current = getStoreSnapshot().library[saved.id];
             if (!current || current.sourceId !== "all.pawchive") continue;
             storeActions.addToLibrary({
               ...current,
-              thumbnail: post.thumbnail ?? "",
-              thumbnailIsStatic: true,
+              thumbnail,
+              thumbnailIsStatic: isVideoPost,
               mediaType: post.mediaType,
-              type: "Pawchive video post",
+              type: isVideoPost ? "Pawchive video post" : "Pawchive post",
               creatorId: current.creatorId ?? creatorId,
             });
           }
@@ -251,7 +262,7 @@ export default function LibraryPage() {
       }
     };
     void Promise.all(Array.from({ length: Math.min(4, queue.length) }, () => worker()));
-  }, [libraryItems, online]);
+  }, [libraryItems, online, backendReady]);
 
   const filteredItems = useMemo(() => {
     const q = filterText.trim().toLowerCase();

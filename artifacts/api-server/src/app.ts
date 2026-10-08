@@ -275,7 +275,7 @@ app.get("/api/animegg/embed", async (req, res) => {
 // Some source CDNs reject browser image requests when the source referer is
 // missing (notably Webtoons). Keep this proxy narrowly allow-listed.
 const SOURCE_MEDIA_HOSTS: Record<string, { hosts: string[]; referer: string }> = {
-  "all.pawchive": { hosts: ["img.pawchive.pw"], referer: "https://pawchive.pw/" },
+  "all.pawchive": { hosts: ["img.pawchive.pw", "file.pawchive.pw"], referer: "https://pawchive.pw/" },
   "all.webtoons": { hosts: ["webtoon-phinf.pstatic.net"], referer: "https://www.webtoons.com/" },
   "all.atsu": { hosts: ["cdn.atsu.moe"], referer: "https://atsu.moe/" },
   "en.resetscans": { hosts: ["cdn.resetscans.net", "resetscans.net", ".resetscans.net"], referer: "https://www.resetscans.net/" },
@@ -289,6 +289,7 @@ const sourceMediaCache = new Map<string, MediaCacheEntry>();
 const sourceMediaInflight = new Map<string, Promise<MediaCacheEntry>>();
 const SOURCE_MEDIA_CACHE_TTL = 6 * 60 * 60 * 1000;
 const SOURCE_MEDIA_CACHE_MAX = 160;
+const SOURCE_MEDIA_CACHE_MAX_BYTES = 1024 * 1024;
 
 async function fetchSourceMedia(sourceId: string, targetUrl: string, source: { referer: string }): Promise<MediaCacheEntry> {
   const key = `${sourceId}|${targetUrl}`;
@@ -312,12 +313,14 @@ async function fetchSourceMedia(sourceId: string, targetUrl: string, source: { r
       body.subarray(0, 4).toString("ascii") === "RIFF" &&
       body.subarray(8, 12).toString("ascii") === "WEBP"
     ) contentType = "image/webp";
-    if (sourceMediaCache.size >= SOURCE_MEDIA_CACHE_MAX && !sourceMediaCache.has(key)) {
-      const oldest = sourceMediaCache.keys().next().value;
-      if (oldest) sourceMediaCache.delete(oldest);
-    }
     const entry = { body, contentType: contentType || "application/octet-stream", expiresAt: Date.now() + SOURCE_MEDIA_CACHE_TTL };
-    sourceMediaCache.set(key, entry);
+    if (body.length <= SOURCE_MEDIA_CACHE_MAX_BYTES) {
+      if (sourceMediaCache.size >= SOURCE_MEDIA_CACHE_MAX && !sourceMediaCache.has(key)) {
+        const oldest = sourceMediaCache.keys().next().value;
+        if (oldest) sourceMediaCache.delete(oldest);
+      }
+      sourceMediaCache.set(key, entry);
+    }
     return entry;
   }).finally(() => sourceMediaInflight.delete(key));
   sourceMediaInflight.set(key, request);
@@ -332,8 +335,11 @@ app.get("/api/source-media", async (req, res) => {
   let target: URL;
   try { target = new URL(targetUrl); } catch { return res.status(400).json({ error: "Invalid media URL" }); }
   const allowedHost = source.hosts.some(host => target.hostname === host || (host.startsWith(".") && target.hostname.endsWith(host)));
-  if (target.protocol !== "https:" || !allowedHost) {
-    return res.status(403).json({ error: "Media host is not allowed for this source" });
+    if (target.protocol !== "https:" || !allowedHost) {
+      return res.status(403).json({ error: "Media host is not allowed for this source" });
+    }
+  if (sourceId === "all.pawchive" && /\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(target.toString())) {
+    return res.status(415).json({ error: "Video files must use the streaming media route" });
   }
   try {
     const media = await fetchSourceMedia(sourceId, target.toString(), source);

@@ -11,20 +11,34 @@ const PROXIED_MEDIA_SOURCES = new Set([
 
 export function mediaImage(url: string | undefined, source?: string): string {
   if (!url) return '';
-  // Resolve only local application assets against the deployed API origin.
-  // External source media remains direct; ComiHub does not relay or rewrite it.
-  const apiOrigin = (import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL ?? "")
-    .replace(/\/+$/, "");
-  if (url.startsWith('/api/')) return `${apiOrigin}${url}`;
+  // Keep image-proxy requests on the app origin so the service worker can cache
+  // successful responses instead of seeing opaque cross-origin image requests.
+  if (url.startsWith('/api/')) return url;
   // These are bundled frontend assets; keep them on the fast app/CDN origin.
   if (url.startsWith('/public/')) return url;
-  if (source === "all.pawchive" && /^https:\/\/img\.pawchive\.pw\//i.test(url)) {
-    return `${apiOrigin}/api/source-media?source=${encodeURIComponent(source)}&url=${encodeURIComponent(url)}`;
+  const sourceMediaPath = (sourceId: string) =>
+    `/api/source-media?source=${encodeURIComponent(sourceId)}&url=${encodeURIComponent(url)}`;
+  if (
+    source === "all.pawchive" &&
+    /^https:\/\/(?:img|file)\.pawchive\.pw\//i.test(url) &&
+    !/\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(url)
+  ) {
+    return sourceMediaPath(source);
   }
   if (source && PROXIED_MEDIA_SOURCES.has(source) && /^https:\/\//i.test(url)) {
-    return `${apiOrigin}/api/source-media?source=${encodeURIComponent(source)}&url=${encodeURIComponent(url)}`;
+    return sourceMediaPath(source);
   }
   return url;
+}
+
+/** Start a non-blocking fetch so the service worker/browser cache can warm a saved cover. */
+export function warmMediaImage(url: string | undefined, source?: string): void {
+  const src = mediaImage(url, source);
+  if (!src || typeof Image === "undefined") return;
+  const image = new Image();
+  image.decoding = "async";
+  image.src = src;
+  void image.decode().catch(() => {});
 }
 
 export function shouldProxySourceMedia(source?: string | null): boolean {

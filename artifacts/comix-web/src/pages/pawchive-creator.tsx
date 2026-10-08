@@ -45,22 +45,19 @@ function PawchiveThumbnail({
     setAttempt(0);
   }, [src]);
   useEffect(() => {
-    if (!src || !failed || attempt >= 2) return;
+    if (!src || !failed || attempt >= 1) return;
     const timer = window.setTimeout(() => {
       setImageLoading(true);
       setFailed(false);
       setAttempt(value => value + 1);
-    }, 900);
+    }, 1200);
     return () => window.clearTimeout(timer);
   }, [attempt, failed, src]);
   const baseSrc = !src || failed ? fallback : mediaImage(src, "all.pawchive");
-  const imageSrc = attempt > 0 && baseSrc !== fallback
-    ? `${baseSrc}${baseSrc.includes("?") ? "&" : "?"}pawchive_retry=${attempt}`
-    : baseSrc;
   return (
     <div className={`relative overflow-hidden bg-muted ${className}`}>
       <img
-        src={imageSrc}
+        src={baseSrc}
         alt={alt}
         loading={loading}
         onLoad={() => { setImageLoading(false); setFailed(false); }}
@@ -77,6 +74,13 @@ export default function PawchiveCreatorPage() {
   const [, params] = useRoute("/sources/all.pawchive/creator/:creatorId");
   const [, setLocation] = useLocation();
   const creatorId = decodeRoutePart(params?.creatorId);
+  const { data: backendReady = false } = useQuery<boolean>({
+    queryKey: ["backend-ready"],
+    queryFn: async () => false,
+    initialData: false,
+    staleTime: Infinity,
+    enabled: false,
+  });
   const [search, setSearch] = useState("");
   const [mediaFilter, setMediaFilter] = useState<"all" | "image" | "video" | "mixed">("all");
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -93,7 +97,7 @@ export default function PawchiveCreatorPage() {
     queryFn: () => customFetch<Creator>(`/api/manga/${encodeURIComponent(creatorId)}`, {
       headers: { "X-Source": "all.pawchive" },
     }),
-    enabled: !!creatorId,
+    enabled: !!creatorId && backendReady,
   });
   const posts = useQuery<{ items: Post[] }>({
     queryKey: ["pawchive-creator-posts", creatorId],
@@ -101,7 +105,7 @@ export default function PawchiveCreatorPage() {
       `/api/manga/${encodeURIComponent(creatorId)}/chapters?dedupe=false`,
       { headers: { "X-Source": "all.pawchive" } },
     ),
-    enabled: !!creatorId,
+    enabled: !!creatorId && backendReady,
   });
 
   const visiblePosts = useMemo(() => {
@@ -164,7 +168,7 @@ export default function PawchiveCreatorPage() {
           </div>
         )}
 
-        {!posts.isLoading && !posts.isError && (
+        {backendReady && !posts.isLoading && !posts.isError && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <label htmlFor="pawchive-media-filter" className="text-xs font-medium text-muted-foreground">Category</label>
             <select
@@ -186,7 +190,7 @@ export default function PawchiveCreatorPage() {
           </div>
         )}
 
-        {posts.isLoading ? (
+        {!backendReady || posts.isLoading ? (
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
         ) : posts.isError ? (
           <div className="py-20 text-center text-sm text-muted-foreground">This creator’s posts could not be loaded.</div>

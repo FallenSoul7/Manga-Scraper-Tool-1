@@ -17,6 +17,7 @@ const FILES = "https://file.pawchive.pw/data";
 const THUMBS = "https://img.pawchive.pw/thumbnail/data";
 const SOURCE_ICON = "/public/source-icons/all.pawchive.svg";
 const PAGE_SIZE = 24;
+const SOURCE_DATA_CACHE_TTL = 5 * 60 * 1000;
 
 type Creator = {
   id: string | number;
@@ -40,6 +41,11 @@ type Post = {
   file?: MediaFile;
   attachments?: MediaFile[];
 };
+
+let creatorsCache: { value: Creator[]; expiresAt: number } | null = null;
+let creatorsInFlight: Promise<Creator[]> | null = null;
+const creatorPostsCache = new Map<string, { value: Post[]; expiresAt: number }>();
+const creatorPostsInFlight = new Map<string, Promise<Post[]>>();
 
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif)$/i;
 const STATIC_IMAGE_EXT = /\.(jpe?g|png)$/i;
@@ -165,8 +171,19 @@ function postThumbnail(post: Post): string {
 }
 
 async function creators(): Promise<Creator[]> {
-  const data = await request<Creator[]>("/creators");
-  return Array.isArray(data) ? data : [];
+  if (creatorsCache && creatorsCache.expiresAt > Date.now()) return creatorsCache.value;
+  if (creatorsInFlight) return creatorsInFlight;
+  const pending = request<Creator[]>("/creators").then(data => {
+    const value = Array.isArray(data) ? data : [];
+    creatorsCache = { value, expiresAt: Date.now() + SOURCE_DATA_CACHE_TTL };
+    return value;
+  });
+  creatorsInFlight = pending;
+  try {
+    return await pending;
+  } finally {
+    if (creatorsInFlight === pending) creatorsInFlight = null;
+  }
 }
 
 function filterByTags(items: Creator[], tagIds?: string[]): Creator[] {
@@ -176,8 +193,24 @@ function filterByTags(items: Creator[], tagIds?: string[]): Creator[] {
 }
 
 async function creatorPosts(service: string, user: string): Promise<Post[]> {
-  const data = await request<Post[]>(`/${encodeURIComponent(service)}/user/${encodeURIComponent(user)}`);
-  return Array.isArray(data) ? data : [];
+  const key = `${service}/${user}`;
+  const cached = creatorPostsCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const pending = creatorPostsInFlight.get(key);
+  if (pending) return pending;
+  const requestPromise = request<Post[]>(`/${encodeURIComponent(service)}/user/${encodeURIComponent(user)}`)
+    .then(data => {
+      const value = Array.isArray(data) ? data : [];
+      if (creatorPostsCache.size >= 256 && !creatorPostsCache.has(key)) {
+        const oldest = creatorPostsCache.keys().next().value;
+        if (oldest) creatorPostsCache.delete(oldest);
+      }
+      creatorPostsCache.set(key, { value, expiresAt: Date.now() + SOURCE_DATA_CACHE_TTL });
+      return value;
+    })
+    .finally(() => creatorPostsInFlight.delete(key));
+  creatorPostsInFlight.set(key, requestPromise);
+  return requestPromise;
 }
 
 async function onePost(service: string, user: string, post: string): Promise<Post> {
