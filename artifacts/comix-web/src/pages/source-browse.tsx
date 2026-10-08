@@ -811,8 +811,20 @@ export default function SourceBrowsePage() {
             <AlertTriangle className="h-12 w-12 text-amber-500" />
             <h2 className="text-lg font-semibold">Couldn't load {source.name}</h2>
             <p className="text-sm text-muted-foreground max-w-sm">
-              This source may be temporarily unavailable or blocked in your region.
+              {sourceId === "en.royalroad"
+                ? "ComiHub's catalog request to Royal Road is currently being denied upstream. You can browse the official site directly while this integration is unavailable."
+                : "This source may be temporarily unavailable or blocked in your region."}
             </p>
+            {sourceId === "en.royalroad" && (
+              <a
+                href="https://www.royalroad.com/fictions/best-rated"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
+              >
+                Open Royal Road
+              </a>
+            )}
             <Button variant="outline" onClick={() => activeQuery.refetch()} className="gap-2">
               <RefreshCw className="h-4 w-4" /> Try again
             </Button>

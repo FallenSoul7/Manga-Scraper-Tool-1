@@ -15,7 +15,9 @@ export function mediaImage(url: string | undefined, source?: string): string {
   // External source media remains direct; ComiHub does not relay or rewrite it.
   const apiOrigin = (import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL ?? "")
     .replace(/\/+$/, "");
-  if (url.startsWith('/api/') || url.startsWith('/public/')) return `${apiOrigin}${url}`;
+  if (url.startsWith('/api/')) return `${apiOrigin}${url}`;
+  // These are bundled frontend assets; keep them on the fast app/CDN origin.
+  if (url.startsWith('/public/')) return url;
   if (source === "all.pawchive" && /^https:\/\/img\.pawchive\.pw\//i.test(url)) {
     return `${apiOrigin}/api/source-media?source=${encodeURIComponent(source)}&url=${encodeURIComponent(url)}`;
   }

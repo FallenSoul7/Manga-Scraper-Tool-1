@@ -56,7 +56,7 @@ const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const GLOBAL_SEARCH_TIMEOUT_MS = 15_000;
 function resolveIconUrl(url: string | null): string | null {
   if (!url) return null;
-  if (url.startsWith("/") && API_ORIGIN) return `${API_ORIGIN}${url}`;
+  if (url.startsWith("/api/") && API_ORIGIN) return `${API_ORIGIN}${url}`;
   return url;
 }
 
@@ -86,17 +86,21 @@ const NOT_WORKING_SOURCE_IDS = new Set([
   "en.onlythebesthentai",
   "en.allmanga",
 ]);
+const UPSTREAM_BLOCKED_SOURCE_IDS = new Set(["en.royalroad"]);
 
 function SourceStatusTag({ sourceId, supported = true }: { sourceId: string; supported?: boolean }) {
   if (!supported) return null;
   const notWorking = NOT_WORKING_SOURCE_IDS.has(sourceId);
+  const upstreamBlocked = UPSTREAM_BLOCKED_SOURCE_IDS.has(sourceId);
   return (
     <span
-      className={notWorking
+      className={upstreamBlocked
+        ? "text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 shrink-0"
+        : notWorking
         ? "text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 shrink-0"
         : "text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0"}
     >
-      {notWorking ? "Not working" : "Working"}
+      {upstreamBlocked ? "Blocked upstream" : notWorking ? "Not working" : "Working"}
     </span>
   );
 }
@@ -126,7 +130,7 @@ function canonicalSourceId(id: string): string {
 function sourceAvailabilityRank(extension: CatalogExtension): number {
   const id = canonicalSourceId(extension.id);
   if (!extension.supported && id !== ALLMANGA_SOURCE_ID) return 2;
-  return NOT_WORKING_SOURCE_IDS.has(id) ? 1 : 0;
+  return NOT_WORKING_SOURCE_IDS.has(id) || UPSTREAM_BLOCKED_SOURCE_IDS.has(id) ? 1 : 0;
 }
 
 // Mirrors Mihon's BrowseIcons defaultModifier: a fixed square icon slot with
@@ -134,10 +138,14 @@ function sourceAvailabilityRank(extension: CatalogExtension): number {
 function SourceAvatar({ src, size = 40 }: { src: { name: string; iconUrl: string | null }; size?: number }) {
   const [errored, setErrored] = useState(false);
   const resolvedIcon = resolveIconUrl(src.iconUrl);
+  const isAnimeGGIcon = /\/source-icons\/en\.animegg\.svg(?:\?|$)/i.test(resolvedIcon ?? "");
   if (resolvedIcon && !errored) {
     return (
       <img
-        src={resolvedIcon} alt="" width={size} height={size} loading="lazy"
+        src={resolvedIcon} alt="" width={size} height={size}
+        loading={isAnimeGGIcon ? "eager" : "lazy"}
+        fetchPriority={isAnimeGGIcon ? "high" : "auto"}
+        decoding="async"
         onError={() => setErrored(true)}
         className="shrink-0 object-contain rounded-xl bg-muted/60"
         style={{ width: size, height: size, aspectRatio: "1 / 1" }}
