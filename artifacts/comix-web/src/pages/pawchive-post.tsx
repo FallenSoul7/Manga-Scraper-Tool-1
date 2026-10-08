@@ -2,16 +2,25 @@ import { useMemo, useState } from "react";
 import { useRoute, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
-import { ArrowLeft, Download, FileImage, Heart, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, Download, FileImage, Heart, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { mediaImage, mediaVideo } from "@/lib/utils";
 import { saveChapterToFile } from "@/lib/save-to-file";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useStore, storeActions } from "@/lib/storage";
 
 type Page = { index: number; url: string };
 type PagesResponse = { pages: Page[] };
 
 function isVideo(url: string) {
   return /\.(mp4|webm|mov|mkv|avi|m4v)(\?|$)/i.test(url);
+}
+
+function videoType(url: string): string | undefined {
+  if (/\.mp4(?:\?|$)/i.test(url)) return "video/mp4";
+  if (/\.webm(?:\?|$)/i.test(url)) return "video/webm";
+  if (/\.mov(?:\?|$)/i.test(url)) return "video/quicktime";
+  return undefined;
 }
 
 function decodeRoutePart(value: string | undefined): string {
@@ -40,21 +49,39 @@ export default function PawchivePostPage() {
   const creatorId = searchParams.get("creatorId") ?? "";
   const postTitle = searchParams.get("postTitle") ?? "Pawchive post";
   const creatorTitle = searchParams.get("creatorTitle") ?? "Pawchive";
-  const favoriteKey = `comihub:pawchive-favorite:${postId}`;
-  const [isFavorite, setIsFavorite] = useState(() => {
-    try { return localStorage.getItem(favoriteKey) === "1"; } catch { return false; }
-  });
+  const categories = useStore(state => state.categories);
+  const savedPost = useStore(state => state.library[postId]);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(["default"]);
   const [videoFallbacks, setVideoFallbacks] = useState<Set<string>>(() => new Set());
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState("");
 
   function toggleFavorite() {
-    const next = !isFavorite;
-    setIsFavorite(next);
-    try {
-      if (next) localStorage.setItem(favoriteKey, "1");
-      else localStorage.removeItem(favoriteKey);
-    } catch { /* local storage may be unavailable in private browsing */ }
+    if (savedPost) {
+      storeActions.removeFromLibrary(postId);
+      return;
+    }
+    setSelectedCategories(["default"]);
+    setCategoryDialogOpen(true);
+  }
+
+  function saveFavorite() {
+    storeActions.addToLibrary({
+      id: postId,
+      title: postTitle,
+      thumbnail: media[0]?.url ?? "",
+      type: "Pawchive post",
+      sourceId: "all.pawchive",
+      addedAt: Date.now(),
+      categoryIds: selectedCategories.length ? selectedCategories : ["default"],
+      lastChapterCountSeen: 1,
+      pendingUpdates: [],
+      updatesEnabled: false,
+      updatesInitialized: false,
+      trackedChapterIds: [],
+    });
+    setCategoryDialogOpen(false);
   }
 
   function videoSource(url: string): string {
@@ -110,8 +137,8 @@ export default function PawchivePostPage() {
           <h1 className="truncate font-semibold">{postTitle}</h1>
           <p className="truncate text-xs text-white/50">{creatorTitle} · {media.length} attachment{media.length === 1 ? "" : "s"}</p>
         </div>
-        <Button variant="ghost" size="icon" onClick={toggleFavorite} className="text-white hover:bg-white/10" aria-label={isFavorite ? "Remove favorite" : "Favorite post"} aria-pressed={isFavorite}>
-          <Heart className={`h-5 w-5 ${isFavorite ? "fill-red-500 text-red-500" : ""}`} />
+        <Button variant="ghost" size="icon" onClick={toggleFavorite} className="text-white hover:bg-white/10" aria-label={savedPost ? "Remove from library" : "Save post"} aria-pressed={!!savedPost}>
+          <Heart className={`h-5 w-5 ${savedPost ? "fill-red-500 text-red-500" : ""}`} />
         </Button>
         <Button variant="ghost" size="icon" onClick={download} disabled={downloadProgress !== null} className="text-white hover:bg-white/10" aria-label="Download post">
           {downloadProgress !== null ? <span className="text-[10px] font-bold">{Math.round(downloadProgress)}%</span> : <Download className="h-5 w-5" />}
@@ -134,9 +161,11 @@ export default function PawchivePostPage() {
       ) : allVideo ? (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-black p-3">
            <video
+             key={videoSource(media[0].url)}
              src={videoSource(media[0].url)}
+             type={videoType(media[0].url)}
              onError={() => useVideoFallback(media[0].url)}
-             controls playsInline preload="metadata" autoPlay
+             controls playsInline preload="auto" autoPlay muted
              className="max-h-[calc(100vh-5rem)] w-full max-w-5xl rounded-xl"
            />
         </div>
@@ -150,8 +179,9 @@ export default function PawchivePostPage() {
              <video
                key={page.index}
                src={videoSource(page.url)}
+               type={videoType(page.url)}
                onError={() => useVideoFallback(page.url)}
-               controls playsInline preload="metadata"
+               controls playsInline preload="auto" muted
                className="w-full rounded-xl bg-black"
              />
           ) : (
@@ -159,6 +189,24 @@ export default function PawchivePostPage() {
           ))}
         </div>
       )}
+      <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Save Pawchive post</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Choose the categories for this saved post.</p>
+          <div className="max-h-64 space-y-1 overflow-y-auto py-2">
+            {categories.map(category => {
+              const checked = selectedCategories.includes(category.id);
+              return (
+                <button key={category.id} type="button" onClick={() => setSelectedCategories(current => checked ? current.filter(id => id !== category.id) : [...current, category.id])} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted">
+                  <span className={`flex h-5 w-5 items-center justify-center rounded border ${checked ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>{checked && <Check className="h-3.5 w-3.5" />}</span>
+                  <span>{category.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          <Button onClick={saveFavorite}>Save to library</Button>
+        </DialogContent>
+      </Dialog>
       {downloadError && <p className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-red-900/90 px-3 py-2 text-xs">{downloadError}</p>}
     </main>
   );

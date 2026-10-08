@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
-import { ArrowLeft, Calendar, Image as ImageIcon, Loader2, Search, X, Youtube } from "lucide-react";
+import { ArrowLeft, ArrowUp, Calendar, Image as ImageIcon, Loader2, Search, X, Youtube } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { mediaImage } from "@/lib/utils";
@@ -54,6 +54,14 @@ export default function PawchiveCreatorPage() {
   const creatorId = decodeRoutePart(params?.creatorId);
   const [search, setSearch] = useState("");
   const [mediaFilter, setMediaFilter] = useState<"all" | "image" | "video" | "mixed">("all");
+  const [showBackToTop, setShowBackToTop] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setShowBackToTop(window.scrollY > 280);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const details = useQuery<Creator>({
     queryKey: ["pawchive-creator", creatorId],
@@ -190,6 +198,11 @@ export default function PawchiveCreatorPage() {
           </div>
         )}
       </section>
+      {showBackToTop && (
+        <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="Back to top" title="Back to top" className="fixed bottom-6 right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-border/70 bg-background/90 text-foreground shadow-lg backdrop-blur transition hover:scale-105 hover:bg-background">
+          <ArrowUp className="h-5 w-5" />
+        </button>
+      )}
     </main>
   );
 }
