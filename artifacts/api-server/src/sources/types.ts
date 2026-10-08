@@ -88,6 +88,8 @@ export interface ChapterSummary {
   lang?: string;
   /** Optional media metadata for archive-style sources. */
   thumbnail?: string;
+  /** True when the thumbnail is guaranteed not to animate (including source-icon fallback). */
+  thumbnailIsStatic?: boolean;
   mediaType?: "image" | "video" | "mixed";
   attachmentCount?: number;
 }

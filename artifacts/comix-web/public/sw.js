@@ -1,5 +1,5 @@
 // Bump this when the app shell changes so installed PWAs discard stale bundles.
-const STATIC_CACHE = 'comihub-static-v18';
+const STATIC_CACHE = 'comihub-static-v19';
 const API_CACHE    = 'comihub-api-v10';
 const IMAGE_CACHE  = 'comihub-images-v2';
 const CHAPTER_IMAGE_CACHE = 'comihub-chapter-images-v1';

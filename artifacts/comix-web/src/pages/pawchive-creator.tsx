@@ -14,6 +14,7 @@ type Post = {
   title: string;
   date: number;
   thumbnail?: string;
+  thumbnailIsStatic?: boolean;
   mediaType?: "image" | "video" | "mixed";
   attachmentCount?: number;
 };
@@ -197,7 +198,12 @@ export default function PawchiveCreatorPage() {
               <button
                 key={post.id}
                 type="button"
-                onClick={() => setLocation(`/sources/all.pawchive/post/${post.id}?creatorId=${encodeURIComponent(creatorId)}&postTitle=${encodeURIComponent(post.title)}&creatorTitle=${encodeURIComponent(title)}`)}
+                onClick={() => {
+                  const params = new URLSearchParams({ creatorId, postTitle: post.title, creatorTitle: title });
+                  if (post.thumbnail) params.set("postThumbnail", post.thumbnail);
+                  if (post.thumbnailIsStatic) params.set("postThumbnailIsStatic", "1");
+                  setLocation(`/sources/all.pawchive/post/${post.id}?${params.toString()}`);
+                }}
                 className="group overflow-hidden rounded-2xl border border-border/50 bg-card text-left transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg"
               >
                 <div className="relative aspect-[4/5] overflow-hidden bg-muted">

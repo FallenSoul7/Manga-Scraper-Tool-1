@@ -28,6 +28,7 @@ const SavedMangaSchema = z.object({
   status: z.string().optional(),
   sourceId: z.string().optional(),
   mediaType: z.enum(['image', 'video', 'mixed']).optional(),
+  thumbnailIsStatic: z.boolean().optional(),
   creatorId: z.string().optional(),
   creatorTitle: z.string().optional(),
   addedAt: z.number(),

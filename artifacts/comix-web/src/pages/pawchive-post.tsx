@@ -13,13 +13,13 @@ type Page = { index: number; url: string };
 type PagesResponse = { pages: Page[] };
 
 function isVideo(url: string) {
-  return /\.(mp4|webm|mov|mkv|avi|m4v)(\?|$)/i.test(url);
+  return /\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(url);
 }
 
 function videoType(url: string): string | undefined {
-  if (/\.mp4(?:\?|$)/i.test(url)) return "video/mp4";
-  if (/\.webm(?:\?|$)/i.test(url)) return "video/webm";
-  if (/\.mov(?:\?|$)/i.test(url)) return "video/quicktime";
+  if (/\.mp4(?:[?#&]|$)/i.test(url)) return "video/mp4";
+  if (/\.webm(?:[?#&]|$)/i.test(url)) return "video/webm";
+  if (/\.mov(?:[?#&]|$)/i.test(url)) return "video/quicktime";
   return undefined;
 }
 
@@ -49,6 +49,8 @@ export default function PawchivePostPage() {
   const creatorId = searchParams.get("creatorId") ?? "";
   const postTitle = searchParams.get("postTitle") ?? "Pawchive post";
   const creatorTitle = searchParams.get("creatorTitle") ?? "Pawchive";
+  const postThumbnail = searchParams.get("postThumbnail") ?? "";
+  const postThumbnailIsStatic = searchParams.get("postThumbnailIsStatic") === "1";
   const fromLibrary = searchParams.get("from") === "library";
   const libraryCategoryId = searchParams.get("cat") ?? "default";
   const categories = useStore(state => state.categories);
@@ -104,15 +106,20 @@ export default function PawchivePostPage() {
   function saveFavorite() {
     const hasVideo = media.some(page => isVideo(page.url));
     const hasImage = media.some(page => !isVideo(page.url));
+    const staticPageThumbnail = media.find(page =>
+      !isVideo(page.url) && /\.(jpe?g|png)(?:[?#&]|$)/i.test(page.url),
+    )?.url;
+    const staticThumbnail = postThumbnailIsStatic && postThumbnail
+      ? postThumbnail
+      : staticPageThumbnail ?? "/public/source-icons/all.pawchive.svg";
     storeActions.addToLibrary({
       id: postId,
       title: postTitle,
-      // Category cards must stay static: use an image preview when available,
-      // otherwise the Pawchive logo. Never store an MP4 as a card thumbnail.
-      thumbnail: media.find(page => !isVideo(page.url))?.url ?? "/public/source-icons/all.pawchive.svg",
+      thumbnail: hasVideo ? staticThumbnail : media.find(page => !isVideo(page.url))?.url ?? "/public/source-icons/all.pawchive.svg",
       type: media.some(page => isVideo(page.url)) ? "Pawchive video post" : "Pawchive post",
       sourceId: "all.pawchive",
       mediaType: hasVideo ? (hasImage ? "mixed" : "video") : "image",
+      thumbnailIsStatic: hasVideo,
       creatorId: creatorId || undefined,
       creatorTitle: creatorTitle || undefined,
       addedAt: Date.now(),
@@ -156,9 +163,13 @@ export default function PawchivePostPage() {
     const hasVideo = media.some(page => isVideo(page.url));
     const hasImage = media.some(page => !isVideo(page.url));
     const mediaType = hasVideo ? (hasImage ? "mixed" : "video") : "image";
-    const thumbnail = hasVideo && (!savedPost.thumbnail || isVideo(savedPost.thumbnail))
-      ? media.find(page => !isVideo(page.url))?.url ?? "/public/source-icons/all.pawchive.svg"
+    const staticPageThumbnail = media.find(page =>
+      !isVideo(page.url) && /\.(jpe?g|png)(?:[?#&]|$)/i.test(page.url),
+    )?.url;
+    const thumbnail = hasVideo && !savedPost.thumbnailIsStatic
+      ? (postThumbnailIsStatic && postThumbnail ? postThumbnail : staticPageThumbnail ?? "/public/source-icons/all.pawchive.svg")
       : savedPost.thumbnail;
+    const thumbnailIsStatic = hasVideo || savedPost.thumbnailIsStatic;
     const type = hasVideo ? "Pawchive video post" : (savedPost.type ?? "Pawchive post");
     const nextCreatorId = savedPost.creatorId ?? (creatorId || undefined);
     const nextCreatorTitle = savedPost.creatorTitle ?? ((savedPost.creatorId || creatorId) ? creatorTitle : undefined);
@@ -166,13 +177,14 @@ export default function PawchivePostPage() {
     if (
       savedPost.mediaType !== mediaType || savedPost.type !== type ||
       savedPost.thumbnail !== thumbnail || savedPost.creatorId !== nextCreatorId ||
-      savedPost.creatorTitle !== nextCreatorTitle
+      savedPost.creatorTitle !== nextCreatorTitle || savedPost.thumbnailIsStatic !== thumbnailIsStatic
     ) {
       storeActions.addToLibrary({
         ...savedPost,
         mediaType,
         type,
         thumbnail,
+        thumbnailIsStatic,
         creatorId: nextCreatorId,
         creatorTitle: nextCreatorTitle,
       });

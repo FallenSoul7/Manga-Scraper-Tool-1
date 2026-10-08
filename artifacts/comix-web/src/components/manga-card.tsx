@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 import { Link } from "wouter";
 import { mediaImage } from "@/lib/utils";
 import { Check } from "lucide-react";
-import { BookOpen, Film, Play } from "lucide-react";
+import { BookOpen, Film, Youtube } from "lucide-react";
 import type { MangaSummary } from "@workspace/api-client-react";
 import { useSettings } from "@/hooks/use-settings";
 
@@ -54,24 +54,30 @@ export const MangaCard = memo(function MangaCard({
   const [imageFailed, setImageFailed] = useState(false);
   const savedMediaType = (manga as MangaSummary & { mediaType?: string }).mediaType;
   const isPawchiveVideo = sourceId === "all.pawchive" && (
-    /\.(mp4|webm|mov|mkv|avi|m4v)(\?|$)/i.test(manga.thumbnail) ||
+    /\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(manga.thumbnail) ||
     savedMediaType === "video" || savedMediaType === "mixed" ||
     /pawchive\s+video/i.test(manga.type ?? "")
   );
   const thumbnailIsVideo = sourceId === "all.pawchive" &&
-    /\.(mp4|webm|mov|mkv|avi|m4v)(\?|$)/i.test(manga.thumbnail);
+    /\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(manga.thumbnail);
   const thumbnailIsPawchiveLogo = sourceId === "all.pawchive" &&
     /\/source-icons\/all\.pawchive\.svg(?:\?|$)/i.test(manga.thumbnail);
   const thumbnailMayAnimate = sourceId === "all.pawchive" &&
     /\.(gif|apng|webp|avif)(?:[?#&]|$)/i.test(manga.thumbnail);
-  // Keep only genuinely static image previews on video/mixed posts. Animated
-  // image formats can behave like a playing clip, so use the static video tile.
-  const hasVideoPlaceholder = isPawchiveVideo &&
-    (!manga.thumbnail || thumbnailIsVideo || thumbnailIsPawchiveLogo || thumbnailMayAnimate);
-  const thumbnail = manga.thumbnail && !thumbnailIsVideo && !thumbnailIsPawchiveLogo &&
-    !(isPawchiveVideo && thumbnailMayAnimate)
-    ? mediaImage(manga.thumbnail, sourceId)
-    : "";
+  const thumbnailIsStatic = (manga as MangaSummary & { thumbnailIsStatic?: boolean }).thumbnailIsStatic;
+  const hasStaticPawchivePreview = !thumbnailIsVideo && !thumbnailMayAnimate && (
+    thumbnailIsStatic || thumbnailIsPawchiveLogo || /\.(jpe?g|png)(?:[?#&]|$)/i.test(manga.thumbnail)
+  );
+  const pawchiveVideoThumbnail = hasStaticPawchivePreview && manga.thumbnail
+    ? manga.thumbnail
+    : "/public/source-icons/all.pawchive.svg";
+  // For video/mixed posts, show Pawchive's own static cover (or source icon),
+  // never an attachment whose format or URL might conceal animation.
+  const thumbnail = isPawchiveVideo
+    ? mediaImage(pawchiveVideoThumbnail, sourceId)
+    : manga.thumbnail && !thumbnailIsVideo && !thumbnailIsPawchiveLogo
+      ? mediaImage(manga.thumbnail, sourceId)
+      : "";
   const inner = (
     <div className="group relative cursor-pointer select-none">
       <div
@@ -94,13 +100,6 @@ export const MangaCard = memo(function MangaCard({
             draggable={false}
             onError={() => setImageFailed(true)}
           />
-        ) : hasVideoPlaceholder ? (
-          <div className="h-full w-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-900 via-zinc-800 to-black text-white" aria-label={`${manga.title} video post`}>
-            <span className="flex h-14 w-14 items-center justify-center rounded-full border border-white/30 bg-white/10">
-              <Play className="ml-1 h-7 w-7 fill-current" />
-            </span>
-            <span className="text-xs font-semibold tracking-widest text-white/80">VIDEO POST</span>
-          </div>
         ) : (
           <div
             className="h-full w-full flex flex-col items-center justify-center gap-2 bg-muted px-2 text-center text-muted-foreground"
@@ -115,12 +114,17 @@ export const MangaCard = memo(function MangaCard({
             18+
           </div>
         )}
-        {((manga as MangaSummary & { mediaType?: "manga" | "anime" }).mediaType === "anime" || isPawchiveVideo) && (
+        {(manga as MangaSummary & { mediaType?: "manga" | "anime" }).mediaType === "anime" && (
           <div className="absolute bottom-2 right-2 rounded-md bg-black/75 px-1.5 py-1 text-white backdrop-blur-sm" title="Video">
             <Film className="h-3.5 w-3.5" />
           </div>
         )}
-        {showSourceBadge && sourceId && (
+        {isPawchiveVideo && (
+          <div title="Contains video" className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white">
+            <Youtube className="h-3 w-3 text-white/80" />Video
+          </div>
+        )}
+        {showSourceBadge && sourceId && !isPawchiveVideo && (
           <div className="absolute bottom-1.5 left-1.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold text-white/90 backdrop-blur-sm leading-tight max-w-[85%] truncate">
             {sourceLabel(sourceId)}
           </div>

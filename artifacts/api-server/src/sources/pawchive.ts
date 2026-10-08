@@ -42,6 +42,7 @@ type Post = {
 };
 
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif)$/i;
+const STATIC_IMAGE_EXT = /\.(jpe?g|png)$/i;
 const VIDEO_EXT = /\.(mp4|webm|mov|mkv|avi|m4v)$/i;
 const MEDIA_EXT = /\.(jpe?g|png|gif|webp|avif|mp4|webm|mov|mkv|avi|m4v)$/i;
 
@@ -135,6 +136,27 @@ function postDate(post: Post): number {
   const raw = post.published ?? post.added;
   const time = raw ? Date.parse(raw) : 0;
   return Number.isFinite(time) ? Math.floor(time / 1000) : 0;
+}
+
+function postFiles(post: Post): MediaFile[] {
+  return [post.file, ...(post.attachments ?? [])]
+    .filter((file): file is MediaFile => !!file?.path && MEDIA_EXT.test(file.name ?? file.path ?? ""));
+}
+
+function postHasVideo(files: MediaFile[]): boolean {
+  return files.some(file => VIDEO_EXT.test(file.name ?? file.path ?? ""));
+}
+
+function postThumbnail(post: Post): string {
+  const files = postFiles(post);
+  const hasVideo = postHasVideo(files);
+  const images = files.filter(file => IMAGE_EXT.test(file.name ?? file.path ?? ""));
+  // Video/mixed cards must never inherit a looping GIF or animated WebP from
+  // an attachment. Use the same still image on Pawchive when available.
+  const thumbnail = hasVideo
+    ? images.find(file => STATIC_IMAGE_EXT.test(file.name ?? file.path ?? ""))
+    : images[0];
+  return thumbnailUrl(thumbnail);
 }
 
 async function creators(): Promise<Creator[]> {
@@ -234,27 +256,22 @@ export const PawchiveSource: MangaSource = {
     const { service, user } = decodeCreatorId(mangaId);
     const posts = await creatorPosts(service, user);
     return {
-      items: posts.map((post, index): ChapterSummary => ({
-        id: postId({ ...post, service, user }),
-        number: posts.length - index,
-        title: String(post.title ?? `Post ${posts.length - index}`),
-        scanlator: service,
-        date: postDate(post),
-        thumbnail: thumbnailUrl(
-          [post.file, ...(post.attachments ?? [])].find(f =>
-            !!f?.path && IMAGE_EXT.test(f.name ?? f.path ?? ""),
-          ),
-        ),
-        mediaType: (() => {
-          const media = [post.file, ...(post.attachments ?? [])]
-            .filter((f): f is MediaFile => !!f?.path && MEDIA_EXT.test(f.name ?? f.path ?? ""));
-          const hasImage = media.some(f => IMAGE_EXT.test(f.name ?? f.path ?? ""));
-          const hasVideo = media.some(f => VIDEO_EXT.test(f.name ?? f.path ?? ""));
-          return hasImage && hasVideo ? "mixed" : hasVideo ? "video" : "image";
-        })(),
-        attachmentCount: [post.file, ...(post.attachments ?? [])]
-          .filter(f => !!f?.path && MEDIA_EXT.test(f.name ?? f.path ?? "")).length,
-      })),
+      items: posts.map((post, index): ChapterSummary => {
+        const files = postFiles(post);
+        const hasImage = files.some(file => IMAGE_EXT.test(file.name ?? file.path ?? ""));
+        const hasVideo = postHasVideo(files);
+        return {
+          id: postId({ ...post, service, user }),
+          number: posts.length - index,
+          title: String(post.title ?? `Post ${posts.length - index}`),
+          scanlator: service,
+          date: postDate(post),
+          thumbnail: postThumbnail(post),
+          thumbnailIsStatic: hasVideo,
+          mediaType: hasImage && hasVideo ? "mixed" : hasVideo ? "video" : "image",
+          attachmentCount: files.length,
+        };
+      }),
     };
   },
 
