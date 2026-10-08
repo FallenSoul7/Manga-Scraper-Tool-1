@@ -62,11 +62,14 @@ export const MangaCard = memo(function MangaCard({
     /\.(mp4|webm|mov|mkv|avi|m4v)(\?|$)/i.test(manga.thumbnail);
   const thumbnailIsPawchiveLogo = sourceId === "all.pawchive" &&
     /\/source-icons\/all\.pawchive\.svg(?:\?|$)/i.test(manga.thumbnail);
-  // Keep real still-image previews on video/mixed posts; only replace a raw
-  // video URL or the generic logo with the purpose-built video placeholder.
+  const thumbnailMayAnimate = sourceId === "all.pawchive" &&
+    /\.(gif|apng|webp|avif)(?:[?#&]|$)/i.test(manga.thumbnail);
+  // Keep only genuinely static image previews on video/mixed posts. Animated
+  // image formats can behave like a playing clip, so use the static video tile.
   const hasVideoPlaceholder = isPawchiveVideo &&
-    (!manga.thumbnail || thumbnailIsVideo || thumbnailIsPawchiveLogo);
-  const thumbnail = manga.thumbnail && !thumbnailIsVideo && !thumbnailIsPawchiveLogo
+    (!manga.thumbnail || thumbnailIsVideo || thumbnailIsPawchiveLogo || thumbnailMayAnimate);
+  const thumbnail = manga.thumbnail && !thumbnailIsVideo && !thumbnailIsPawchiveLogo &&
+    !(isPawchiveVideo && thumbnailMayAnimate)
     ? mediaImage(manga.thumbnail, sourceId)
     : "";
   const inner = (
