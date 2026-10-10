@@ -3,6 +3,7 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { PROMPTS } from "./ai-powers/prompts";
 import { logger } from "../lib/logger";
 import { translatePageImage, type TranslationProviderMode } from "./ai-translation";
+import { SUPPORTED_SOURCE_LANGUAGES, SUPPORTED_TARGET_LANGUAGES } from "./translation-languages";
 
 const router = Router();
 
@@ -444,14 +445,11 @@ router.post("/translate-page", translationAdmission, async (req, res) => {
   const pageIndex = typeof body?.pageIndex === "number" && Number.isInteger(body.pageIndex) && body.pageIndex >= 0 && body.pageIndex <= 10000
     ? body.pageIndex
     : undefined;
-  const allowedSourceLanguages = new Set(["auto", "Japanese", "Korean", "Chinese (Simplified)", "Chinese (Traditional)", "English"]);
-  const allowedTargetLanguages = new Set(["English", "Arabic", "Spanish", "French", "German", "Indonesian", "Portuguese", "Turkish", "Vietnamese"]);
-
   if (!imageDataUrl.startsWith("data:image/")) {
     res.status(400).json({ error: "A page image is required." });
     return;
   }
-  if (!allowedSourceLanguages.has(sourceLanguage) || !allowedTargetLanguages.has(targetLanguage)) {
+  if (!SUPPORTED_SOURCE_LANGUAGES.has(sourceLanguage) || !SUPPORTED_TARGET_LANGUAGES.has(targetLanguage)) {
     res.status(400).json({ error: "Choose a supported source and target language." });
     return;
   }

@@ -11,15 +11,17 @@ import {
   customFetch,
   type ChapterPage,
 } from "@workspace/api-client-react";
-import { mediaImage, readerUrl, shouldProxySourceMedia } from "@/lib/utils";
+import { mediaImage, readerUrl } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
 import { getClientSourceAdapter } from "@/lib/client-sources";
 import { PageTranslationOverlay, ReaderTranslationControl, type TranslationRegion } from "@/components/reader/page-translation";
+import { TranslationLanguagePicker } from "@/components/reader/translation-language-picker";
 import VideoPlayer, { type VideoTrack } from "@/pages/video-player";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
 import { offlineDb } from "@/lib/offline-db";
+import { getSavedTranslationTargetLanguage, saveTranslationTargetLanguage, TARGET_LANGUAGE_OPTIONS } from "@/lib/translation-languages";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -29,7 +31,7 @@ import { Button } from "@/components/ui/button";
 
 function resolveReaderMediaUrl(url: string, sourceId?: string | null): string {
   if (url.startsWith("/")) return apiUrl(url);
-  return shouldProxySourceMedia(sourceId) ? mediaImage(url, sourceId ?? undefined) : url;
+  return mediaImage(url, sourceId ?? undefined);
 }
 
 export default function Reader() {
@@ -98,6 +100,11 @@ export default function Reader() {
     try { return localStorage.getItem("comihub-ai-page-translation") === "true"; }
     catch { return false; }
   });
+  const [translationTargetLanguage, setTranslationTargetLanguage] = useState(getSavedTranslationTargetLanguage);
+
+  useEffect(() => {
+    saveTranslationTargetLanguage(translationTargetLanguage);
+  }, [translationTargetLanguage]);
 
   useEffect(() => {
     try { localStorage.setItem("comihub-ai-page-translation", String(aiTranslationEnabled)); }
@@ -748,6 +755,8 @@ export default function Reader() {
               visiblePageIndices={visiblePageIndices}
               sourceId={sourceId}
               enabled={aiTranslationEnabled}
+              targetLanguage={translationTargetLanguage}
+              onTargetLanguageChange={setTranslationTargetLanguage}
               disabled={!translationPages[currentPage] || !translationPages[currentPage].loaded || translationPages[currentPage].failed}
               onTranslated={handlePageTranslated}
               onClear={clearPageTranslation}
@@ -774,6 +783,18 @@ export default function Reader() {
                         Cached translations load for pages you view. New AI work happens only when you tap the floating Translate button.
                       </p>
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Translate to</Label>
+                    <TranslationLanguagePicker
+                      value={translationTargetLanguage}
+                      onChange={setTranslationTargetLanguage}
+                      options={TARGET_LANGUAGE_OPTIONS}
+                      label="Target language"
+                    />
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      Saved on this device. Changing languages keeps each language’s cached translations.
+                    </p>
                   </div>
                   <div className="space-y-3">
                     <Label>Reading Direction</Label>

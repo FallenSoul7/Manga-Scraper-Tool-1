@@ -9,8 +9,32 @@ const PROXIED_MEDIA_SOURCES = new Set([
   "all.webtoons", "all.atsu", "en.novelfull", "all.mangadex", "en.animegg", "en.resetscans",
 ]);
 
+const INFERRED_MEDIA_HOSTS: Array<{ source: string; hosts: string[] }> = [
+  { source: "all.pawchive", hosts: ["img.pawchive.pw", "file.pawchive.pw"] },
+  { source: "all.webtoons", hosts: ["webtoon-phinf.pstatic.net"] },
+  { source: "all.atsu", hosts: ["cdn.atsu.moe"] },
+  { source: "all.mangadex", hosts: ["uploads.mangadex.org"] },
+  { source: "en.novelfull", hosts: ["novelfull.com"] },
+  { source: "en.animegg", hosts: ["vidcache.net", "animegg.org"] },
+  { source: "en.resetscans", hosts: ["resetscans.net"] },
+];
+
+function inferApprovedMediaSource(url: string): string | undefined {
+  try {
+    const target = new URL(url);
+    if (target.protocol !== "https:") return undefined;
+    const host = target.hostname.toLowerCase();
+    return INFERRED_MEDIA_HOSTS.find(({ hosts }) => hosts.some(domain =>
+      host === domain || host.endsWith(`.${domain}`),
+    ))?.source;
+  } catch {
+    return undefined;
+  }
+}
+
 export function mediaImage(url: string | undefined, source?: string): string {
   if (!url) return '';
+  const resolvedSource = source || inferApprovedMediaSource(url);
   // Keep image-proxy requests on the app origin so the service worker can cache
   // successful responses instead of seeing opaque cross-origin image requests.
   if (url.startsWith('/api/')) return url;
@@ -19,14 +43,14 @@ export function mediaImage(url: string | undefined, source?: string): string {
   const sourceMediaPath = (sourceId: string) =>
     `/api/source-media?source=${encodeURIComponent(sourceId)}&url=${encodeURIComponent(url)}`;
   if (
-    source === "all.pawchive" &&
+    resolvedSource === "all.pawchive" &&
     /^https:\/\/(?:img|file)\.pawchive\.pw\//i.test(url) &&
     !/\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(url)
   ) {
-    return sourceMediaPath(source);
+    return sourceMediaPath(resolvedSource);
   }
-  if (source && PROXIED_MEDIA_SOURCES.has(source) && /^https:\/\//i.test(url)) {
-    return sourceMediaPath(source);
+  if (resolvedSource && PROXIED_MEDIA_SOURCES.has(resolvedSource) && /^https:\/\//i.test(url)) {
+    return sourceMediaPath(resolvedSource);
   }
   return url;
 }

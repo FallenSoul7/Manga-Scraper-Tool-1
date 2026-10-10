@@ -291,20 +291,66 @@ const SOURCE_MEDIA_CACHE_TTL = 6 * 60 * 60 * 1000;
 const SOURCE_MEDIA_CACHE_MAX = 160;
 const SOURCE_MEDIA_CACHE_MAX_BYTES = 1024 * 1024;
 
-async function fetchSourceMedia(sourceId: string, targetUrl: string, source: { referer: string }): Promise<MediaCacheEntry> {
+function isAllowedSourceMediaUrl(target: URL, source: { hosts: string[] }): boolean {
+  const hostname = target.hostname.toLowerCase();
+  const allowedHost = source.hosts.some(host => {
+    const normalizedHost = host.toLowerCase();
+    return normalizedHost.startsWith(".")
+      ? hostname.endsWith(normalizedHost)
+      : hostname === normalizedHost;
+  });
+  return target.protocol === "https:" && target.port === "" && !target.username && !target.password && allowedHost;
+}
+
+async function fetchSourceMedia(sourceId: string, targetUrl: string, source: { hosts: string[]; referer: string }): Promise<MediaCacheEntry> {
   const key = `${sourceId}|${targetUrl}`;
   const hit = sourceMediaCache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit;
   const pending = sourceMediaInflight.get(key);
   if (pending) return pending;
-  const request = axios.get<ArrayBuffer>(targetUrl, {
-    responseType: "arraybuffer",
-    headers: { Referer: source.referer, Origin: new URL(source.referer).origin, "User-Agent": VIDEO_PROXY_UA, Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
-    timeout: 45_000, maxRedirects: 5, validateStatus: () => true,
-  }).then(upstream => {
-    let contentType = String(upstream.headers["content-type"] ?? "");
-    if (upstream.status >= 400 || contentType.includes("text/html")) throw new Error("Source media is temporarily unavailable");
-    const body = Buffer.from(upstream.data);
+  const request = (async () => {
+    let current = new URL(targetUrl);
+    const visited = new Set<string>();
+    let status = 0;
+    let contentType = "";
+    let data: ArrayBuffer | undefined;
+
+    for (let redirects = 0; redirects <= 5; redirects += 1) {
+      current.hash = "";
+      if (!isAllowedSourceMediaUrl(current, source)) {
+        throw new Error("Source media URL or redirect destination is not allowed");
+      }
+      const requestUrl = current.toString();
+      if (visited.has(requestUrl)) throw new Error("Source media redirect loop");
+      visited.add(requestUrl);
+
+      const upstream = await axios.get<ArrayBuffer>(requestUrl, {
+        responseType: "arraybuffer",
+        headers: { Referer: source.referer, Origin: new URL(source.referer).origin, "User-Agent": VIDEO_PROXY_UA, Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
+        timeout: 45_000, maxRedirects: 0, validateStatus: () => true,
+      });
+
+      if (upstream.status >= 300 && upstream.status < 400) {
+        const location = String(upstream.headers["location"] ?? "");
+        if (!location || redirects === 5) throw new Error("Source media redirect is invalid or exceeds the redirect limit");
+        const next = new URL(location, current);
+        next.hash = "";
+        if (!isAllowedSourceMediaUrl(next, source)) {
+          throw new Error("Source media redirect destination is not allowed");
+        }
+        current = next;
+        continue;
+      }
+
+      status = upstream.status;
+      contentType = String(upstream.headers["content-type"] ?? "");
+      data = upstream.data;
+      break;
+    }
+
+    if (data === undefined) throw new Error("Source media redirect limit reached");
+    if (status >= 400 || contentType.toLowerCase().includes("text/html")) throw new Error("Source media is temporarily unavailable");
+    const body = Buffer.from(data);
     if (body.length > 12 * 1024 * 1024) throw new Error("Source media is too large");
     // Pawchive's GIF thumbnail route returns a one-frame WebP but can label it
     // image/gif. Correct the MIME so browsers reliably decode the frozen cover.
@@ -322,7 +368,7 @@ async function fetchSourceMedia(sourceId: string, targetUrl: string, source: { r
       sourceMediaCache.set(key, entry);
     }
     return entry;
-  }).finally(() => sourceMediaInflight.delete(key));
+  })().finally(() => sourceMediaInflight.delete(key));
   sourceMediaInflight.set(key, request);
   return request;
 }

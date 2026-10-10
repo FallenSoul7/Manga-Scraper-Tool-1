@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { TranslationLanguagePicker } from "@/components/reader/translation-language-picker";
 import { apiUrl } from "@/lib/api-url";
 import { mediaImage } from "@/lib/utils";
 import { offlineDb } from "@/lib/offline-db";
 import { getSharedTranslation, getTranslationCacheKey, TRANSLATION_REVISION, type OfflineTranslationRecord, type TranslationRegion } from "@/lib/translation-cache";
+import { getSavedTranslationSourceLanguage, saveTranslationSourceLanguage, SOURCE_LANGUAGE_OPTIONS, TARGET_LANGUAGE_OPTIONS } from "@/lib/translation-languages";
 
 export type { TranslationRegion } from "@/lib/translation-cache";
 
@@ -30,12 +32,14 @@ export interface ReaderTranslationPage {
 }
 
 function uniqueImageCandidates(image: HTMLImageElement, pageUrl: string, sourceId?: string | null): string[] {
-  const values = [image.currentSrc, image.src, mediaImage(pageUrl, sourceId ?? undefined)];
+  const values = [mediaImage(pageUrl, sourceId ?? undefined), image.currentSrc, image.src];
   return Array.from(new Set(values.map(value => value.trim()).filter(Boolean)));
 }
 
 async function readPageImage(image: HTMLImageElement, pageUrl: string, sourceId?: string | null): Promise<Blob> {
   let lastError: unknown;
+  let lastHttpStatus: number | null = null;
+  let networkOrCorsBlocked = false;
   for (const candidate of uniqueImageCandidates(image, pageUrl, sourceId)) {
     try {
       const absoluteUrl = new URL(candidate, window.location.href);
@@ -45,24 +49,38 @@ async function readPageImage(image: HTMLImageElement, pageUrl: string, sourceId?
         credentials: sameOrigin ? "same-origin" : "omit",
         cache: "force-cache",
       });
-      if (!response.ok) throw new Error(`Image request failed (${response.status})`);
+      if (!response.ok) {
+        lastHttpStatus = response.status;
+        throw new Error(`Image request failed (${response.status})`);
+      }
       const blob = await response.blob();
-      if (!blob.type.startsWith("image/") || blob.size === 0) throw new Error("The source did not return a readable image.");
+      const contentType = blob.type.split(";")[0].trim().toLowerCase();
+      if (!blob.size || (contentType && !contentType.startsWith("image/") && contentType !== "application/octet-stream")) {
+        throw new Error("The source response was not image data.");
+      }
       return blob;
     } catch (error) {
       lastError = error;
+      if (error instanceof TypeError) networkOrCorsBlocked = true;
     }
   }
-  if (lastError instanceof TypeError) {
-    throw new Error("This source blocks secure browser access to the page image. Translation only uses normal CORS or ComiHub's approved source-media proxy; it will not bypass the source.");
+  if (networkOrCorsBlocked) {
+    throw new Error("The page is visible, but the browser could not read its image bytes through normal CORS or an approved ComiHub image route. Some sources block pixel access; ComiHub will not bypass those restrictions.");
   }
+  if (lastHttpStatus !== null) throw new Error(`The page image or its approved ComiHub route returned HTTP ${lastHttpStatus}. Retry the page or try another supported source.`);
+  if (lastError instanceof Error) throw lastError;
   throw new Error("The page image could not be read for translation. Retry the page or try another source.");
 }
 
 async function loadDrawable(blob: Blob): Promise<{ drawable: CanvasImageSource; width: number; height: number; dispose: () => void }> {
   if (typeof createImageBitmap === "function") {
-    const bitmap = await createImageBitmap(blob);
-    return { drawable: bitmap, width: bitmap.width, height: bitmap.height, dispose: () => bitmap.close() };
+    try {
+      const bitmap = await createImageBitmap(blob);
+      return { drawable: bitmap, width: bitmap.width, height: bitmap.height, dispose: () => bitmap.close() };
+    } catch {
+      // Some browsers render formats which their createImageBitmap decoder does not support.
+      // Fall back to the browser's regular <img> decoder using the same fetched bytes.
+    }
   }
 
   const objectUrl = URL.createObjectURL(blob);
@@ -137,19 +155,6 @@ async function preparePageImage(image: HTMLImageElement, pageUrl: string, source
   }
 }
 
-const SOURCE_LANGUAGES = [
-  { value: "auto", label: "Auto-detect" },
-  { value: "Japanese", label: "Japanese" },
-  { value: "Korean", label: "Korean" },
-  { value: "Chinese (Simplified)", label: "Chinese (Simplified)" },
-  { value: "Chinese (Traditional)", label: "Chinese (Traditional)" },
-  { value: "English", label: "English" },
-];
-
-const TARGET_LANGUAGES = [
-  "English", "Arabic", "Spanish", "French", "German", "Indonesian", "Portuguese", "Turkish", "Vietnamese",
-];
-
 interface ReaderTranslationControlProps {
   pageIndex: number;
   chapterId: string;
@@ -157,6 +162,8 @@ interface ReaderTranslationControlProps {
   visiblePageIndices: number[];
   sourceId?: string | null;
   enabled: boolean;
+  targetLanguage: string;
+  onTargetLanguageChange: (language: string) => void;
   disabled?: boolean;
   onTranslated: (pageIndex: number, regions: TranslationRegion[]) => void;
   onClear: (pageIndex: number) => void;
@@ -170,13 +177,14 @@ export function ReaderTranslationControl({
   visiblePageIndices,
   sourceId,
   enabled,
+  targetLanguage,
+  onTargetLanguageChange,
   disabled = false,
   onTranslated,
   onClear,
   onClearAll,
 }: ReaderTranslationControlProps) {
-  const [sourceLanguage, setSourceLanguage] = useState("auto");
-  const [targetLanguage, setTargetLanguage] = useState("English");
+  const [sourceLanguage, setSourceLanguage] = useState(getSavedTranslationSourceLanguage);
   const [providerMode, setProviderMode] = useState("auto");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
@@ -184,6 +192,10 @@ export function ReaderTranslationControl({
   const cachedPageChecksRef = useRef<Set<string>>(new Set());
   const activeControllersRef = useRef<Map<string, AbortController>>(new Map());
   const generationRef = useRef(0);
+
+  useEffect(() => {
+    saveTranslationSourceLanguage(sourceLanguage);
+  }, [sourceLanguage]);
 
   useEffect(() => {
     generationRef.current += 1;
@@ -364,17 +376,22 @@ export function ReaderTranslationControl({
           <div className="mt-6 space-y-5">
             <div className="space-y-2">
               <Label htmlFor="translation-source-language">Source language</Label>
-              <Select value={sourceLanguage} onValueChange={setSourceLanguage}>
-                <SelectTrigger id="translation-source-language"><SelectValue /></SelectTrigger>
-                <SelectContent>{SOURCE_LANGUAGES.map(language => <SelectItem key={language.value} value={language.value}>{language.label}</SelectItem>)}</SelectContent>
-              </Select>
+              <TranslationLanguagePicker
+                value={sourceLanguage}
+                onChange={setSourceLanguage}
+                options={SOURCE_LANGUAGE_OPTIONS}
+                label="Source language"
+              />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="translation-target-language">Translate to</Label>
-              <Select value={targetLanguage} onValueChange={setTargetLanguage}>
-                <SelectTrigger id="translation-target-language"><SelectValue /></SelectTrigger>
-                <SelectContent>{TARGET_LANGUAGES.map(language => <SelectItem key={language} value={language}>{language}</SelectItem>)}</SelectContent>
-              </Select>
+              <Label>Translate to</Label>
+              <TranslationLanguagePicker
+                value={targetLanguage}
+                onChange={onTargetLanguageChange}
+                options={TARGET_LANGUAGE_OPTIONS}
+                label="Target language"
+              />
+              <p className="text-xs text-muted-foreground">Your choice is saved on this device. Each language keeps its own cache.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="translation-provider">Free AI route</Label>
