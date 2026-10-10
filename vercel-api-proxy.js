@@ -28,8 +28,15 @@ function backendOrigin(value) {
   return value.replace(/\/+$/, "");
 }
 
-function shouldTryFallback(response) {
-  return response.status === 502 || response.status === 503 || response.status === 504;
+const SAFE_RETRY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const GATEWAY_FAILURE_STATUSES = new Set([502, 503, 504]);
+
+function shouldTryFallback(response, method) {
+  if (GATEWAY_FAILURE_STATUSES.has(response.status)) return true;
+  return (
+    SAFE_RETRY_METHODS.has(method) &&
+    (response.status === 408 || (response.status >= 500 && response.status < 600))
+  );
 }
 
 function copyRequestHeaders(req) {
@@ -109,7 +116,7 @@ module.exports = async function handler(req, res) {
           await response.body?.cancel().catch(() => undefined);
           return;
         }
-        if (shouldTryFallback(response) && index < origins.length - 1) {
+        if (shouldTryFallback(response, req.method) && index < origins.length - 1) {
           await response.body?.cancel();
           continue;
         }
