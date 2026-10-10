@@ -4,6 +4,7 @@
  * Separate from the download queue which lives in RAM — this persists across sessions.
  */
 import { useSyncExternalStore } from 'react';
+import type { OfflineTranslationRecord } from './translation-cache';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,8 +26,9 @@ export interface OfflineChapter {
 // ─── DB bootstrap ─────────────────────────────────────────────────────────────
 
 const DB_NAME    = 'comihub-offline';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'chapters';
+const TRANSLATION_STORE = 'translations';
 
 let _db: IDBDatabase | null = null;
 
@@ -41,14 +43,25 @@ function openDb(): Promise<IDBDatabase> {
         store.createIndex('mangaId',      'mangaId',      { unique: false });
         store.createIndex('downloadedAt', 'downloadedAt', { unique: false });
       }
+      if (!db.objectStoreNames.contains(TRANSLATION_STORE)) {
+        const store = db.createObjectStore(TRANSLATION_STORE, { keyPath: 'cacheKey' });
+        store.createIndex('chapterId', 'chapterId', { unique: false });
+        store.createIndex('expiresAt', 'expiresAt', { unique: false });
+        store.createIndex('cachedAt', 'cachedAt', { unique: false });
+      }
     };
-    req.onsuccess = () => { _db = req.result; resolve(_db); };
+    req.onblocked = () => reject(new Error('Close another ComiHub tab to finish updating offline storage.'));
+    req.onsuccess = () => {
+      _db = req.result;
+      _db.onversionchange = () => { _db?.close(); _db = null; };
+      resolve(_db);
+    };
     req.onerror   = () => reject(req.error);
   });
 }
 
-function tx(mode: IDBTransactionMode) {
-  return openDb().then(db => db.transaction(STORE_NAME, mode).objectStore(STORE_NAME));
+function tx(mode: IDBTransactionMode, storeName = STORE_NAME) {
+  return openDb().then(db => db.transaction(storeName, mode).objectStore(storeName));
 }
 
 function wrap<T>(req: IDBRequest<T>): Promise<T> {
@@ -76,6 +89,29 @@ export const offlineDb = {
     const store = await tx('readwrite');
     await wrap(store.put(chapter));
     notifyOffline();
+  },
+
+  async getTranslation(cacheKey: string): Promise<OfflineTranslationRecord | null> {
+    const store = await tx('readonly', TRANSLATION_STORE);
+    const record = (await wrap<OfflineTranslationRecord | undefined>(store.get(cacheKey))) ?? null;
+    if (record && record.expiresAt > Date.now()) return record;
+    if (record) {
+      const writeStore = await tx('readwrite', TRANSLATION_STORE);
+      await wrap(writeStore.delete(cacheKey));
+    }
+    return null;
+  },
+
+  async saveTranslation(record: OfflineTranslationRecord): Promise<void> {
+    const writeStore = await tx('readwrite', TRANSLATION_STORE);
+    await wrap(writeStore.put(record));
+    const readStore = await tx('readonly', TRANSLATION_STORE);
+    const all = await wrap<OfflineTranslationRecord[]>(readStore.getAll());
+    if (all.length > 1000) {
+      all.sort((a, b) => a.cachedAt - b.cachedAt);
+      const pruneStore = await tx('readwrite', TRANSLATION_STORE);
+      for (const stale of all.slice(0, all.length - 1000)) await wrap(pruneStore.delete(stale.cacheKey));
+    }
   },
 
   async delete(chapterId: string): Promise<void> {

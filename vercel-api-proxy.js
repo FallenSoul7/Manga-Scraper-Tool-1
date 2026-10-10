@@ -62,12 +62,13 @@ async function readRequestBody(req) {
   return JSON.stringify(req.body);
 }
 
-async function fetchBackend(req, origin, body) {
+async function fetchBackend(req, origin, body, signal) {
   return fetch(`${backendOrigin(origin)}${req.url}`, {
     method: req.method,
     headers: copyRequestHeaders(req),
     body,
     redirect: "manual",
+    signal,
   });
 }
 
@@ -87,24 +88,43 @@ async function streamResponse(res, response) {
 }
 
 module.exports = async function handler(req, res) {
-  const origins = [PRIMARY_BACKEND, FALLBACK_BACKEND].filter(Boolean);
-  const body = await readRequestBody(req);
+  const requestController = new AbortController();
+  const abortOnRequestClose = () => requestController.abort();
+  const abortOnResponseClose = () => {
+    if (!res.writableEnded) requestController.abort();
+  };
+  if (req.aborted || res.destroyed) requestController.abort();
+  req.once("aborted", abortOnRequestClose);
+  res.once("close", abortOnResponseClose);
 
-  for (let index = 0; index < origins.length; index += 1) {
-    try {
-      const response = await fetchBackend(req, origins[index], body);
-      if (shouldTryFallback(response) && index < origins.length - 1) {
-        await response.body?.cancel();
-        continue;
+  try {
+    const origins = [PRIMARY_BACKEND, FALLBACK_BACKEND].filter(Boolean);
+    const body = await readRequestBody(req);
+    if (requestController.signal.aborted) return;
+
+    for (let index = 0; index < origins.length; index += 1) {
+      try {
+        const response = await fetchBackend(req, origins[index], body, requestController.signal);
+        if (requestController.signal.aborted) {
+          await response.body?.cancel().catch(() => undefined);
+          return;
+        }
+        if (shouldTryFallback(response) && index < origins.length - 1) {
+          await response.body?.cancel();
+          continue;
+        }
+        await streamResponse(res, response);
+        return;
+      } catch (error) {
+        if (requestController.signal.aborted) return;
       }
-      await streamResponse(res, response);
-      return;
-    } catch (error) {
-      // Try the next origin without exposing upstream connection details.
     }
-  }
 
-  if (!res.headersSent) {
-    res.status(502).json({ error: "Backend services are temporarily unavailable." });
+    if (!requestController.signal.aborted && !res.destroyed && !res.headersSent) {
+      res.status(502).json({ error: "Backend services are temporarily unavailable." });
+    }
+  } finally {
+    req.off("aborted", abortOnRequestClose);
+    res.off("close", abortOnResponseClose);
   }
 };

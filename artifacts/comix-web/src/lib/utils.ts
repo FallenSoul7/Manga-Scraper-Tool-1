@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 const PROXIED_MEDIA_SOURCES = new Set([
-  "all.webtoons", "all.atsu", "en.novelfull", "all.mangadex", "en.animegg",
+  "all.webtoons", "all.atsu", "en.novelfull", "all.mangadex", "en.animegg", "en.resetscans",
 ]);
 
 export function mediaImage(url: string | undefined, source?: string): string {

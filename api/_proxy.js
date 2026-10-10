@@ -13,5 +13,7 @@ module.exports = async function proxy(req, res) {
   const suffix = requestUrl.searchParams.toString();
   const forwardedReq = Object.create(req);
   forwardedReq.url = `/api/${targetPath}${suffix ? `?${suffix}` : ""}`;
+  forwardedReq.once = req.once.bind(req);
+  forwardedReq.off = req.off.bind(req);
   await handler(forwardedReq, res);
 };

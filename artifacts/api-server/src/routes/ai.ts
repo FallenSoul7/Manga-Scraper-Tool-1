@@ -2,13 +2,15 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { PROMPTS } from "./ai-powers/prompts";
 import { logger } from "../lib/logger";
+import { translatePageImage, type TranslationProviderMode } from "./ai-translation";
 
 const router = Router();
 
 const FETCH_TIMEOUT_MS = 65_000;
 
 const AI_RATE_WINDOW_MS = 60 * 60 * 1000;
-const AI_REQUESTS_PER_WINDOW = 20;
+const AI_CHAT_REQUESTS_PER_WINDOW = 20;
+const AI_TRANSLATION_REQUESTS_PER_WINDOW = 60;
 const AI_MAX_CONCURRENT = 3;
 const AI_MAX_WAITING = 8;
 
@@ -30,52 +32,53 @@ function admitNextAiRequest() {
   next();
 }
 
-async function aiAdmission(req: Request, res: Response, next: NextFunction) {
-  const now = Date.now();
-  const key = clientKey(req);
-  const entry = rateEntries.get(key) ?? { startedAt: [] };
-  entry.startedAt = entry.startedAt.filter((time) => now - time < AI_RATE_WINDOW_MS);
+function createAiAdmission(namespace: string, requestLimit: number) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const now = Date.now();
+    const key = `${namespace}:${clientKey(req)}`;
+    const entry = rateEntries.get(key) ?? { startedAt: [] };
+    entry.startedAt = entry.startedAt.filter((time) => now - time < AI_RATE_WINDOW_MS);
 
-  if (entry.startedAt.length >= AI_REQUESTS_PER_WINDOW) {
-    res.setHeader("Retry-After", "3600");
-    res.status(429).json({ error: "AI request limit reached. Please try again later." });
-    return;
-  }
-
-  if (activeAiRequests >= AI_MAX_CONCURRENT) {
-    if (waitingAiRequests >= AI_MAX_WAITING) {
-      res.setHeader("Retry-After", "30");
-      res.status(429).json({ error: "AI service is busy. Please try again shortly." });
+    if (entry.startedAt.length >= requestLimit) {
+      res.setHeader("Retry-After", "3600");
+      res.status(429).json({ error: namespace === "translation" ? "Page-translation limit reached for this hour. Please try again later." : "AI request limit reached. Please try again later." });
       return;
     }
 
-    waitingAiRequests++;
-    await new Promise<void>((resolve) => aiWaiters.push(resolve));
-  } else {
-    activeAiRequests++;
-  }
+    if (activeAiRequests >= AI_MAX_CONCURRENT) {
+      if (waitingAiRequests >= AI_MAX_WAITING) {
+        res.setHeader("Retry-After", "30");
+        res.status(429).json({ error: "AI service is busy. Please try again shortly." });
+        return;
+      }
+      waitingAiRequests++;
+      await new Promise<void>((resolve) => aiWaiters.push(resolve));
+    } else {
+      activeAiRequests++;
+    }
 
-  entry.startedAt.push(now);
-  rateEntries.set(key, entry);
-
-  let released = false;
-  const release = () => {
-    if (released) return;
-    released = true;
-    activeAiRequests = Math.max(0, activeAiRequests - 1);
-    admitNextAiRequest();
-    if (rateEntries.size > 1000) {
-      for (const [storedKey, storedEntry] of rateEntries) {
-        if (!storedEntry.startedAt.some((time) => now - time < AI_RATE_WINDOW_MS)) {
-          rateEntries.delete(storedKey);
+    entry.startedAt.push(now);
+    rateEntries.set(key, entry);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      activeAiRequests = Math.max(0, activeAiRequests - 1);
+      admitNextAiRequest();
+      if (rateEntries.size > 1000) {
+        for (const [storedKey, storedEntry] of rateEntries) {
+          if (!storedEntry.startedAt.some((time) => now - time < AI_RATE_WINDOW_MS)) rateEntries.delete(storedKey);
         }
       }
-    }
+    };
+    res.once("finish", release);
+    res.once("close", release);
+    next();
   };
-  res.once("finish", release);
-  res.once("close", release);
-  next();
 }
+
+const aiAdmission = createAiAdmission("chat", AI_CHAT_REQUESTS_PER_WINDOW);
+const translationAdmission = createAiAdmission("translation", AI_TRANSLATION_REQUESTS_PER_WINDOW);
 
 // ── API key collection ────────────────────────────────────────────
 function collectKeys(base: string): string[] {
@@ -96,7 +99,10 @@ const UNCENSORED_MODELS = [
 
 function buildProviders() {
   const groqKeys = collectKeys("GROQ_API_KEY");
-  const geminiKeys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3].filter(Boolean) as string[];
+  // Keep the first Gemini credential on chat. Key 2 is dedicated to the
+  // multimodal manga translator so each task can use its appropriate model.
+  const geminiChatKey = process.env.GEMINI_CHAT_API_KEY ?? process.env.GEMINI_API_KEY_1;
+  const geminiKeys = geminiChatKey ? [geminiChatKey] : [];
   const openrouterKeys = collectKeys("OPENROUTER_API_KEY");
   type Provider = { name: string; url: string; key: string; model: string; isUncensored: boolean };
   const providers: Provider[] = [];
@@ -115,7 +121,7 @@ function buildProviders() {
       name: i > 0 ? `Gemini (key ${i + 1})` : "Gemini",
       url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       key: geminiKeys[i],
-      model: "gemini-2.5-flash",
+      model: process.env.GEMINI_CHAT_MODEL || "gemini-2.5-flash",
       isUncensored: false,
     });
   }
@@ -417,6 +423,72 @@ router.post("/chat", aiAdmission, async (req, res) => {
   }
 
   res.status(502).json({ error: providerFailures > 0 ? "AI providers are temporarily unavailable." : "No AI providers are configured." });
+});
+
+router.post("/translate-page", translationAdmission, async (req, res) => {
+  const body = req.body as {
+    imageDataUrl?: unknown;
+    sourceLanguage?: unknown;
+    targetLanguage?: unknown;
+    providerMode?: unknown;
+    sourceId?: unknown;
+    chapterId?: unknown;
+    pageIndex?: unknown;
+  };
+  const imageDataUrl = typeof body?.imageDataUrl === "string" ? body.imageDataUrl : "";
+  const sourceLanguage = typeof body?.sourceLanguage === "string" ? body.sourceLanguage : "auto";
+  const targetLanguage = typeof body?.targetLanguage === "string" ? body.targetLanguage : "English";
+  const providerMode = typeof body?.providerMode === "string" ? body.providerMode : "auto";
+  const sourceId = typeof body?.sourceId === "string" ? body.sourceId.trim().slice(0, 128) : undefined;
+  const chapterId = typeof body?.chapterId === "string" ? body.chapterId.trim().slice(0, 256) : undefined;
+  const pageIndex = typeof body?.pageIndex === "number" && Number.isInteger(body.pageIndex) && body.pageIndex >= 0 && body.pageIndex <= 10000
+    ? body.pageIndex
+    : undefined;
+  const allowedSourceLanguages = new Set(["auto", "Japanese", "Korean", "Chinese (Simplified)", "Chinese (Traditional)", "English"]);
+  const allowedTargetLanguages = new Set(["English", "Arabic", "Spanish", "French", "German", "Indonesian", "Portuguese", "Turkish", "Vietnamese"]);
+
+  if (!imageDataUrl.startsWith("data:image/")) {
+    res.status(400).json({ error: "A page image is required." });
+    return;
+  }
+  if (!allowedSourceLanguages.has(sourceLanguage) || !allowedTargetLanguages.has(targetLanguage)) {
+    res.status(400).json({ error: "Choose a supported source and target language." });
+    return;
+  }
+  if (!["auto", "gemini", "openrouter"].includes(providerMode)) {
+    res.status(400).json({ error: "Choose a supported free translation route." });
+    return;
+  }
+
+  const requestController = new AbortController();
+  const abortOnRequestClose = () => requestController.abort();
+  const abortOnResponseClose = () => {
+    if (!res.writableEnded) requestController.abort();
+  };
+  if (req.aborted || res.destroyed) requestController.abort();
+  req.once("aborted", abortOnRequestClose);
+  res.once("close", abortOnResponseClose);
+
+  try {
+    const result = await translatePageImage({
+      imageDataUrl,
+      sourceLanguage,
+      targetLanguage,
+      providerMode: providerMode as TranslationProviderMode,
+      sourceId,
+      chapterId,
+      pageIndex,
+      signal: requestController.signal,
+    });
+    if (!res.destroyed) res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Page translation failed.";
+    const status = /too large|unsupported/i.test(message) ? 413 : /choose a target/i.test(message) ? 400 : 503;
+    if (!res.destroyed && !res.headersSent) res.status(status).json({ error: message });
+  } finally {
+    req.off("aborted", abortOnRequestClose);
+    res.off("close", abortOnResponseClose);
+  }
 });
 
 export default router;

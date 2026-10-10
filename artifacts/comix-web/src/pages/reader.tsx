@@ -14,9 +14,10 @@ import {
 import { mediaImage, readerUrl, shouldProxySourceMedia } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
 import { getClientSourceAdapter } from "@/lib/client-sources";
+import { PageTranslationOverlay, ReaderTranslationControl, type TranslationRegion } from "@/components/reader/page-translation";
 import VideoPlayer, { type VideoTrack } from "@/pages/video-player";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
 import { offlineDb } from "@/lib/offline-db";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -61,6 +62,9 @@ export default function Reader() {
   // the fix), grab it from the library entry for this manga.
   const library = useStore(s => s.library);
   const sourceId = sourceIdFromUrl ?? (mangaId ? (library[mangaId]?.sourceId ?? null) : null);
+  const activeRouteKey = `${sourceId ?? ""}\n${chapterId}`;
+  const activeRouteKeyRef = useRef(activeRouteKey);
+  activeRouteKeyRef.current = activeRouteKey;
 
   // Set synchronously (not in useEffect) so the header is present on the
   // very first render when useGetChapterPages fires its query.
@@ -88,6 +92,30 @@ export default function Reader() {
 
   const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(currentProgress?.lastPageRead || 0);
+  const [pageTranslations, setPageTranslations] = useState<Record<number, TranslationRegion[]>>({});
+  const [visiblePageIndices, setVisiblePageIndices] = useState<number[]>([]);
+  const [aiTranslationEnabled, setAiTranslationEnabled] = useState(() => {
+    try { return localStorage.getItem("comihub-ai-page-translation") === "true"; }
+    catch { return false; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem("comihub-ai-page-translation", String(aiTranslationEnabled)); }
+    catch { /* Private browsing may disable local storage; the reader still works. */ }
+    if (!aiTranslationEnabled) setPageTranslations({});
+  }, [aiTranslationEnabled]);
+
+  const handlePageTranslated = useCallback((pageIndex: number, regions: TranslationRegion[]) => {
+    setPageTranslations(previous => ({ ...previous, [pageIndex]: regions }));
+  }, []);
+  const clearPageTranslation = useCallback((pageIndex: number) => {
+    setPageTranslations(previous => {
+      const next = { ...previous };
+      delete next[pageIndex];
+      return next;
+    });
+  }, []);
+  const clearAllPageTranslations = useCallback(() => setPageTranslations({}), []);
 
   // Entering document fullscreen hides the browser/PWA status area (battery,
   // clock, and browser chrome) when the platform supports immersive fullscreen.
@@ -132,6 +160,20 @@ export default function Reader() {
   // Stores measured heights of rendered pages so off-screen placeholders keep correct scroll position
   const pageHeightsRef = useRef<Record<number, number>>({});
   const novelScrollRestoredRef = useRef(false);
+
+  useLayoutEffect(() => {
+    setPageTranslations({});
+    setVisiblePageIndices([]);
+    setAppendedChapters([]);
+    setLoadingNextChapter(false);
+    appendedIdsRef.current.clear();
+    setLoadedImgs({});
+    setFailedImgs({});
+    setRetryCounts({});
+    setCurrentPage(currentProgress?.lastPageRead ?? 0);
+    pageHeightsRef.current = {};
+    if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+  }, [chapterId, sourceId]);
 
   const retryPage = (idx: number) => {
     setFailedImgs(prev => ({ ...prev, [idx]: false }));
@@ -188,6 +230,52 @@ export default function Reader() {
     (isOfflineMode && offlinePages) ? offlinePages : (pagesData?.pages ?? []);
   const effectiveLoading = isOfflineMode ? offlineLoading : pagesLoading;
   const effectiveError = isOfflineMode ? null : pagesError;
+  const translationPages = useMemo(() => {
+    const pages = effectivePages.map((page, index) => ({
+      url: page.url,
+      loaded: !!loadedImgs[index],
+      failed: !!failedImgs[index],
+      chapterId,
+      pageIndex: index,
+    }));
+    if (effectiveDirection === "webtoon" || effectiveDirection === "vertical") {
+      let globalIndex = effectivePages.length;
+      for (const chapter of appendedChapters) {
+        chapter.pages.forEach((page, pageIndex) => {
+          pages.push({
+            url: page.url,
+            loaded: !!loadedImgs[globalIndex],
+            failed: !!failedImgs[globalIndex],
+            chapterId: chapter.id,
+            pageIndex,
+          });
+          globalIndex += 1;
+        });
+      }
+    }
+    return pages;
+  }, [effectivePages, appendedChapters, loadedImgs, failedImgs, chapterId, effectiveDirection]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!aiTranslationEnabled || !container || typeof IntersectionObserver === "undefined") {
+      setVisiblePageIndices([]);
+      return;
+    }
+    const visible = new Set<number>();
+    const isPaged = effectiveDirection === "ltr" || effectiveDirection === "rtl";
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        const index = Number((entry.target as HTMLElement).dataset.readerPageIndex);
+        if (!Number.isInteger(index)) continue;
+        if (entry.isIntersecting) visible.add(index);
+        else visible.delete(index);
+      }
+      setVisiblePageIndices(Array.from(visible).sort((a, b) => a - b));
+    }, { root: isPaged ? container : null, threshold: 0.01 });
+    container.querySelectorAll<HTMLElement>("[data-reader-page-index]").forEach(page => observer.observe(page));
+    return () => observer.disconnect();
+  }, [effectivePages, appendedChapters, currentPage, effectiveDirection, aiTranslationEnabled]);
 
   const chapterFetchParams = { dedupe: false };
   const { data: chaptersData } = useGetChapters(mangaId || "", chapterFetchParams, {
@@ -365,6 +453,7 @@ export default function Reader() {
     const totalPages = effectivePages.length;
     if (totalPages === 0 || currentPage < totalPages - 3) return;
     const nc = nextChapter;
+    const routeKeyAtRequest = activeRouteKey;
     appendedIdsRef.current.add(nc.id);
     setLoadingNextChapter(true);
     fetch(`/api/chapter/${encodeURIComponent(nc.id)}/pages`, { headers: sourceId ? { "X-Source": sourceId } : {} })
@@ -373,11 +462,16 @@ export default function Reader() {
         return r.json();
       })
       .then((data: { pages: { index: number; url: string }[] }) => {
+        if (activeRouteKeyRef.current !== routeKeyAtRequest) return;
         setAppendedChapters(prev => [...prev, { id: nc.id, number: nc.number, title: nc.title ?? '', pages: data.pages }]);
       })
-      .catch(() => { appendedIdsRef.current.delete(nc.id); })
-      .finally(() => setLoadingNextChapter(false));
-  }, [currentPage, nextChapter, pagesData, loadingNextChapter, effectiveDirection]);
+      .catch(() => {
+        if (activeRouteKeyRef.current === routeKeyAtRequest) appendedIdsRef.current.delete(nc.id);
+      })
+      .finally(() => {
+        if (activeRouteKeyRef.current === routeKeyAtRequest) setLoadingNextChapter(false);
+      });
+  }, [currentPage, nextChapter, pagesData, loadingNextChapter, effectiveDirection, activeRouteKey, sourceId]);
 
   const navigateToChapter = (id: string) => {
     setLocation(readerUrl(id, mangaId || "", sourceId));
@@ -647,6 +741,18 @@ export default function Reader() {
             <Button variant="ghost" size="icon" disabled={!nextChapter} onClick={(e) => { e.stopPropagation(); if (nextChapter) navigateToChapter(nextChapter.id); }} className="text-white/70 hover:text-white" title="Next Chapter">
               <ChevronRight className="h-4 w-4" />
             </Button>
+            <ReaderTranslationControl
+              pageIndex={currentPage}
+              chapterId={chapterId}
+              pages={translationPages}
+              visiblePageIndices={visiblePageIndices}
+              sourceId={sourceId}
+              enabled={aiTranslationEnabled}
+              disabled={!translationPages[currentPage] || !translationPages[currentPage].loaded || translationPages[currentPage].failed}
+              onTranslated={handlePageTranslated}
+              onClear={clearPageTranslation}
+              onClearAll={clearAllPageTranslations}
+            />
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="text-white/70 hover:text-white ml-1" onClick={e => e.stopPropagation()}>
@@ -656,6 +762,19 @@ export default function Reader() {
               <SheetContent className="w-[300px] sm:w-[400px]" onClick={e => e.stopPropagation()}>
                 <SheetHeader><SheetTitle>Reader Settings</SheetTitle></SheetHeader>
                 <div className="py-6 space-y-6">
+                  <div className="flex items-start gap-3 rounded-lg border p-3">
+                    <Switch
+                      id="reader-ai-translation"
+                      checked={aiTranslationEnabled}
+                      onCheckedChange={setAiTranslationEnabled}
+                    />
+                    <div className="space-y-1">
+                      <Label htmlFor="reader-ai-translation">AI page translation</Label>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        Cached translations load for pages you view. New AI work happens only when you tap the floating Translate button.
+                      </p>
+                    </div>
+                  </div>
                   <div className="space-y-3">
                     <Label>Reading Direction</Label>
                     <Select
@@ -744,6 +863,7 @@ export default function Reader() {
               <div
                 key={page.index}
                 id={`page-${idx}`}
+                data-reader-page-index={idx}
                 className={`reader-page w-full flex-shrink-0 ${isVerticalLike && !isWebtoon ? 'mb-8' : ''}`}
                 style={{ height: estH, minHeight: estH, background: 'transparent', overflowAnchor: 'auto' }}
               />
@@ -761,6 +881,7 @@ export default function Reader() {
             <div
               key={page.index}
               id={`page-${idx}`}
+              data-reader-page-index={idx}
               className={`reader-page relative flex-shrink-0 ${
                 isPaged
                 ? isRule34
@@ -866,12 +987,17 @@ export default function Reader() {
                   )}
                 </>
               )}
+              <PageTranslationOverlay pageIndex={idx} regions={pageTranslations[idx] ?? []} />
             </div>
           );
         })}
 
         {/* Continuous reading: appended chapters */}
-        {(effectiveDirection === 'webtoon' || effectiveDirection === 'vertical') && appendedChapters.map((ch) => (
+        {(effectiveDirection === 'webtoon' || effectiveDirection === 'vertical') && appendedChapters.map((ch, chapterOffsetIndex) => {
+          const globalChapterOffset = effectivePages.length + appendedChapters
+            .slice(0, chapterOffsetIndex)
+            .reduce((total, previousChapter) => total + previousChapter.pages.length, 0);
+          return (
           <div key={ch.id} className="w-full">
             <div className="flex items-center gap-4 px-4 py-6 bg-black/80 border-y border-white/10">
               <div className="flex-1 h-px bg-white/20" />
@@ -881,30 +1007,40 @@ export default function Reader() {
               </div>
               <div className="flex-1 h-px bg-white/20" />
             </div>
-            {ch.pages.map((page) => {
+            {ch.pages.map((page, pageIndex) => {
               const isWebtoon = effectiveDirection === 'webtoon';
+              const globalPageIndex = globalChapterOffset + pageIndex;
               return (
                 <div
-                  key={page.index}
+                  key={`${ch.id}:${page.index}`}
+                  id={`page-${globalPageIndex}`}
+                  data-reader-page-index={globalPageIndex}
                   className={`reader-page relative flex-shrink-0 ${
                     isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full mb-8'
                   }`}>
                   <img
-                    src={resolveReaderMediaUrl(page.url)}
+                    src={resolveReaderMediaUrl(page.url, sourceId)}
                     alt={`Ch${ch.number} Page ${page.index}`}
                     loading="lazy"
                     decoding="async"
+                    onLoad={event => handlePageImageLoad(globalPageIndex, event)}
+                    onError={() => {
+                      setFailedImgs(previous => ({ ...previous, [globalPageIndex]: true }));
+                      setLoadedImgs(previous => ({ ...previous, [globalPageIndex]: true }));
+                    }}
                     style={
                       isWebtoon
                         ? { display: 'block', width: '100%', height: 'auto', margin: 0, padding: 0, verticalAlign: 'top', lineHeight: 0 }
                         : { display: 'block', maxWidth: '100%', objectFit: 'contain' }
                     }
                   />
+                  <PageTranslationOverlay pageIndex={globalPageIndex} regions={pageTranslations[globalPageIndex] ?? []} />
                 </div>
               );
             })}
           </div>
-        ))}
+          );
+        })}
 
         {(effectiveDirection === 'webtoon' || effectiveDirection === 'vertical') && loadingNextChapter && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-white/50">
