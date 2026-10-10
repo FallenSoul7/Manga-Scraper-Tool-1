@@ -1,12 +1,12 @@
 # ComiHub manga-page translation
 
-**Status:** implementation is complete and validated locally, but has not yet been pushed or deployed. The user opts in from Reader Settings, then uses a floating action slightly below screen center on the right to translate the current page. Translation overlays are drawn over the original text without modifying the page image.
+**Status:** deployed and smoke-tested in production. The user opts in from Reader Settings, then uses a floating action slightly below screen center on the right to translate the current page. Translation overlays are drawn over the original text without modifying the page image.
 
 ## Reader behavior
 
 The persistent **AI page translation** setting is off by default. When enabled, an `IntersectionObserver` checks IndexedDB and then the shared cache only for visible pages and one page ahead; a cache miss never starts AI work in the background. The floating **Translate** action and the toolbar's language/provider sheet translate the current page only after an explicit tap, including pages in chapters automatically appended in continuous vertical/webtoon reading. The browser fetches the page through normal CORS or ComiHub's already-approved same-origin media proxy, preserves the whole page while resizing/compressing it to WebP, and caps the binary image at 1.75 MB before posting it to `POST /api/ai/translate-page`.
 
-The app-shell service-worker cache is bumped from `comihub-static-v20` to `comihub-static-v21` so installed readers discard stale shell assets when this change is eventually released.
+The app-shell service-worker cache was bumped from `comihub-static-v20` to `comihub-static-v21`; the updated shell is live in production.
 
 The server asks a vision model for translated text plus per-region coordinates in a normalized `0..1000` image coordinate space. The reader maps those coordinates back to the displayed image and draws white boxes with dark translated text. Double-clicking or long-pressing a translation opens actions to copy the original text or translation. Cache identity uses SHA-256 of the exact compressed image sent to the backend, source and target languages, and the `page-overlay-v1` translation revision. The browser keeps up to 1,000 results in IndexedDB; a narrowly scoped Supabase RPC can retrieve a shared result by cache key, while only the backend can access the table directly. Shared entries store text/coordinates and bounded source metadata, never page images or source URLs, and expire after 180 days. Expired rows are pruned in bounded batches. This content-based identity also allows an identical page image to be reused across chapters or sources without trusting their URLs.
 
@@ -52,6 +52,14 @@ Each entry must explicitly set `free` and `vision` to `true`, use HTTPS, and sup
 `POST /api/ai/translate-page`
 
 Request JSON fields: `imageDataUrl` (WebP/JPEG/PNG data URL, capped server-side), `sourceLanguage`, `targetLanguage`, `providerMode` (`auto`, `gemini`, or `openrouter`), and optional source/chapter/page metadata. The API validates the image, computes the authoritative digest/cache key, checks the shared cache before invoking a provider, and returns translated regions, provider label, cache key, image digest, and cache-hit state. It never returns or logs API-key values. Chat remains capped at 20 requests per hour per client IP; page translation has a separate 60-request hourly limit and shares the existing concurrency queue.
+
+## Production verification (2026-10-11)
+
+- Render fallback `comihub-backend.onrender.com` was manually deployed from `main` at commit `c2e7ed4` (deploy `dep-db5c39nlot8c73eeclo0`, status `live`). The primary Render service remains suspended; Vercel's production proxy reaches this fallback.
+- Direct backend `/api/healthz` returned HTTP `200`. An empty-image POST to `/api/ai/translate-page` returned the expected HTTP `400` before any model call.
+- A one-off synthetic speech-bubble image was sent through the production Vercel route using Gemini Flash-Lite. It returned HTTP `200`, one positioned region, and translated `HELLO WORLD!` to `¡HOLA MUNDO!`. No manga/source image or user data was sent.
+- The result was persisted in the shared Supabase translation cache. It stores only the text/coordinates and cache metadata, not the test image. The synthetic test row expires after 180 days.
+- Vercel deployment `dpl_5ExSmCHA9qCfHUrTpWeA57Atz2mN` for proxy commit `c2e7ed4` is `READY`. Fallback auto-deploy is disabled, so manually deploy it after future backend commits.
 
 ## Official references
 

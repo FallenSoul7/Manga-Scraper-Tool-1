@@ -28,5 +28,6 @@ Both Render services should share the same `DATABASE_URL` and `SESSION_SECRET` w
 
 - Primary `manga-scraper-tool-2.onrender.com` returns HTTP `503` because Render suspended it after the monthly quota was exceeded.
 - Fallback `comihub-backend.onrender.com` returns HTTP `200` for `/api/healthz` and `/api/sources/catalog`; the Vercel production proxy also returns those successful fallback responses.
-- The fallback currently returns HTTP `404` for `POST /api/ai/translate-page`, so it is healthy but does not yet run the translation-route commit. The reader UI is deployed, but end-to-end page translation remains unavailable until the current backend code is deployed to that service.
-- The connected Render workspace currently exposes only the primary service; do not claim the fallback's deployment was updated until its Render service is accessible and its route is verified.
+- The fallback's Render service is `ComiHub backend` (`srv-d8npuchkh4rs73ff8es0`), with manual deploys only. Deploy `c2e7ed4` (`dep-db5c39nlot8c73eeclo0`) is live.
+- Through production Vercel, a validation-only empty-image request to `POST /api/ai/translate-page` returns HTTP `400` before provider invocation. A synthetic English speech-bubble test returned HTTP `200` from Gemini Flash-Lite with one Spanish translation region; the matching result was verified in the shared Supabase cache. No manga/source image was used.
+- The primary remains suspended. The fallback is now live with the translation route; its auto-deploy setting is off, so trigger a manual deploy after future backend commits.
