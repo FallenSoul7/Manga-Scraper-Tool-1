@@ -280,7 +280,9 @@ const SOURCE_MEDIA_HOSTS: Record<string, { hosts: string[]; referer: string }> =
   "all.atsu": { hosts: ["cdn.atsu.moe"], referer: "https://atsu.moe/" },
   "en.resetscans": { hosts: ["cdn.resetscans.net", "resetscans.net", ".resetscans.net"], referer: "https://www.resetscans.net/" },
   "en.novelfull": { hosts: ["novelfull.com", ".novelfull.com"], referer: "https://novelfull.com/" },
-  "all.mangadex": { hosts: ["uploads.mangadex.org"], referer: "https://mangadex.org/" },
+  // MangaDex covers use uploads.mangadex.org; chapter pages are served from
+  // rotating HTTPS subdomains of mangadex.network.
+  "all.mangadex": { hosts: ["uploads.mangadex.org", ".mangadex.network"], referer: "https://mangadex.org/" },
   "en.animegg": { hosts: ["vidcache.net", ".vidcache.net", "animegg.org", ".animegg.org"], referer: "https://www.animegg.org/" },
 };
 
