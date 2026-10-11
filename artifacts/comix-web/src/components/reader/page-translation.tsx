@@ -133,6 +133,33 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+/**
+ * The reader can display an image from the browser cache even while a second
+ * request to the same source/proxy is returning 503. Prefer those already
+ * decoded pixels before reporting an image-access failure. A tainted canvas
+ * still fails safely and lets the caller use the normal fetch/CORS error.
+ */
+async function readVisibleImage(image: HTMLImageElement): Promise<Blob | null> {
+  if (!image.complete || !image.naturalWidth || !image.naturalHeight) return null;
+  try {
+    await image.decode().catch(() => {});
+    const scale = Math.min(1, 3600 / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) return null;
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    // Force pixel-access validation before toBlob for CORS-tainted sources.
+    context.getImageData(0, 0, 1, 1);
+    return await canvasBlob(canvas, 0.92);
+  } catch {
+    return null;
+  }
+}
+
 function bytesToHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer), byte => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -149,7 +176,14 @@ async function prepareImagePayload(
   sourceId: string | null | undefined,
   region?: NormalizedRect,
 ): Promise<{ imageDataUrl: string; imageSha256: string }> {
-  const sourceBlob = await readPageImage(image, pageUrl, sourceId);
+  let sourceBlob: Blob;
+  try {
+    sourceBlob = await readPageImage(image, pageUrl, sourceId);
+  } catch (error) {
+    const visibleBlob = await readVisibleImage(image);
+    if (!visibleBlob) throw error;
+    sourceBlob = visibleBlob;
+  }
   const drawable = await loadDrawable(sourceBlob);
   try {
     if (!drawable.width || !drawable.height) throw new Error("The page image has no readable dimensions.");
@@ -272,8 +306,13 @@ function useImageMetrics(pageIndex: number, active: boolean): ImageMetrics | nul
     observer?.observe(image);
     image.addEventListener("load", measure);
     window.addEventListener("resize", measure);
+    // A lazy image can finish layout in the same frame that selection mode is
+    // enabled. Retry briefly so the selector does not silently disappear when
+    // the load event happened just before this effect subscribed.
+    const retryTimer = window.setInterval(measure, 250);
     return () => {
       cancelAnimationFrame(animationFrame);
+      window.clearInterval(retryTimer);
       observer?.disconnect();
       image.removeEventListener("load", measure);
       window.removeEventListener("resize", measure);
@@ -916,7 +955,11 @@ export function ReaderRegionSelector({ pageIndex, active, onSelected, onCancel }
           }}
         />
       ) : (
-        <div className="absolute inset-0 bg-black/45" />
+        <div className="absolute inset-0 border-2 border-dashed border-sky-300/90 bg-black/20 shadow-[inset_0_0_0_9999px_rgba(0,0,0,0.12)]">
+          <span className="absolute left-1/2 top-3 -translate-x-1/2 rounded bg-black/75 px-3 py-1 text-xs font-medium text-white shadow-lg">
+            Drag around one bubble
+          </span>
+        </div>
       )}
     </div>
   );
