@@ -150,3 +150,29 @@ export function getSavedTranslationSourceLanguage(): string {
 export function saveTranslationSourceLanguage(language: string): void {
   writePreference(SOURCE_LANGUAGE_STORAGE_KEY, language, SOURCE_LANGUAGE_OPTIONS);
 }
+
+/**
+ * Page translation can run as one whole-page request or as a user-selected
+ * region ("bubble") request. Region mode keeps the identical overlay pipeline
+ * and only changes which pixels are sent to the vision provider.
+ */
+export type TranslationMode = "page" | "region";
+
+const MODE_STORAGE_KEY = "comihub-ai-translation-mode";
+
+export function getSavedTranslationMode(): TranslationMode {
+  try {
+    const saved = typeof window === "undefined" ? null : window.localStorage.getItem(MODE_STORAGE_KEY);
+    return saved === "region" ? "region" : "page";
+  } catch {
+    return "page";
+  }
+}
+
+export function saveTranslationMode(mode: TranslationMode): void {
+  try {
+    if (typeof window !== "undefined") window.localStorage.setItem(MODE_STORAGE_KEY, mode === "region" ? "region" : "page");
+  } catch {
+    // Translation still works when browser storage is unavailable.
+  }
+}

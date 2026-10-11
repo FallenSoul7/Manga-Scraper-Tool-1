@@ -82,13 +82,19 @@ const aiAdmission = createAiAdmission("chat", AI_CHAT_REQUESTS_PER_WINDOW);
 const translationAdmission = createAiAdmission("translation", AI_TRANSLATION_REQUESTS_PER_WINDOW);
 
 // ── API key collection ────────────────────────────────────────────
+// Bases are read as <BASE>, <BASE>_1, <BASE>_2 … <BASE>_10. The previous loop
+// started at _2, so a deployment that stored only GROQ_API_KEY_1 (or
+// OPENROUTER_API_KEY_1) silently lost that credential.
 function collectKeys(base: string): string[] {
   const keys: string[] = [];
-  const first = process.env[base] ?? "";
-  if (first) keys.push(first);
-  for (let i = 2; i <= 10; i++) {
-    const k = process.env[`${base}_${i}`] ?? "";
-    if (k) keys.push(k);
+  const seen = new Set<string>();
+  const candidates = [process.env[base] ?? ""];
+  for (let i = 1; i <= 10; i++) candidates.push(process.env[`${base}_${i}`] ?? "");
+  for (const candidate of candidates) {
+    const key = candidate.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    keys.push(key);
   }
   return keys;
 }
@@ -102,8 +108,20 @@ function buildProviders() {
   const groqKeys = collectKeys("GROQ_API_KEY");
   // Keep the first Gemini credential on chat. Key 2 is dedicated to the
   // multimodal manga translator so each task can use its appropriate model.
-  const geminiChatKey = process.env.GEMINI_CHAT_API_KEY ?? process.env.GEMINI_API_KEY_1;
-  const geminiKeys = geminiChatKey ? [geminiChatKey] : [];
+  // Chat also uses any other configured Gemini credential except the dedicated
+  // translation key, so a _3+ key is no longer ignored.
+  const geminiTranslationKey = (process.env.GEMINI_TRANSLATION_API_KEY ?? process.env.GEMINI_API_KEY_2 ?? "").trim();
+  const geminiChatKey = (process.env.GEMINI_CHAT_API_KEY ?? process.env.GEMINI_API_KEY_1 ?? "").trim();
+  const geminiKeys: string[] = [];
+  const seenGemini = new Set<string>();
+  const pushGemini = (value: string) => {
+    const key = value.trim();
+    if (!key || key === geminiTranslationKey || seenGemini.has(key)) return;
+    seenGemini.add(key);
+    geminiKeys.push(key);
+  };
+  pushGemini(geminiChatKey);
+  for (const key of collectKeys("GEMINI_API_KEY")) pushGemini(key);
   const openrouterKeys = collectKeys("OPENROUTER_API_KEY");
   type Provider = { name: string; url: string; key: string; model: string; isUncensored: boolean };
   const providers: Provider[] = [];
@@ -113,7 +131,7 @@ function buildProviders() {
       name: i > 0 ? `Groq (key ${i + 1})` : "Groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
       key: groqKeys[i],
-      model: "llama-3.3-70b-versatile",
+      model: process.env.GROQ_CHAT_MODEL || "llama-3.3-70b-versatile",
       isUncensored: false,
     });
   }
@@ -199,6 +217,67 @@ const BLOCK_PHRASES = [
 function isBlocked(content: string | null): boolean {
   if (!content) return false;
   return BLOCK_PHRASES.some(p => content.includes(p));
+}
+
+type ProviderFailureReason =
+  | "http_error"
+  | "model_missing"
+  | "rate_limited"
+  | "unauthorized"
+  | "timeout"
+  | "request_error"
+  | "blocked";
+
+interface ProviderFailure {
+  status?: number;
+  code?: string;
+  reason: ProviderFailureReason;
+}
+
+class ProviderRequestError extends Error {
+  readonly failure: ProviderFailure;
+
+  constructor(message: string, failure: ProviderFailure) {
+    super(message);
+    this.failure = failure;
+  }
+}
+
+/**
+ * Read only the provider's short machine-readable error code. Provider prose,
+ * request bodies, prompts, and API-key values are never logged or returned to
+ * the client; without this, logs could not distinguish an invalid credential
+ * from a quota, model, or availability failure.
+ */
+// Express's Response type is imported in this module, so the fetch response type
+// is derived from fetch itself rather than from the global Response name.
+type ProviderFetchResponse = Awaited<ReturnType<typeof fetch>>;
+
+async function readProviderErrorCode(response: ProviderFetchResponse): Promise<string | undefined> {
+  let body = "";
+  try {
+    body = (await response.text()).slice(0, 2000);
+  } catch {
+    return undefined;
+  }
+  if (!body) return undefined;
+  try {
+    const parsed = JSON.parse(body) as any;
+    const nested = parsed?.error;
+    const raw = typeof nested === "object" && nested !== null
+      ? (nested.code ?? nested.type)
+      : (nested ?? parsed?.code);
+    const value = typeof raw === "string" ? raw : typeof raw === "number" ? String(raw) : "";
+    return /^[A-Za-z0-9_.:-]{1,64}$/.test(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function classifyHttpFailure(status: number): ProviderFailureReason {
+  if (status === 401 || status === 403) return "unauthorized";
+  if (status === 429) return "rate_limited";
+  return "http_error";
 }
 
 function sanitizeMessages(
@@ -358,6 +437,8 @@ router.post("/chat", aiAdmission, async (req, res) => {
   ];
 
   let providerFailures = 0;
+  let unauthorizedFailures = 0;
+  let rateLimitedFailures = 0;
 
   for (const provider of queue) {
     if (!provider.key) continue;
@@ -384,11 +465,19 @@ router.post("/chat", aiAdmission, async (req, res) => {
       });
 
       if (!aiRes.ok) {
-        await aiRes.text();
+        const code = await readProviderErrorCode(aiRes);
         if (aiRes.status === 404) {
-          throw new Error(`Model ${provider.model} not found – skipping.`);
+          throw new ProviderRequestError(`Model ${provider.model} not found – skipping.`, {
+            status: 404,
+            code: code ?? "model_not_found",
+            reason: "model_missing",
+          });
         }
-        throw new Error(`Provider returned HTTP ${aiRes.status}`);
+        throw new ProviderRequestError(`Provider returned HTTP ${aiRes.status}`, {
+          status: aiRes.status,
+          code,
+          reason: classifyHttpFailure(aiRes.status),
+        });
       }
 
       const data = await aiRes.json() as any;
@@ -396,7 +485,7 @@ router.post("/chat", aiAdmission, async (req, res) => {
       let content: string | null = choice?.message?.content ?? null;
 
       if (isBlocked(content)) {
-        throw new Error(`Content blocked by ${provider.name} alignment filter.`);
+        throw new ProviderRequestError(`Content blocked by ${provider.name} alignment filter.`, { reason: "blocked" });
       }
 
       // ── Use the enhanced parser ──
@@ -417,13 +506,29 @@ router.post("/chat", aiAdmission, async (req, res) => {
       return;
     } catch (err: any) {
       providerFailures++;
-      logger.warn({ provider: provider.name }, "AI provider request failed");
+      const failure: ProviderFailure | undefined = err instanceof ProviderRequestError ? err.failure : undefined;
+      const reason: ProviderFailureReason = failure?.reason ?? (err?.name === "AbortError" ? "timeout" : "request_error");
+      if (reason === "unauthorized") unauthorizedFailures++;
+      if (reason === "rate_limited") rateLimitedFailures++;
+      // Status, model, and short provider error code are safe diagnostics.
+      // Key values, prompts, request bodies, and provider prose are never logged.
+      logger.warn(
+        { provider: provider.name, model: provider.model, status: failure?.status, code: failure?.code, reason },
+        "AI provider request failed",
+      );
     } finally {
       clearTimeout(timer);
     }
   }
 
-  res.status(502).json({ error: providerFailures > 0 ? "AI providers are temporarily unavailable." : "No AI providers are configured." });
+  const error = providerFailures === 0
+    ? "No AI providers are configured."
+    : unauthorizedFailures === providerFailures
+      ? "The configured AI credentials were rejected by the provider. An administrator needs to review the API keys."
+      : rateLimitedFailures === providerFailures
+        ? "AI providers are rate-limited right now. Please try again later."
+        : "AI providers are temporarily unavailable.";
+  res.status(502).json({ error });
 });
 
 router.post("/translate-page", translationAdmission, async (req, res) => {

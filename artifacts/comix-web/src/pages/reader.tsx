@@ -14,7 +14,7 @@ import {
 import { mediaImage, readerUrl } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
 import { getClientSourceAdapter } from "@/lib/client-sources";
-import { PageTranslationOverlay, ReaderTranslationControl, type TranslationRegion } from "@/components/reader/page-translation";
+import { PageTranslationOverlay, ReaderRegionSelector, ReaderTranslationControl, type NormalizedRect, type TranslationRegion } from "@/components/reader/page-translation";
 import { TranslationLanguagePicker } from "@/components/reader/translation-language-picker";
 import VideoPlayer, { type VideoTrack } from "@/pages/video-player";
 import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
@@ -123,6 +123,30 @@ export default function Reader() {
     });
   }, []);
   const clearAllPageTranslations = useCallback(() => setPageTranslations({}), []);
+
+  // "One bubble" mode: the reader owns the drag layer over the current page and
+  // hands the finished box to the translation control, which sends only that crop.
+  const [regionSelecting, setRegionSelecting] = useState(false);
+  const [regionTargetPage, setRegionTargetPage] = useState(0);
+  const [selectionRequest, setSelectionRequest] = useState<{ rect: NormalizedRect; pageIndex: number; existingRegions: TranslationRegion[]; nonce: number } | null>(null);
+  const selectionNonceRef = useRef(0);
+  const requestRegionSelection = useCallback(() => {
+    setRegionTargetPage(currentPage);
+    setRegionSelecting(true);
+    setShowControls(false);
+  }, [currentPage]);
+  const cancelRegionSelection = useCallback(() => setRegionSelecting(false), []);
+  const handleRegionSelected = useCallback((rect: NormalizedRect) => {
+    setRegionSelecting(false);
+    selectionNonceRef.current += 1;
+    setSelectionRequest(previous => ({
+      rect,
+      pageIndex: regionTargetPage,
+      existingRegions: pageTranslations[regionTargetPage] ?? previous?.existingRegions ?? [],
+      nonce: selectionNonceRef.current,
+    }));
+  }, [regionTargetPage, pageTranslations]);
+  const handleSelectionHandled = useCallback(() => setSelectionRequest(null), []);
 
   // Entering document fullscreen hides the browser/PWA status area (battery,
   // clock, and browser chrome) when the platform supports immersive fullscreen.
@@ -758,6 +782,11 @@ export default function Reader() {
               targetLanguage={translationTargetLanguage}
               onTargetLanguageChange={setTranslationTargetLanguage}
               disabled={!translationPages[currentPage] || !translationPages[currentPage].loaded || translationPages[currentPage].failed}
+              selectionRequest={selectionRequest}
+              selectionActive={regionSelecting}
+              onRequestRegionSelection={requestRegionSelection}
+              onCancelRegionSelection={cancelRegionSelection}
+              onSelectionHandled={handleSelectionHandled}
               onTranslated={handlePageTranslated}
               onClear={clearPageTranslation}
               onClearAll={clearAllPageTranslations}
@@ -780,7 +809,7 @@ export default function Reader() {
                     <div className="space-y-1">
                       <Label htmlFor="reader-ai-translation">AI page translation</Label>
                       <p className="text-xs leading-relaxed text-muted-foreground">
-                        Cached translations load for pages you view. New AI work happens only when you tap the floating Translate button.
+                        Cached translations load for pages you view. In the translation settings you can translate a whole page or drag a box around a single bubble. New AI work happens only when you start a translation.
                       </p>
                     </div>
                   </div>
@@ -1009,6 +1038,12 @@ export default function Reader() {
                 </>
               )}
               <PageTranslationOverlay pageIndex={idx} regions={pageTranslations[idx] ?? []} />
+              <ReaderRegionSelector
+                pageIndex={idx}
+                active={regionSelecting && idx === regionTargetPage}
+                onSelected={handleRegionSelected}
+                onCancel={cancelRegionSelection}
+              />
             </div>
           );
         })}
@@ -1056,6 +1091,12 @@ export default function Reader() {
                     }
                   />
                   <PageTranslationOverlay pageIndex={globalPageIndex} regions={pageTranslations[globalPageIndex] ?? []} />
+                  <ReaderRegionSelector
+                    pageIndex={globalPageIndex}
+                    active={regionSelecting && globalPageIndex === regionTargetPage}
+                    onSelected={handleRegionSelected}
+                    onCancel={cancelRegionSelection}
+                  />
                 </div>
               );
             })}
