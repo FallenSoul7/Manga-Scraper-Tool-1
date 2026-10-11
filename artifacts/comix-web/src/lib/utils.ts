@@ -15,7 +15,7 @@ const INFERRED_MEDIA_HOSTS: Array<{ source: string; hosts: string[] }> = [
   { source: "all.atsu", hosts: ["cdn.atsu.moe"] },
   { source: "all.mangadex", hosts: ["uploads.mangadex.org", "mangadex.network"] },
   { source: "en.asurascans", hosts: ["asurascans.com"] },
-  { source: "all.thunderscans", hosts: ["thunderscans.com"] },
+  { source: "all.thunderscans", hosts: ["en-thunderscans.com", "thunderscans.com"] },
   { source: "en.novelfull", hosts: ["novelfull.com"] },
   { source: "en.animegg", hosts: ["vidcache.net", "animegg.org"] },
   { source: "en.resetscans", hosts: ["resetscans.net"] },

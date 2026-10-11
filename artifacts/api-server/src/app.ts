@@ -284,7 +284,7 @@ const SOURCE_MEDIA_HOSTS: Record<string, { hosts: string[]; referer: string }> =
   // rotating HTTPS subdomains of mangadex.network.
   "all.mangadex": { hosts: ["uploads.mangadex.org", ".mangadex.network"], referer: "https://mangadex.org/" },
   "en.asurascans": { hosts: [".asurascans.com"], referer: "https://asurascans.com/" },
-  "all.thunderscans": { hosts: [".thunderscans.com"], referer: "https://en-thunderscans.com/" },
+  "all.thunderscans": { hosts: ["en-thunderscans.com", ".thunderscans.com"], referer: "https://en-thunderscans.com/" },
   "en.animegg": { hosts: ["vidcache.net", ".vidcache.net", "animegg.org", ".animegg.org"], referer: "https://www.animegg.org/" },
 };
 
