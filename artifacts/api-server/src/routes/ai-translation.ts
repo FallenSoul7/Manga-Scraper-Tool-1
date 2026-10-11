@@ -360,6 +360,9 @@ async function translateWithProviders(input: {
     throw new Error("No free page-translation provider is configured. Add the dedicated Gemini key or an OpenRouter key.");
   }
 
+  let emptyRegionResponses = 0;
+  let rejectedResponses = 0;
+  let requestFailures = 0;
   for (const provider of providers) {
     if (input.signal.aborted) throw new Error("Translation request was cancelled.");
     const controller = new AbortController();
@@ -394,6 +397,7 @@ async function translateWithProviders(input: {
         signal: controller.signal,
       });
       if (!response.ok) {
+        rejectedResponses += 1;
         await response.body?.cancel().catch(() => undefined);
         logger.warn({ provider: provider.name, status: response.status }, "Page translation provider rejected the request");
         continue;
@@ -403,6 +407,7 @@ async function translateWithProviders(input: {
       const regions = parseRegions(assistantText(data));
       if (input.signal.aborted) throw new Error("Translation request was cancelled.");
       if (regions.length === 0) {
+        emptyRegionResponses += 1;
         logger.warn({ provider: provider.name }, "Page translation provider returned no valid text regions");
         continue;
       }
@@ -410,6 +415,7 @@ async function translateWithProviders(input: {
     } catch (error) {
       if (input.signal.aborted) throw new Error("Translation request was cancelled.");
       const reason = error instanceof Error && error.name === "AbortError" ? "timeout" : "request_error";
+      requestFailures += 1;
       logger.warn({ provider: provider.name, reason }, "Page translation provider request failed");
     } finally {
       clearTimeout(timer);
@@ -417,6 +423,9 @@ async function translateWithProviders(input: {
     }
   }
 
+  if (emptyRegionResponses > 0 && rejectedResponses === 0 && requestFailures === 0) {
+    throw new Error("The AI could read the page, but it found no confidently readable text regions. Try a clearer page, select a tighter bubble, or choose the page's source language.");
+  }
   throw new Error("All free page-translation providers are unavailable or returned invalid page text. Try again later or choose another source language.");
 }
 
