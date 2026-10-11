@@ -537,6 +537,7 @@ router.post("/translate-page", translationAdmission, async (req, res) => {
     sourceLanguage?: unknown;
     targetLanguage?: unknown;
     providerMode?: unknown;
+    bubbleCheck?: unknown;
     sourceId?: unknown;
     chapterId?: unknown;
     pageIndex?: unknown;
@@ -545,6 +546,7 @@ router.post("/translate-page", translationAdmission, async (req, res) => {
   const sourceLanguage = typeof body?.sourceLanguage === "string" ? body.sourceLanguage : "auto";
   const targetLanguage = typeof body?.targetLanguage === "string" ? body.targetLanguage : "English";
   const providerMode = typeof body?.providerMode === "string" ? body.providerMode : "auto";
+  const bubbleCheck = body?.bubbleCheck === true;
   const sourceId = typeof body?.sourceId === "string" ? body.sourceId.trim().slice(0, 128) : undefined;
   const chapterId = typeof body?.chapterId === "string" ? body.chapterId.trim().slice(0, 256) : undefined;
   const pageIndex = typeof body?.pageIndex === "number" && Number.isInteger(body.pageIndex) && body.pageIndex >= 0 && body.pageIndex <= 10000
@@ -578,6 +580,7 @@ router.post("/translate-page", translationAdmission, async (req, res) => {
       sourceLanguage,
       targetLanguage,
       providerMode: providerMode as TranslationProviderMode,
+      bubbleCheck,
       sourceId,
       chapterId,
       pageIndex,

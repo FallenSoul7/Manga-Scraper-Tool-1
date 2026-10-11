@@ -28,6 +28,8 @@ interface TranslationRequest {
   sourceLanguage: string;
   targetLanguage: string;
   providerMode: TranslationProviderMode;
+  /** Region mode asks the model to validate the crop before translating it. */
+  bubbleCheck?: boolean;
   sourceId?: string;
   chapterId?: string;
   pageIndex?: number;
@@ -166,15 +168,18 @@ function buildTranslationProviders(mode: TranslationProviderMode): TranslationPr
   return providers;
 }
 
-function makePrompt(sourceLanguage: string, targetLanguage: string): string {
+function makePrompt(sourceLanguage: string, targetLanguage: string, bubbleCheck = false): string {
   const source = sourceLanguage === "auto" ? "the language detected in the image" : sourceLanguage;
   return [
-    "You are ComiHub's manga/manhwa page translation skill. Read the page image, identify visible text, translate it, and return text-region coordinates for a white-out overlay.",
+    "You are ComiHub's manga/manhwa OCR and translation skill. First inspect the image carefully, detect every readable glyph or speech-bubble text block, preserve its exact location, then translate it and return text-region coordinates for a white-out overlay.",
     `Source language: ${source}. Target language: ${targetLanguage}.`,
     "Return only one valid JSON object, with no Markdown fences or commentary, in this exact shape:",
     '{"regions":[{"sourceText":"original text","translatedText":"translation","box":{"x":0,"y":0,"width":0,"height":0}}]}',
     "Use normalized integer coordinates in the 0..1000 range relative to the complete image (origin at top-left). Each box must tightly cover all original glyphs in that text block, with a small margin, and must not cover neighboring artwork or another text block.",
-    "Group all lines from one speech bubble into one region when possible. Preserve reading order. Translate only clearly readable text; omit unreadable marks. Preserve speaker intent, names, punctuation, and natural dialogue tone. Keep translations concise enough to fit inside the same box. Do not add explanations, chapter summaries, or text that is not visible.",
+    "Group all lines from one speech bubble into one region when possible. Preserve reading order. The sourceText field is OCR text that the user can copy, so transcribe visible words faithfully before translating. Preserve speaker intent, names, punctuation, and natural dialogue tone. Keep translations concise enough to fit inside the same box. Do not add explanations, chapter summaries, or text that is not visible.",
+    bubbleCheck
+      ? "This is a user-selected bubble candidate. Confirm that the crop contains readable dialogue, narration, or a text-bearing sound effect. If it is only artwork or unreadable noise, return an empty regions array. If it contains text, return one or more tightly fitted regions using coordinates relative to this crop."
+      : "Return an empty regions array only when the page truly contains no readable text; do not omit small but legible bubbles or captions.",
   ].join("\n");
 }
 
@@ -347,6 +352,7 @@ async function translateWithProviders(input: {
   sourceLanguage: string;
   targetLanguage: string;
   providerMode: TranslationProviderMode;
+  bubbleCheck: boolean;
   signal: AbortSignal;
 }): Promise<{ regions: TranslationRegion[]; provider: string }> {
   const providers = buildTranslationProviders(input.providerMode);
@@ -371,11 +377,13 @@ async function translateWithProviders(input: {
         body: JSON.stringify({
           model: provider.model,
           messages: [
-            { role: "system", content: makePrompt(input.sourceLanguage, input.targetLanguage) },
+            { role: "system", content: makePrompt(input.sourceLanguage, input.targetLanguage, input.bubbleCheck) },
             {
               role: "user",
               content: [
-                { type: "text", text: `Translate all readable manga/manhwa text to ${input.targetLanguage}.` },
+                { type: "text", text: input.bubbleCheck
+                  ? `Check this selected bubble candidate for readable text, then translate every readable text block to ${input.targetLanguage}.`
+                  : `OCR every readable manga/manhwa text block, preserve each exact location, then translate it to ${input.targetLanguage}.` },
                 { type: "image_url", image_url: { url: input.imageDataUrl } },
               ],
             },
@@ -438,11 +446,12 @@ export async function translatePageImage(input: TranslationRequest): Promise<Tra
       promise: Promise.resolve({ regions: [], provider: "" }),
     };
     const work = (async () => {
-      const result = await translateWithProviders({
+  const result = await translateWithProviders({
         imageDataUrl: input.imageDataUrl,
         sourceLanguage,
         targetLanguage,
         providerMode: input.providerMode,
+        bubbleCheck: input.bubbleCheck === true,
         signal: controller.signal,
       });
       const winner = await storeTranslationCache({

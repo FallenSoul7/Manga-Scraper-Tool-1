@@ -133,6 +133,22 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+async function requestTranslation(body: Record<string, unknown>, signal: AbortSignal): Promise<Response> {
+  const execute = () => fetch(apiUrl("/api/ai/translate-page"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    signal,
+    body: JSON.stringify(body),
+  });
+  let response = await execute();
+  if (response.status >= 500 && response.status <= 599 && !signal.aborted) {
+    await new Promise(resolve => window.setTimeout(resolve, 900));
+    if (!signal.aborted) response = await execute();
+  }
+  return response;
+}
+
 /**
  * The reader can display an image from the browser cache even while a second
  * request to the same source/proxy is returning 503. Prefer those already
@@ -467,26 +483,12 @@ export function ReaderTranslationControl({
       activeControllersRef.current.set(attemptKey, controller);
       let response: Response;
       try {
-        response = await fetch(apiUrl("/api/ai/translate-page"), {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            imageDataUrl: prepared.imageDataUrl,
-            sourceLanguage,
-            targetLanguage,
-            providerMode,
-            sourceId,
-            chapterId: pageChapterId,
-            pageIndex: pageLocalIndex,
-          }),
-        });
+        response = await requestTranslation({ imageDataUrl: prepared.imageDataUrl, sourceLanguage, targetLanguage, providerMode, sourceId, chapterId: pageChapterId, pageIndex: pageLocalIndex }, controller.signal);
       } finally {
         activeControllersRef.current.delete(attemptKey);
       }
       const result = await response.json().catch(() => ({})) as TranslationApiResponse;
-      if (!response.ok) throw new Error(result.error || `Translation request failed (${response.status}).`);
+      if (!response.ok) throw new Error(result.error || (response.status >= 500 ? "The AI translation service is temporarily unavailable after two attempts. Try again or choose another free AI route." : `Translation request failed (${response.status}).`));
       if (!Array.isArray(result.regions) || result.regions.length === 0) {
         throw new Error("No readable text was detected on this page. Try a clearer page or choose its source language.");
       }
@@ -549,26 +551,12 @@ export function ReaderTranslationControl({
       activeControllersRef.current.set(attemptKey, controller);
       let response: Response;
       try {
-        response = await fetch(apiUrl("/api/ai/translate-page"), {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            imageDataUrl: prepared.imageDataUrl,
-            sourceLanguage,
-            targetLanguage,
-            providerMode,
-            sourceId,
-            chapterId: pageChapterId,
-            pageIndex: pageLocalIndex,
-          }),
-        });
+        response = await requestTranslation({ imageDataUrl: prepared.imageDataUrl, sourceLanguage, targetLanguage, providerMode, sourceId, chapterId: pageChapterId, pageIndex: pageLocalIndex, bubbleCheck: true }, controller.signal);
       } finally {
         activeControllersRef.current.delete(attemptKey);
       }
       const result = await response.json().catch(() => ({})) as TranslationApiResponse;
-      if (!response.ok) throw new Error(result.error || `Translation request failed (${response.status}).`);
+      if (!response.ok) throw new Error(result.error || (response.status >= 500 ? "The AI translation service is temporarily unavailable after two attempts. Try again or choose another free AI route." : `Translation request failed (${response.status}).`));
       if (!Array.isArray(result.regions) || result.regions.length === 0) {
         throw new Error("No readable text was detected in that area. Draw a tighter box around the text.");
       }
@@ -861,11 +849,13 @@ interface ReaderRegionSelectorProps {
 export function ReaderRegionSelector({ pageIndex, active, onSelected, onCancel }: ReaderRegionSelectorProps) {
   const metrics = useImageMetrics(pageIndex, active);
   const [rect, setRect] = useState<NormalizedRect | null>(null);
+  const [pendingRect, setPendingRect] = useState<NormalizedRect | null>(null);
   const layerRef = useRef<HTMLDivElement>(null);
   const anchorRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     setRect(null);
+    setPendingRect(null);
     anchorRef.current = null;
   }, [pageIndex, active]);
 
@@ -901,6 +891,7 @@ export function ReaderRegionSelector({ pageIndex, active, onSelected, onCancel }
       onPointerDown={event => {
         event.preventDefault();
         event.stopPropagation();
+        if (pendingRect) return;
         const point = pointFromEvent(event);
         if (!point) return;
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -929,7 +920,7 @@ export function ReaderRegionSelector({ pageIndex, active, onSelected, onCancel }
           onCancel();
           return;
         }
-        onSelected({
+        setPendingRect({
           x: finalRect.x,
           y: finalRect.y,
           width: Math.min(finalRect.width, 1 - finalRect.x),
@@ -943,7 +934,21 @@ export function ReaderRegionSelector({ pageIndex, active, onSelected, onCancel }
       role="presentation"
       aria-label={`Select an area to translate on page ${pageIndex + 1}`}
     >
-      {rect && rect.width > 0 && rect.height > 0 ? (
+      {pendingRect ? (
+        <div
+          className="absolute border-2 border-emerald-400 bg-emerald-300/15 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]"
+          style={{ left: `${pendingRect.x * 100}%`, top: `${pendingRect.y * 100}%`, width: `${pendingRect.width * 100}%`, height: `${pendingRect.height * 100}%` }}
+        >
+          <div className="absolute left-1/2 top-full z-50 mt-2 flex -translate-x-1/2 gap-2 whitespace-nowrap rounded-lg bg-black/90 p-2 shadow-xl">
+            <Button type="button" size="sm" className="h-8 bg-emerald-600 px-3 text-xs hover:bg-emerald-500" onClick={event => { event.stopPropagation(); const selected = pendingRect; setPendingRect(null); onSelected(selected); }}>
+              <Check className="mr-1 h-3 w-3" /> Check bubble &amp; translate
+            </Button>
+            <Button type="button" size="sm" variant="outline" className="h-8 border-white/40 bg-transparent px-3 text-xs text-white hover:bg-white/10" onClick={event => { event.stopPropagation(); setPendingRect(null); onCancel(); }}>
+              <X className="mr-1 h-3 w-3" /> Redraw
+            </Button>
+          </div>
+        </div>
+      ) : rect && rect.width > 0 && rect.height > 0 ? (
         <div
           className="absolute border-2 border-dashed border-sky-400 bg-sky-300/10"
           style={{

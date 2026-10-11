@@ -14,7 +14,7 @@ Image recognition and box placement are model-generated, so lettering, unusual p
 
 ### Interaction choice: page vs. bubble
 
-Both modes are implemented. Whole-page translation remains the default because it is predictable, translates every bubble in one request, and is fully covered by shared caching. **Select-region ("one bubble") mode** is an additional, opt-in mode: the reader drags a box over the page image, the browser crops that rectangle locally and sends only the crop, and the returned 0..1000 crop coordinates are mapped back into the page's own 0..1000 overlay space so the rendered result is indistinguishable from a whole-page translation.
+Both modes are implemented. Whole-page translation remains the default because it is predictable, translates every bubble in one request, and is fully covered by shared caching. **Select-region ("one bubble") mode** is an additional, opt-in mode: the reader drags a box over the page image, confirms **Check bubble & translate**, the browser crops that rectangle locally and sends only the crop, and the vision prompt validates that the crop actually contains readable text before translating it. Returned 0..1000 crop coordinates are mapped back into the page's own 0..1000 overlay space so the rendered result is indistinguishable from a whole-page translation.
 
 Region mode details:
 
@@ -23,6 +23,8 @@ Region mode details:
 - Results are merged into the page's existing overlay instead of replacing it, so several bubbles can be translated one at a time. Identical source text is not stacked twice and the merged list keeps the 80-region ceiling. **Clear this page's translation** still removes everything on the page.
 - Crop caching uses the same content-addressed identity as page mode (SHA-256 of the exact compressed crop bytes + languages + `page-overlay-v1`), so an identical crop is a cache hit. In addition, the merged overlay is persisted under the whole-page identity, which means reopening the page (or another reader session) restores every bubble-only result without new AI calls.
 - Region mode only reduces vision input; it never bypasses source access controls, and it requires the same browser-readable image bytes as whole-page mode.
+- The model prompt is OCR-first: every returned region includes copyable `sourceText`, its exact normalized box, and the translated text. Bubble mode adds a strict crop check so artwork-only selections are rejected instead of producing an empty white overlay.
+- Client translation requests retry one transient HTTP 5xx response once, then show a provider-specific retry message instead of the unhelpful `Translation request failed (500)` fallback.
 
 The translator does **not** bypass a source's access controls. If a source blocks CORS and is not covered by an existing approved ComiHub media proxy, translation reports that the image cannot be read. The source-media proxy revalidates every redirect against the same source-specific allowlist and requires HTTPS, the default port, no URL credentials, and no more than five redirects; automatic redirect following is disabled. It does not fetch an unapproved redirect destination.
 
