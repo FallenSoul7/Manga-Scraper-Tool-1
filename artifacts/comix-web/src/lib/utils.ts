@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 const PROXIED_MEDIA_SOURCES = new Set([
-  "all.webtoons", "all.atsu", "en.novelfull", "all.mangadex", "en.animegg", "en.resetscans",
+  "all.webtoons", "all.atsu", "en.novelfull", "all.mangadex", "en.asurascans", "all.thunderscans", "en.animegg", "en.resetscans",
 ]);
 
 const INFERRED_MEDIA_HOSTS: Array<{ source: string; hosts: string[] }> = [
@@ -14,6 +14,8 @@ const INFERRED_MEDIA_HOSTS: Array<{ source: string; hosts: string[] }> = [
   { source: "all.webtoons", hosts: ["webtoon-phinf.pstatic.net"] },
   { source: "all.atsu", hosts: ["cdn.atsu.moe"] },
   { source: "all.mangadex", hosts: ["uploads.mangadex.org", "mangadex.network"] },
+  { source: "en.asurascans", hosts: ["asurascans.com"] },
+  { source: "all.thunderscans", hosts: ["thunderscans.com"] },
   { source: "en.novelfull", hosts: ["novelfull.com"] },
   { source: "en.animegg", hosts: ["vidcache.net", "animegg.org"] },
   { source: "en.resetscans", hosts: ["resetscans.net"] },
