@@ -149,7 +149,7 @@ function buildTranslationProviders(mode: TranslationProviderMode): TranslationPr
       name: "Gemini Flash-Lite",
       url: GEMINI_CHAT_COMPLETIONS_URL,
       key: geminiKey,
-      model: "gemini-3.5-flash-lite",
+      model: "gemini-2.5-flash-lite",
       kind: "gemini",
     });
   }
