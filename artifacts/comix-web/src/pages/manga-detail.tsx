@@ -168,6 +168,19 @@ const LANG_NAMES: Record<string, string> = {
   fa: "Persian", he: "Hebrew", mn: "Mongolian",
 };
 
+/** Extensions use `lang`, `language`, `languageCode`, and `locale` interchangeably. */
+function chapterLanguage(chapter: any): string | null {
+  const raw = chapter?.lang ?? chapter?.language ?? chapter?.languageCode ?? chapter?.locale;
+  if (raw == null || String(raw).trim() === "") return null;
+  const value = String(raw).trim().toLowerCase().replace(/_/g, "-");
+  if (value === "all" || value === "unknown" || value === "und") return null;
+  const aliases: Record<string, string> = {
+    "en-us": "en", "en-gb": "en", "es-es": "es", "es-419": "es_la",
+    "pt-br": "pt_br", "zh-cn": "zh", "zh-sg": "zh", "zh-tw": "zh-hk",
+  };
+  return aliases[value] ?? value;
+}
+
 function StarRating({ value }: { value: string }) {
   const num = parseFloat(value);
   const out5 = num / 2;
@@ -366,7 +379,7 @@ export default function MangaDetail() {
   const availableLanguages = useMemo(() => {
     const counts = new Map<string, number>();
     for (const ch of allChapters) {
-      const lang = (ch as any).lang as string | undefined;
+      const lang = chapterLanguage(ch);
       if (lang) counts.set(lang, (counts.get(lang) ?? 0) + 1);
     }
     return Array.from(counts.entries())
@@ -381,7 +394,7 @@ export default function MangaDetail() {
   const scanlatorGroups = useMemo(() => {
     const map = new Map<string, { name: string; count: number; hasOfficial: boolean }>();
     const filtered = selectedLang
-      ? allChapters.filter((ch: any) => (ch.lang ?? null) === selectedLang)
+      ? allChapters.filter((ch: any) => chapterLanguage(ch) === selectedLang)
       : allChapters;
     for (const ch of filtered) {
       const name = (ch.scanlator || "Unknown").trim() || "Unknown";
@@ -397,7 +410,7 @@ export default function MangaDetail() {
 
   const visibleChapters = useMemo(() => {
     let list: any[] = allChapters;
-    if (selectedLang) list = list.filter((ch: any) => (ch.lang ?? null) === selectedLang);
+    if (selectedLang) list = list.filter((ch: any) => chapterLanguage(ch) === selectedLang);
     list = selectedScanlator
       ? list.filter((ch: any) => (ch.scanlator || "Unknown") === selectedScanlator)
       : effectiveSourceForKey === "builtin.universal"
@@ -988,7 +1001,7 @@ export default function MangaDetail() {
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <span>{format(new Date(chapter.date * 1000), 'MMM d, yyyy')}</span>
-                        {chapter.lang && chapter.lang !== "all" && <><span>·</span><span className="font-medium text-primary/80">{LANG_NAMES[chapter.lang] ?? chapter.lang.toUpperCase()}</span></>}
+                        {chapterLanguage(chapter) && <><span>·</span><span className="font-medium text-primary/80">{LANG_NAMES[chapterLanguage(chapter)!] ?? chapterLanguage(chapter)!.toUpperCase()}</span></>}
                         {chapter.scanlator && <><span>·</span><span className="truncate">{chapter.scanlator}</span></>}
                       </div>
                     </div>

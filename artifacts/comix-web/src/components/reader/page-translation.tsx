@@ -45,6 +45,9 @@ export interface ReaderTranslationPage {
 const MAX_PAYLOAD_BYTES = 1_750_000;
 const MAX_DIMENSION = 1800;
 const MAX_PIXELS = 1_800_000;
+// Keep the language-version picker available, but pause AI page translation
+// until the provider pipeline is ready again.
+export const PAGE_TRANSLATION_TEMPORARILY_UNAVAILABLE = true;
 /** Selection grid: quantizing the drag box keeps repeated crops closer to byte-identical. */
 const SELECTION_GRID = 200;
 
@@ -606,7 +609,7 @@ export function ReaderTranslationControl({
   }, [selectionRequest, translateSelectedRegion, onSelectionHandled]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || PAGE_TRANSLATION_TEMPORARILY_UNAVAILABLE) return;
     const candidates = Array.from(new Set([...visiblePageIndices, pageIndex, pageIndex + 1]))
       .filter(index => index >= 0 && index < pages.length)
       .sort((a, b) => Math.abs(a - pageIndex) - Math.abs(b - pageIndex));
@@ -621,11 +624,19 @@ export function ReaderTranslationControl({
 
   const translateCurrentPage = (event?: React.MouseEvent) => {
     event?.stopPropagation();
+    if (PAGE_TRANSLATION_TEMPORARILY_UNAVAILABLE) {
+      setStatus("Page translation is currently unavailable right now.");
+      return;
+    }
     void loadPageTranslation(pageIndex, true);
   };
 
   const startRegionSelection = (event?: React.MouseEvent) => {
     event?.stopPropagation();
+    if (PAGE_TRANSLATION_TEMPORARILY_UNAVAILABLE) {
+      setStatus("Page translation is currently unavailable right now.");
+      return;
+    }
     setStatus("Drag a box around the bubble you want translated.");
     onRequestRegionSelection();
   };
@@ -637,7 +648,7 @@ export function ReaderTranslationControl({
 
   const currentPageNumber = pages[pageIndex]?.pageIndex ?? pageIndex;
   const isRegionMode = translationMode === "region";
-  const primaryDisabled = !enabled || disabled || !pages[pageIndex]?.url || (!isRegionMode && busy);
+  const primaryDisabled = PAGE_TRANSLATION_TEMPORARILY_UNAVAILABLE || !enabled || disabled || !pages[pageIndex]?.url || (!isRegionMode && busy);
   const actionLabel = isRegionMode
     ? (selectionActive ? `Selecting on page ${currentPageNumber + 1}…` : `Select a bubble on page ${currentPageNumber + 1}`)
     : `Translate page ${currentPageNumber + 1}`;
@@ -651,8 +662,9 @@ export function ReaderTranslationControl({
             size="icon"
             className="text-white/70 hover:text-white"
             onClick={event => event.stopPropagation()}
+            disabled={primaryDisabled}
             aria-label="Translation language and provider settings"
-            title="Translation settings"
+            title={PAGE_TRANSLATION_TEMPORARILY_UNAVAILABLE ? "Page translation is currently unavailable" : "Translation settings"}
           >
             <Languages className="h-5 w-5" />
           </Button>
