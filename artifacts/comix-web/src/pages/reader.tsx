@@ -99,7 +99,7 @@ export default function Reader() {
   const [pageTranslations, setPageTranslations] = useState<Record<number, TranslationRegion[]>>({});
   const [visiblePageIndices, setVisiblePageIndices] = useState<number[]>([]);
   const [aiTranslationEnabled, setAiTranslationEnabled] = useState(() => {
-    try { return localStorage.getItem("comihub-ai-page-translation") === "true"; }
+    try { return localStorage.getItem("comihub-ai-page-translation-v2") === "true"; }
     catch { return false; }
   });
   const [translationTargetLanguage, setTranslationTargetLanguage] = useState(getSavedTranslationTargetLanguage);
@@ -109,7 +109,7 @@ export default function Reader() {
   }, [translationTargetLanguage]);
 
   useEffect(() => {
-    try { localStorage.setItem("comihub-ai-page-translation", String(aiTranslationEnabled)); }
+    try { localStorage.setItem("comihub-ai-page-translation-v2", String(aiTranslationEnabled)); }
     catch { /* Private browsing may disable local storage; the reader still works. */ }
     if (!aiTranslationEnabled) setPageTranslations({});
   }, [aiTranslationEnabled]);
@@ -799,7 +799,7 @@ export default function Reader() {
                   <Settings className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent className="w-[300px] sm:w-[400px]" onClick={e => e.stopPropagation()}>
+              <SheetContent className="w-[300px] sm:w-[400px] max-h-[100dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                 <SheetHeader><SheetTitle>Reader Settings</SheetTitle></SheetHeader>
                 <div className="py-6 space-y-6">
                   <div className="flex items-start gap-3 rounded-lg border p-3">
@@ -828,18 +828,20 @@ export default function Reader() {
                       onCheckedChange={hideNsfw => updateSettings({ hideNsfw })}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Translate to</Label>
-                    <TranslationLanguagePicker
-                      value={translationTargetLanguage}
-                      onChange={setTranslationTargetLanguage}
-                      options={TARGET_LANGUAGE_OPTIONS}
-                      label="Target language"
-                    />
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      Saved on this device. Changing languages keeps each language’s cached translations.
-                    </p>
-                  </div>
+                  {aiTranslationEnabled && (
+                    <div className="space-y-2">
+                      <Label>Translate to</Label>
+                      <TranslationLanguagePicker
+                        value={translationTargetLanguage}
+                        onChange={setTranslationTargetLanguage}
+                        options={TARGET_LANGUAGE_OPTIONS}
+                        label="Target language"
+                      />
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        Saved on this device. Changing languages keeps each language’s cached translations.
+                      </p>
+                    </div>
+                  )}
                   <div className="space-y-3">
                     <Label>Reading Direction</Label>
                     <Select
