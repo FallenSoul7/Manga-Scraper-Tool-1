@@ -227,10 +227,49 @@ async function mangaDexDetails(id: string, options?: { scorePosition?: "top" | "
   return { id, title: String(title), author: authors.join(", "), artist: authors.join(", "), synopsis: String(desc), altTitles: Object.values(a.altTitles ?? {}).flatMap((v: any) => Object.values(v ?? {})).map(String), status: a.status ? String(a.status).replace(/^./, (c: string) => c.toUpperCase()) : "Unknown", type: "manga", isNsfw: false, rating: 0, thumbnail: cover ? `https://uploads.mangadex.org/covers/${id}/${cover}.256.jpg` : "", genres, score: "", scorePosition: options?.scorePosition ?? "none", sourceTags: genres.map((g: string) => ({ id: g.toLowerCase().replace(/\s+/g, "-"), name: g, group: "Genre" })) };
 }
 async function mangaDexChapters(id: string): Promise<ClientChapterResponse> {
-  const params = new URLSearchParams({ limit: "500", "order[chapter]": "desc" });
-  params.append("translatedLanguage[]", "en");
-  const data = await clientJson<any>(`mangadex:chapters:${id}`, `${MANGADEX_API}/manga/${encodeURIComponent(id)}/feed?${params}`);
-  return { items: (data.data ?? []).map((ch: any) => ({ id: ch.id, number: Number(ch.attributes?.chapter ?? 0), title: ch.attributes?.title || `Chapter ${ch.attributes?.chapter ?? ""}`, scanlator: "", date: ch.attributes?.publishAt ? Math.floor(Date.parse(ch.attributes.publishAt) / 1000) : 0 })) };
+  const all: any[] = [];
+  const limit = 100;
+  let offset = 0;
+  let total = 0;
+  do {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+      "order[chapter]": "desc",
+      "order[volume]": "desc",
+    });
+    // Do not send translatedLanguage[] here. The chapter language picker needs
+    // the complete MangaDex feed, not only English chapters.
+    params.append("includes[]", "scanlation_group");
+    for (const rating of ["safe", "suggestive", "erotica", "pornographic"]) {
+      params.append("contentRating[]", rating);
+    }
+    const data = await clientJson<any>(
+      `mangadex:chapters:${id}:${offset}`,
+      `${MANGADEX_API}/manga/${encodeURIComponent(id)}/feed?${params}`,
+    );
+    const page = data.data ?? [];
+    all.push(...page);
+    total = Number(data.total ?? all.length);
+    offset += limit;
+    if (page.length === 0) break;
+  } while (offset < total && offset < 5000);
+
+  return {
+    items: all.map((ch: any) => {
+      const attributes = ch.attributes ?? {};
+      const group = (ch.relationships ?? []).find((r: any) => r.type === "scanlation_group");
+      const chapterNumber = attributes.chapter ?? "";
+      return {
+        id: ch.id,
+        number: Number(chapterNumber) || 0,
+        title: attributes.title || `Chapter ${chapterNumber}`,
+        scanlator: group?.attributes?.name || "",
+        date: attributes.publishAt ? Math.floor(Date.parse(attributes.publishAt) / 1000) : 0,
+        lang: attributes.translatedLanguage || undefined,
+      };
+    }),
+  };
 }
 async function mangaDexPages(chapterId: string): Promise<ClientPageResponse> {
   const data = await clientJson<any>(`mangadex:pages:${chapterId}`, `${MANGADEX_API}/at-home/server/${encodeURIComponent(chapterId)}`);

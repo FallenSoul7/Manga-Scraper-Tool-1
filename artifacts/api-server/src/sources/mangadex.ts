@@ -303,7 +303,9 @@ export const MangaDexSource: MangaSource = {
         total = res.data.total;
         all.push(...res.data.data);
         offset += limit;
-      } while (offset < total && offset < 1000);
+      // Continue through the complete feed so older chapters are not silently
+      // omitted when a title has more than ten pages of results.
+      } while (offset < total && offset < 5000);
       return all;
     }
 

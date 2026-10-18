@@ -45,7 +45,9 @@ function isKoofrVideoId(mangaId: string): boolean {
 }
 
 function dedupeChapters(items: any[]): any[] {
-  const map = new Map<number, any>();
+  // Keep one preferred scanlation per chapter and language. Deduplicating only
+  // by chapter number hides Spanish, Japanese, and other MangaDex variants.
+  const map = new Map<string, any>();
   const score = (ch: any) => {
     let s = 0;
     if (ch.isOfficial) s += 100000;
@@ -54,11 +56,12 @@ function dedupeChapters(items: any[]): any[] {
     return s;
   };
   for (const ch of items) {
-    const existing = map.get(ch.number);
-    if (!existing) { map.set(ch.number, ch); continue; }
+    const key = `${ch.number}|${chapterLanguage(ch) ?? "unknown"}`;
+    const existing = map.get(key);
+    if (!existing) { map.set(key, ch); continue; }
     const s1 = score(ch), s2 = score(existing);
-    if (s1 > s2) map.set(ch.number, ch);
-    else if (s1 === s2 && (ch.date || 0) > (existing.date || 0)) map.set(ch.number, ch);
+    if (s1 > s2) map.set(key, ch);
+    else if (s1 === s2 && (ch.date || 0) > (existing.date || 0)) map.set(key, ch);
   }
   return Array.from(map.values());
 }
