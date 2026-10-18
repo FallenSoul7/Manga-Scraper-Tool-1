@@ -8,12 +8,15 @@ import { applyActiveSource } from "@/lib/source";
 import { MangaCard } from "@/components/manga-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  ArrowLeft, Search, X, SlidersHorizontal, Loader2,
+  ArrowLeft, Search, X, SlidersHorizontal, Settings2, Loader2,
   Sun, Moon, Laptop, Check, AlertTriangle, RefreshCw,
   WifiOff,
 } from "lucide-react";
@@ -94,6 +97,7 @@ function buildQuery(params: Record<string, string | string[] | undefined>): stri
 
 const DEBOUNCE_MS = 220;
 const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+const MATURE_FILTER_SOURCE_IDS = new Set(["en.comix", "all.mangadex", "all.atsu", "builtin.universal"]);
 
 function resolveAssetUrl(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -135,7 +139,8 @@ export default function SourceBrowsePage() {
   const installedMap = useStore((s) => s.installedSources);
   const installedSource = installedMap[sourceId];
   const theme = useStore(s => s.theme);
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
+  const [sourceSettingsOpen, setSourceSettingsOpen] = useState(false);
 
   // For non-installed (catalog-only) sources
   const { data: catalogData } = useQuery<{ extensions: CatalogEntry[] }>({
@@ -155,6 +160,7 @@ export default function SourceBrowsePage() {
     lang: catalogEntry.lang,
     isNsfw: catalogEntry.isNsfw,
   } : null);
+  const hasMatureContentFilter = Boolean(source && !source.isNsfw && MATURE_FILTER_SOURCE_IDS.has(sourceId));
 
   const popularSorts: PopularSortOption[] = catalogEntry?.popularSorts ?? [];
 
@@ -580,6 +586,19 @@ export default function SourceBrowsePage() {
               <Search className="h-5 w-5" />
             </Button>
 
+            {hasMatureContentFilter && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-9 w-9 ${sourceSettingsOpen ? "text-primary" : "text-muted-foreground"}`}
+                aria-label={`${source.name} settings`}
+                title={`${source.name} settings`}
+                onClick={() => setSourceSettingsOpen(true)}
+              >
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            )}
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" aria-label="Theme">
@@ -840,6 +859,27 @@ export default function SourceBrowsePage() {
           />
         )}
       </main>
+      {hasMatureContentFilter && (
+        <Dialog open={sourceSettingsOpen} onOpenChange={setSourceSettingsOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{source.name} settings</DialogTitle>
+              <DialogDescription>Settings for this extension.</DialogDescription>
+            </DialogHeader>
+            <div className="flex items-center justify-between gap-4 rounded-xl border p-4">
+              <div className="space-y-1">
+                <Label htmlFor="source-hide-mature" className="font-medium">Hide 18+ manga</Label>
+                <p className="text-xs text-muted-foreground">Hide mature and adult content from this extension.</p>
+              </div>
+              <Switch
+                id="source-hide-mature"
+                checked={settings.hideNsfw}
+                onCheckedChange={hideNsfw => updateSettings({ hideNsfw })}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
