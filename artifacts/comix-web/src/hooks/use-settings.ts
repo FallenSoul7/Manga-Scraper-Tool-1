@@ -32,7 +32,9 @@ const defaultSettings: Settings = {
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(() => {
-    const saved = localStorage.getItem('comix-settings');
+    // Use a new key so sessions created before the extension-level mature
+    // content setting cannot carry over an unsafe disabled default.
+    const saved = localStorage.getItem('comix-settings-v2');
     if (saved) {
       try {
         return { ...defaultSettings, ...JSON.parse(saved) };
@@ -44,7 +46,7 @@ export function useSettings() {
   });
 
   useEffect(() => {
-    localStorage.setItem('comix-settings', JSON.stringify(settings));
+    localStorage.setItem('comix-settings-v2', JSON.stringify(settings));
   }, [settings]);
 
   const updateSettings = (updates: Partial<Settings>) => {

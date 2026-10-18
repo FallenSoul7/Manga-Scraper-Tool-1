@@ -19,7 +19,7 @@ import {
   ChevronRight,
   X,
   SearchX,
-  Settings2,
+  Settings,
   Pin,
   WifiOff,
   RefreshCw,
@@ -515,7 +515,7 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
               aria-label={`${src.name} settings`}
               onClick={() => setSettingsSource(src)}
             >
-              <Settings2 className="h-4 w-4" />
+              <Settings className="h-4 w-4" />
             </button>
           )}
           <button
