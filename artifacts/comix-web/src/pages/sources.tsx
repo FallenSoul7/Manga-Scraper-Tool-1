@@ -5,6 +5,9 @@ import { customFetch } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { mediaImage } from "@/lib/utils";
 import {
   Search,
@@ -114,6 +117,13 @@ const HIDDEN_FROM_DEFAULT_BROWSE = new Set([
   "all.pawchive",         // Pawchive
   "local.koofr",          // K-Cafe
 ]);
+const INHERENTLY_MATURE_SOURCE_IDS = new Set([
+  "en.ninehentai",
+  "all.pawchive",
+  "local.koofr",
+]);
+const isInherentlyMature = (source: { id: string; isNsfw?: boolean }) =>
+  Boolean(source.isNsfw) || INHERENTLY_MATURE_SOURCE_IDS.has(source.id);
 
 // AnimeGG is the only anime extension currently exposed in the Anime tab and
 // in the default extension browser. Other anime entries remain searchable.
@@ -275,7 +285,7 @@ export default function SourcesPage() {
 
   const installed = useMemo(
     () => Object.values(installedMap)
-      .filter(source => !source.isNsfw || (!settings.hideNsfw && hasAdultAccessConsent()))
+      .filter(source => !isInherentlyMature(source) || (!settings.hideNsfw && hasAdultAccessConsent()))
       .sort((a, b) => a.name.localeCompare(b.name)),
     [installedMap, settings.hideNsfw],
   );
@@ -451,6 +461,8 @@ export default function SourcesPage() {
 function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const { settings, updateSettings } = useSettings();
+  const [settingsSource, setSettingsSource] = useState<InstalledSource | null>(null);
 
   const catalogIconMap = useMemo(() => {
     const map: Record<string, string | null> = {};
@@ -461,7 +473,11 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
   }, [catalog]);
 
   const withIcon = useMemo(
-    () => installed.map(s => ({ ...s, iconUrl: s.iconUrl ?? catalogIconMap[s.id] ?? null })),
+    () => installed.map(s => ({
+      ...s,
+      iconUrl: s.iconUrl ?? catalogIconMap[s.id] ?? null,
+      isNsfw: isInherentlyMature(s),
+    })),
     [installed, catalogIconMap],
   );
 
@@ -492,9 +508,16 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
           <p className="text-xs text-muted-foreground mt-0.5">{langLabel(src.lang)}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-          <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Settings">
-            <Settings2 className="h-4 w-4" />
-          </button>
+          {!isInherentlyMature(src) && (
+            <button
+              className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              title={`${src.name} settings`}
+              aria-label={`${src.name} settings`}
+              onClick={() => setSettingsSource(src)}
+            >
+              <Settings2 className="h-4 w-4" />
+            </button>
+          )}
           <button
             className={`h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors ${isPinned ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
             title={isPinned ? "Unpin" : "Pin"}
@@ -549,6 +572,25 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
           {rest.map(src => <SourceRow key={src.id} src={src} />)}
         </>
       )}
+      <Dialog open={!!settingsSource} onOpenChange={open => { if (!open) setSettingsSource(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{settingsSource?.name} settings</DialogTitle>
+            <DialogDescription>Settings for this installed extension.</DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-between gap-4 rounded-xl border p-4">
+            <div className="space-y-1">
+              <Label htmlFor="extension-hide-mature" className="font-medium">Hide mature content</Label>
+              <p className="text-xs text-muted-foreground">Hide 18+ manga from this extension by default.</p>
+            </div>
+            <Switch
+              id="extension-hide-mature"
+              checked={settings.hideNsfw}
+              onCheckedChange={hideNsfw => updateSettings({ hideNsfw })}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

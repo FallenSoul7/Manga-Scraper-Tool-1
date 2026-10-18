@@ -28,7 +28,6 @@ import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { useSettings } from "@/hooks/use-settings";
 
 function resolveReaderMediaUrl(url: string, sourceId?: string | null): string {
   if (url.startsWith("/")) return apiUrl(url);
@@ -78,7 +77,6 @@ export default function Reader() {
   }, [sourceId]);
 
   const readerSettings = useStore(s => s.reader);
-  const { settings, updateSettings } = useSettings();
   const [novelBackground, setNovelBackground] = useState<"dark" | "light">("dark");
   const sourceReaderDirections = useStore(s => s.sourceReaderDirections);
   const isRule34 = sourceId === "en.rule34";
@@ -814,19 +812,6 @@ export default function Reader() {
                         Cached translations load for pages you view. In the translation settings you can translate a whole page or drag a box around a single bubble. New AI work happens only when you start a translation.
                       </p>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-                    <div className="space-y-1">
-                      <Label htmlFor="reader-hide-mature">Hide 18+ manga</Label>
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        Hide mature and adult manga from source lists and searches by default.
-                      </p>
-                    </div>
-                    <Switch
-                      id="reader-hide-mature"
-                      checked={settings.hideNsfw}
-                      onCheckedChange={hideNsfw => updateSettings({ hideNsfw })}
-                    />
                   </div>
                   {aiTranslationEnabled && (
                     <div className="space-y-2">
