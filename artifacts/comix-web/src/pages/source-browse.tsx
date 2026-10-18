@@ -2,21 +2,18 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRoute, useSearch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
-import { sourceSupportsMatureFilter, useSettings } from "@/hooks/use-settings";
+import { useSettings } from "@/hooks/use-settings";
 import { useStore, storeActions } from "@/lib/storage";
 import { applyActiveSource } from "@/lib/source";
 import { MangaCard } from "@/components/manga-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  ArrowLeft, Search, X, SlidersHorizontal, Settings2, Loader2,
+  ArrowLeft, Search, X, SlidersHorizontal, Loader2,
   Sun, Moon, Laptop, Check, AlertTriangle, RefreshCw,
   WifiOff,
 } from "lucide-react";
@@ -138,8 +135,7 @@ export default function SourceBrowsePage() {
   const installedMap = useStore((s) => s.installedSources);
   const installedSource = installedMap[sourceId];
   const theme = useStore(s => s.theme);
-  const { settings, hideNsfwForSource, setHideNsfwForSource } = useSettings();
-  const [sourceSettingsOpen, setSourceSettingsOpen] = useState(false);
+  const { settings } = useSettings();
 
   // For non-installed (catalog-only) sources
   const { data: catalogData } = useQuery<{ extensions: CatalogEntry[] }>({
@@ -159,7 +155,6 @@ export default function SourceBrowsePage() {
     lang: catalogEntry.lang,
     isNsfw: catalogEntry.isNsfw,
   } : null);
-  const hideNsfw = hideNsfwForSource(sourceId);
 
   const popularSorts: PopularSortOption[] = catalogEntry?.popularSorts ?? [];
 
@@ -313,7 +308,7 @@ export default function SourceBrowsePage() {
   });
 
   const commonOpts = {
-    nsfw: hideNsfw ? "false" : "true",
+    nsfw: settings.hideNsfw ? "false" : "true",
     poster: settings.posterQuality,
     ...(isAllManga ? { media: mediaType } : {}),
   };
@@ -321,7 +316,7 @@ export default function SourceBrowsePage() {
   const clientAdapter = getClientSourceAdapter(sourceId);
 
   const popularQuery = useQuery<ListResponse>({
-    queryKey: ["source-popular", sourceId, mediaType, popularPage, popularSort, hideNsfw, settings.posterQuality],
+    queryKey: ["source-popular", sourceId, mediaType, popularPage, popularSort, settings.hideNsfw, settings.posterQuality],
     queryFn: () => clientAdapter
       ? clientAdapter.popular(popularPage).catch(() => serverFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
       : serverFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
@@ -331,7 +326,7 @@ export default function SourceBrowsePage() {
   });
 
   const latestQuery = useQuery<ListResponse>({
-    queryKey: ["source-latest", sourceId, mediaType, latestPage, popularSort, hideNsfw, settings.posterQuality],
+    queryKey: ["source-latest", sourceId, mediaType, latestPage, popularSort, settings.hideNsfw, settings.posterQuality],
     queryFn: () => clientAdapter
       ? clientAdapter.latest(latestPage).catch(() => serverFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
       : serverFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
@@ -341,7 +336,7 @@ export default function SourceBrowsePage() {
   });
 
   const filterQuery = useQuery<ListResponse>({
-    queryKey: ["source-filter", sourceId, mediaType, searchQuery, allTagIds.join(","), filterPage, hideNsfw, settings.posterQuality],
+    queryKey: ["source-filter", sourceId, mediaType, searchQuery, allTagIds.join(","), filterPage, settings.hideNsfw, settings.posterQuality],
     queryFn: () => clientAdapter && isSearching
       ? clientAdapter.search(searchQuery, filterPage).catch(() => serverFetch<ListResponse>(`/api/search${buildQuery({
           ...commonOpts,
@@ -584,19 +579,6 @@ export default function SourceBrowsePage() {
             >
               <Search className="h-5 w-5" />
             </Button>
-
-            {sourceSupportsMatureFilter(sourceId, source.isNsfw) && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`h-9 w-9 ${sourceSettingsOpen ? "text-primary" : "text-muted-foreground"}`}
-                aria-label={`${source.name} settings`}
-                title={`${source.name} settings`}
-                onClick={() => setSourceSettingsOpen(true)}
-              >
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -858,27 +840,6 @@ export default function SourceBrowsePage() {
           />
         )}
       </main>
-      {sourceSupportsMatureFilter(sourceId, source.isNsfw) && (
-        <Dialog open={sourceSettingsOpen} onOpenChange={setSourceSettingsOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>{source.name} settings</DialogTitle>
-              <DialogDescription>These options apply only when browsing this extension.</DialogDescription>
-            </DialogHeader>
-            <div className="flex items-center justify-between gap-4 rounded-xl border p-4">
-              <div className="space-y-1">
-                <Label htmlFor="browse-hide-mature" className="font-medium">Hide 18+ manga</Label>
-                <p className="text-xs text-muted-foreground">Keep mature and adult results out of this extension by default.</p>
-              </div>
-              <Switch
-                id="browse-hide-mature"
-                checked={hideNsfw}
-                onCheckedChange={checked => setHideNsfwForSource(sourceId, checked)}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
     </div>
   );
 }

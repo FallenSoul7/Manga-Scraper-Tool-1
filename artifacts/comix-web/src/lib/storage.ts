@@ -182,7 +182,7 @@ const DEFAULT_STATE: StoreState = {
     showPageNumber: true,
     keepScreenOn: false,
   },
-  theme: 'dark',
+  theme: 'system',
   searchHistory: [],
   scanlatorPrefs: {},
   chapterSortAsc: {},

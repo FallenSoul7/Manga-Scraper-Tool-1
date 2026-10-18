@@ -5,9 +5,6 @@ import { customFetch } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { mediaImage } from "@/lib/utils";
 import {
   Search,
@@ -26,7 +23,7 @@ import {
 } from "lucide-react";
 import { useStore, storeActions, type InstalledSource } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
-import { sourceSupportsMatureFilter, useSettings } from "@/hooks/use-settings";
+import { useSettings } from "@/hooks/use-settings";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 import { getCachedSourceCatalog, saveOfflineSourceCatalog, useOfflineCatalog, useOnlineStatus } from "@/lib/offline-catalog";
 import { requestBackendRefresh } from "@/components/backend-warmup";
@@ -272,7 +269,7 @@ export default function SourcesPage() {
   const offlineCatalog = useOfflineCatalog();
   const installedMap = useStore(s => s.installedSources);
   const activeId     = useStore(s => s.activeSourceId);
-  const { settings, hideNsfwForSource } = useSettings();
+  const { settings } = useSettings();
   const searchString = useSearch();
   const [, setLocation] = useLocation();
 
@@ -317,8 +314,7 @@ export default function SourcesPage() {
       controllers.add(controller);
       const timeout = window.setTimeout(() => controller.abort(), GLOBAL_SEARCH_TIMEOUT_MS);
       try {
-        const nsfwParam = hideNsfwForSource(src.id) ? "&nsfw=false" : "";
-        const res = await fetch(`${API_ORIGIN}/api/search?query=${encodeURIComponent(urlQ)}&page=1${nsfwParam}`, {
+        const res = await fetch(`${API_ORIGIN}/api/search?query=${encodeURIComponent(urlQ)}&page=1`, {
           headers: { "X-Source": src.id },
           signal: controller.signal,
         });
@@ -455,8 +451,6 @@ export default function SourcesPage() {
 function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const { hideNsfwForSource, setHideNsfwForSource } = useSettings();
-  const [settingsSource, setSettingsSource] = useState<InstalledSource | null>(null);
 
   const catalogIconMap = useMemo(() => {
     const map: Record<string, string | null> = {};
@@ -498,16 +492,9 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
           <p className="text-xs text-muted-foreground mt-0.5">{langLabel(src.lang)}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-          {sourceSupportsMatureFilter(src.id, src.isNsfw) && (
-            <button
-              className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-              title="Source settings"
-              aria-label={`Settings for ${src.name}`}
-              onClick={() => setSettingsSource(src)}
-            >
-              <Settings2 className="h-4 w-4" />
-            </button>
-          )}
+          <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Settings">
+            <Settings2 className="h-4 w-4" />
+          </button>
           <button
             className={`h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors ${isPinned ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
             title={isPinned ? "Unpin" : "Pin"}
@@ -537,7 +524,6 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
   }
 
   return (
-    <>
     <div>
       {pinnedSources.length > 0 && (
         <>
@@ -564,31 +550,9 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
         </>
       )}
     </div>
-
-    <Dialog open={!!settingsSource} onOpenChange={open => { if (!open) setSettingsSource(null); }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{settingsSource?.name} settings</DialogTitle>
-          <DialogDescription>These options apply only when browsing this extension.</DialogDescription>
-        </DialogHeader>
-        {settingsSource && sourceSupportsMatureFilter(settingsSource.id, settingsSource.isNsfw) && (
-          <div className="flex items-center justify-between gap-4 rounded-xl border p-4">
-            <div className="space-y-1">
-              <Label htmlFor="source-hide-mature" className="font-medium">Hide 18+ manga</Label>
-              <p className="text-xs text-muted-foreground">Keep mature and adult results out of this extension by default.</p>
-            </div>
-            <Switch
-              id="source-hide-mature"
-              checked={hideNsfwForSource(settingsSource.id)}
-              onCheckedChange={checked => setHideNsfwForSource(settingsSource.id, checked)}
-            />
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-    </>
   );
 }
+
 // ─── Anime tab ────────────────────────────────────────────────────────────────
 function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null; online: boolean }) {
   const { toast } = useToast();
