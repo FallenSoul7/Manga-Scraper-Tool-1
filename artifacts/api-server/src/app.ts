@@ -51,6 +51,11 @@ app.use(
 const allowedOrigins = [
   "http://localhost:19597",
   "http://localhost:8080",
+  // Production frontend domains. Keep these explicit because the API uses
+  // credentials and must not allow arbitrary origins.
+  "https://www.comihub.top",
+  "https://comihub.top",
+  "https://comihub.vercel.app",
   ...(process.env["FRONTEND_URL"]
     ? [process.env["FRONTEND_URL"].replace(/\/+$/, "")]
     : []),
