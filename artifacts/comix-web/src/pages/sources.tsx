@@ -122,8 +122,18 @@ const INHERENTLY_MATURE_SOURCE_IDS = new Set([
   "all.pawchive",
   "local.koofr",
 ]);
+// Older catalog snapshots incorrectly marked several general catalogues as
+// adult-only. These IDs must stay visible even if an installed device still
+// has one of those stale flags persisted locally.
+const GENERAL_SOURCE_IDS = new Set([
+  "all.mangadex", "en.comix", "en.mangafreak", "en.comickfan",
+  "en.ravenscans", "en.allmanga", "en.allanime", "all.comicklive",
+  "ar.empirewebtoon", "vi.kamicomic", "en.comickiba", "en.nineanime",
+  "en.webtoontr", "en.webtoonscan", "en.webtoonxyz",
+]);
 const isInherentlyMature = (source: { id: string; isNsfw?: boolean }) =>
-  Boolean(source.isNsfw) || INHERENTLY_MATURE_SOURCE_IDS.has(source.id);
+  !GENERAL_SOURCE_IDS.has(source.id) &&
+  (Boolean(source.isNsfw) || INHERENTLY_MATURE_SOURCE_IDS.has(source.id));
 
 // AnimeGG is the only anime extension currently exposed in the Anime tab and
 // in the default extension browser. Other anime entries remain searchable.
@@ -773,10 +783,11 @@ function BrowseTab({
     const q = search.trim().toLowerCase();
     return (catalog.extensions ?? [])
       .filter(e => lang === "all-langs" ? true : e.lang === lang)
-      // The 18+ toggle acts as an "NSFW only" filter: off (default) shows all
-      // extensions (18+ and non-18+ alike), on shows only 18+ sources.
-      .filter(e => !showNsfw || e.isNsfw)
-      .filter(e => !e.isNsfw || adultAccess)
+      // Only genuinely adult-only extensions are gated. Mixed catalogues such
+      // as MangaDex and Comix remain visible; individual titles are filtered
+      // by their own isNsfw metadata.
+      .filter(e => !showNsfw || isInherentlyMature(e))
+      .filter(e => !isInherentlyMature(e) || adultAccess)
       .filter(e => supportedOnly ? e.supported : true)
       // Keep the four curated sources and the other anime integrations out of
       // the default list; they remain discoverable through explicit search.

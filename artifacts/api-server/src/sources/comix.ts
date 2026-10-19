@@ -256,7 +256,9 @@ export const ComixSource: MangaSource = {
   id: "en.comix",
   name: "Comix",
   lang: "en",
-  isNsfw: true,
+  // Comix is a mixed catalogue; individual titles carry their own
+  // isNsfw flag and are filtered separately.
+  isNsfw: false,
   imageReferer: `${BASE_URL}/`,
 
   async tags(): Promise<SourceTag[]> {

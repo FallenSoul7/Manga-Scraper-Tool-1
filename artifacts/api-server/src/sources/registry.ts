@@ -114,7 +114,7 @@ register(createMangaThemesiaSource({
   name: "Raven Scans",
   baseUrl: "https://ravenscans.org",
   lang: "en",
-  isNsfw: true,
+  isNsfw: false,
 }));
 // Thunder Scans uses /comics (not /manga) and the MangaThemesiaAlt variant
 register(createMangaThemesiaSource({

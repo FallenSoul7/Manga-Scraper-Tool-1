@@ -150,7 +150,7 @@ function toSummary(item: MediaEdge, kind: "manga" | "anime"): MangaSummary {
     thumbnail: thumbnailUrl(item.thumbnail),
     type: kind === "anime" ? "Anime" : "Manga",
     mediaType: kind,
-    isNsfw: true,
+    isNsfw: false,
   };
 }
 
@@ -280,7 +280,7 @@ function toDetail(id: string, item: ShowData["show"] | MangaData["manga"], kind:
     status: item.status?.toLowerCase().includes("releas") ? "Ongoing" : item.status ?? "Unknown",
     type: kind === "anime" ? "Anime" : "Manga",
     mediaType: kind,
-    isNsfw: true,
+    isNsfw: false,
     rating: 0,
     thumbnail: thumbnailUrl(item.thumbnail),
     genres: [...(item.genres ?? []), ...(item.tags ?? [])],
@@ -348,7 +348,8 @@ const source: MangaSource = {
     { id: "video", name: "Video", group: "Media" },
     ];
   },
-  isNsfw: true,
+  // AllManga is a general manga/anime catalogue, not an adult-only source.
+  isNsfw: false,
 
   async popular(opts: ListOptions): Promise<MangaListResponse> {
     return listAll("", opts);

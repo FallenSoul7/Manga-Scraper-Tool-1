@@ -94,6 +94,19 @@ function buildQuery(params: Record<string, string | string[] | undefined>): stri
 
 const DEBOUNCE_MS = 220;
 const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+const GENERAL_SOURCE_IDS = new Set([
+  "all.mangadex", "en.comix", "en.mangafreak", "en.comickfan",
+  "en.ravenscans", "en.allmanga", "en.allanime", "all.comicklive",
+  "ar.empirewebtoon", "vi.kamicomic", "en.comickiba", "en.nineanime",
+  "en.webtoontr", "en.webtoonscan", "en.webtoonxyz",
+]);
+const INHERENTLY_MATURE_SOURCE_IDS = new Set([
+  "en.ninehentai", "all.pawchive", "local.koofr",
+]);
+function isAdultOnlySource(source: { id: string; isNsfw?: boolean } | null | undefined): boolean {
+  if (!source || GENERAL_SOURCE_IDS.has(source.id)) return false;
+  return Boolean(source.isNsfw) || INHERENTLY_MATURE_SOURCE_IDS.has(source.id);
+}
 
 function resolveAssetUrl(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -228,9 +241,9 @@ export default function SourceBrowsePage() {
   }, [sourceId, installedSource]);
 
   useEffect(() => {
-    const adultBlocked = Boolean(source?.isNsfw && (settings.hideNsfw || !hasAdultAccessConsent()));
+    const adultBlocked = Boolean(isAdultOnlySource(source) && (settings.hideNsfw || !hasAdultAccessConsent()));
     if (adultBlocked) setLocation("/sources");
-  }, [source?.isNsfw, settings.hideNsfw, sourceId, setLocation]);
+  }, [source, settings.hideNsfw, sourceId, setLocation]);
 
   useEffect(() => {
     if (isFirstMountRef.current) {
@@ -558,7 +571,7 @@ export default function SourceBrowsePage() {
             <h1 className="font-serif font-bold text-lg sm:text-xl truncate leading-tight">{source.name}</h1>
             <p className="text-[11px] text-muted-foreground leading-none mt-0.5">
               {source.lang.toUpperCase()}
-              {source.isNsfw && <span className="ml-1.5 text-rose-500">18+</span>}
+              {isAdultOnlySource(source) && <span className="ml-1.5 text-rose-500">18+</span>}
             </p>
           </div>
 
