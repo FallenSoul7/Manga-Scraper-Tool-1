@@ -1,6 +1,6 @@
 // Bump this when the app shell changes so installed PWAs discard stale bundles.
 const STATIC_CACHE = 'comihub-static-v23';
-const API_CACHE    = 'comihub-api-v10';
+const API_CACHE    = 'comihub-api-v11';
 const IMAGE_CACHE  = 'comihub-images-v2';
 const CHAPTER_IMAGE_CACHE = 'comihub-chapter-images-v1';
 const OFFLINE_IMAGE_CACHE = 'comihub-offline-v1';
@@ -216,16 +216,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.origin !== self.location.origin) return;
-
   if (isApiRequest(url)) {
-    // Browse data is safe to show from the previous request immediately while
-    // refreshing it in the background. sourceCacheKey keeps different source
-    // headers isolated, and a first visit still waits for the network.
+    // Production requests point directly at Render, so this runs before the
+    // same-origin guard below. CacheStorage persists these GET responses on
+    // the user's device while Render wakes or refreshes.
+    // sourceCacheKey keeps different extension headers isolated.
     event.respondWith(isFastCachedApiRequest(url)
       ? staleWhileRevalidate(event.request, API_CACHE)
       : networkFirst(event.request, API_CACHE, 24 * 3600));
-  } else if (isHashedAsset(url) || isCodeAsset(url)) {
+    return;
+  }
+
+  if (url.origin !== self.location.origin) return;
+
+  if (isHashedAsset(url) || isCodeAsset(url)) {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, null));
   } else if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE, null));
