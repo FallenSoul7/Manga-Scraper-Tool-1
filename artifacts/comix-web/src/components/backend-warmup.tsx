@@ -3,8 +3,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { BookOpen, RefreshCw, WifiOff } from "lucide-react";
 import { apiUrl } from "@/lib/api-url";
 
-const SHOW_AFTER_MS = 350;
-const RELEASE_SHELL_AFTER_MS = 3_500;
+// Give an already-awake Render service time to answer before showing the
+// cold-start screen. Once shown, it stays visible until /healthz succeeds.
+const SHOW_AFTER_MS = 1_200;
 const GIVE_UP_AFTER_MS = 45_000;
 const BACKEND_REFRESH_EVENT = "comihub:refresh-backend";
 
@@ -72,6 +73,7 @@ export function BackendWarmup() {
     const refresh = () => {
       queryClient.setQueryData(["backend-ready"], false);
       setState("warming");
+      setVisible(true);
       setAttempt(value => value + 1);
     };
     const resume = () => {
@@ -110,8 +112,14 @@ export function BackendWarmup() {
       .then(catalog => { if (catalog) queryClient.setQueryData(["sources-catalog"], catalog); })
       .catch(() => undefined);
     const controller = new AbortController();
-    const showTimer = attempt === 0 ? window.setTimeout(() => setVisible(true), SHOW_AFTER_MS) : undefined;
-    const releaseTimer = window.setTimeout(() => setVisible(false), RELEASE_SHELL_AFTER_MS);
+    const showTimer = window.setTimeout(() => {
+      // This delayed fallback covers a request waiting on a sleeping Render
+      // instance. There is intentionally no matching release timer.
+      setState(current => {
+        if (current === "warming") setVisible(true);
+        return current;
+      });
+    }, SHOW_AFTER_MS);
     const timeoutTimer = window.setTimeout(() => {
       setState(current => current === "warming" ? "timeout" : current);
     }, GIVE_UP_AFTER_MS);
@@ -119,8 +127,7 @@ export function BackendWarmup() {
 
     return () => {
       controller.abort();
-      if (showTimer !== undefined) window.clearTimeout(showTimer);
-      window.clearTimeout(releaseTimer);
+      window.clearTimeout(showTimer);
       window.clearTimeout(timeoutTimer);
     };
   }, [attempt, warmBackend]);
