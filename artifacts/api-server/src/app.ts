@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import passport from "passport";
@@ -90,10 +90,43 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true, limit: "256kb" }));
 
-// Apply session + passport globally so ALL routes (including /api/library) can use req.isAuthenticated()
-app.use(buildSessionMiddleware());
+// Public source reads must remain available even when the session database is
+// slow or unavailable. The session store is Postgres-backed; putting it in
+// front of every catalog/list/detail request made unrelated DB stalls look
+// like every extension was broken. Keep sessions for auth and other private
+// routes, but bypass them for read-only public content endpoints.
+function isPublicReadRequest(req: Request): boolean {
+  if (req.method !== "GET" && req.method !== "HEAD") return false;
+
+  const path = req.path;
+  if (
+    path === "/api/healthz" ||
+    path === "/api/sources/catalog" ||
+    path === "/api/sources/manifests" ||
+    path === "/api/popular" ||
+    path === "/api/latest" ||
+    path === "/api/search" ||
+    path === "/api/tags" ||
+    path === "/api/popular-sorts" ||
+    path === "/api/source-media"
+  ) return true;
+
+  return /^\/api\/manga\/[^/]+(?:\/chapters)?$/.test(path) ||
+    /^\/api\/chapter\/[^/]+\/pages$/.test(path);
+}
+
+const sessionMiddleware = buildSessionMiddleware();
+const passportSessionMiddleware = passport.session();
+
+app.use((req, res, next) => {
+  if (isPublicReadRequest(req)) return next();
+  return sessionMiddleware(req, res, next);
+});
 app.use(passport.initialize());
-app.use(passport.session());
+app.use((req, res, next) => {
+  if (isPublicReadRequest(req)) return next();
+  return passportSessionMiddleware(req, res, next);
+});
 
 const iconPath = path.join(__dirname, "../../comix-web/public/public/source-icons");
 app.use("/public/source-icons", express.static(iconPath));

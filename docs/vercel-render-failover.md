@@ -24,6 +24,10 @@ Set them for the **Production** environment and redeploy after changing them.
 
 Both Render services should share the same `DATABASE_URL` and `SESSION_SECRET` when they serve the same users and database. `FRONTEND_URL` must allow the Vercel origin on both services. Verify both `/api/healthz` and `/api/sources/catalog` independently after deployment.
 
+## Public content and session isolation
+
+Health checks, source catalog/manifests, extension list/search/tag/sort reads, manga details, chapter lists/pages, and source-media reads are public and do not require a user session. The API intentionally skips the Postgres-backed session lookup and Passport session deserialization for those read-only routes, so a slow session database cannot leave every extension page waiting. Keep this bypass limited to public `GET`/`HEAD` routes; authentication, library sync, and mutations still use the normal session middleware.
+
 ## Verified production status (2026-10-11)
 
 - Primary `manga-scraper-tool-2.onrender.com` returns HTTP `503` because Render suspended it after the monthly quota was exceeded.
