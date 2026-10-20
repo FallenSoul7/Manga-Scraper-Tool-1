@@ -53,7 +53,11 @@ export default function Reader() {
     offlineDb.get(String(chapterId)).then(chapter => {
       if (chapter?.pageUrls?.length) {
         setOfflineChapter(chapter);
-        setOfflinePages(chapter.pageUrls.map((url, i) => ({ index: i, url })));
+        setOfflinePages(
+          chapter.pages?.length
+            ? chapter.pages
+            : chapter.pageUrls.map((url, i) => ({ index: i, url })),
+        );
       }
       setOfflineLoading(false);
     }).catch(() => setOfflineLoading(false));

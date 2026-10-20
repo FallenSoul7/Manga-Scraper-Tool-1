@@ -29,3 +29,24 @@ The app and extension repository both declare Apache-2.0. Any direct code reuse 
 - https://github.com/kodjodevf/mangayomi-extensions/blob/main/CONTRIBUTING-JS.md
 - https://github.com/kodjodevf/mangayomi-extensions/blob/main/CONTRIBUTING-DART.md
 - https://github.com/kodjodevf/mangayomi/releases
+
+## Offline/download implementation details
+
+The checked MangaYomi code uses an Isar database for persistent download queue records. Each download tracks succeeded, failed, total, isDownload, isStartDownload, and links to the chapter. The download provider persists progress, enforces concurrency and optional Wi-Fi-only behavior, stores chapter metadata, and downloads either manga pages, anime video files/HLS streams, or novel HTML. It writes manga pages to stable per-title/per-chapter disk paths, detects image formats, caches page lists separately using a hash of manga ID plus chapter URL, and can export CBZ archives.
+
+MangaYomi's reader checks local files first and supports a downloaded-only mode. Its chapter page-list cache is separate from downloaded page files, uses an LRU size limit, and preserves request headers with cached page entries. Anime downloads are treated differently from image chapters: episodes resolve video lists, download either a normal media file or an M3U8 stream, and store subtitles alongside the episode.
+
+MangaYomi's extension runtime uses the same source detail/chapter model for anime, but anime chapters represent episodes and the extension additionally implements `getVideoList(url)`, returning one or more video tracks. The runtime supports Dart, JavaScript, Mihon, LNReader, and Aidoku source languages. The app's extension editor explicitly includes `getVideoList` for anime sources.
+
+ComiHub already has an IndexedDB/Cache Storage download path and AnimeGG plus AllManga video-capable server sources. Its current offline queue state is memory-only, offline chapter metadata is persisted only after completion, and offline metadata currently stores only page URLs, not video tracks or per-page headers. The next implementation should persist the queue, store structured offline pages/video tracks, use deterministic page-list cache keys, and add an offline-only guard before attempting live requests.
+
+Additional source files inspected:
+
+- https://github.com/kodjodevf/mangayomi/blob/main/lib/models/download.dart
+- https://github.com/kodjodevf/mangayomi/blob/main/lib/modules/manga/download/providers/download_provider.dart
+- https://github.com/kodjodevf/mangayomi/blob/main/lib/repositories/download_repository.dart
+- https://github.com/kodjodevf/mangayomi/blob/main/lib/services/chapter_cache.dart
+- https://github.com/kodjodevf/mangayomi/blob/main/lib/utils/downloaded_page_file.dart
+- https://github.com/kodjodevf/mangayomi/blob/main/lib/models/source.dart
+- https://github.com/kodjodevf/mangayomi/blob/main/lib/eval/javascript/service.dart
+- https://github.com/kodjodevf/mangayomi/blob/main/lib/eval/dart/service.dart

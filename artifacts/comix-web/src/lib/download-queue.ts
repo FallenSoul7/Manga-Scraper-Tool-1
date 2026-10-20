@@ -12,7 +12,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { apiUrl }   from './api-url';
-import { offlineDb } from './offline-db';
+import { offlineDb, type OfflinePage, type OfflineVideoTrack } from './offline-db';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +56,19 @@ function notify() { subscribers.forEach(cb => cb()); }
 
 function getSnapshot(): QueueState { return state; }
 
+function persistItem(item: QueueItem): void {
+  void offlineDb.saveDownloadJob({
+    id: item.id,
+    payload: item as unknown as Record<string, unknown>,
+    status: item.status,
+    updatedAt: Date.now(),
+  }).catch(() => {});
+}
+
+function persistItems(items: QueueItem[]): void {
+  items.forEach(persistItem);
+}
+
 export function useDownloadQueue<T>(selector: (s: QueueState) => T): T {
   return useSyncExternalStore(
     cb => { subscribers.add(cb); return () => subscribers.delete(cb); },
@@ -89,12 +102,29 @@ function mutateItem(id: string, patch: Partial<QueueItem>) {
     ...state,
     items: state.items.map(i => i.id === id ? { ...i, ...patch } : i),
   };
+  const updated = getItem(id);
+  if (updated) persistItem(updated);
   notify();
 }
 
 function sleep(ms: number) {
   return new Promise<void>(resolve => setTimeout(resolve, ms));
 }
+
+// A page reload cannot safely resume a fetch owned by the old JavaScript
+// process. Restore it as queued instead, preserving completed/error history.
+void offlineDb.listDownloadJobs().then(jobs => {
+  const restored = jobs
+    .map(job => ({
+      ...job.payload,
+      status: job.status === 'downloading' ? 'queued' : job.status,
+    } as QueueItem))
+    .filter(item => Boolean(item.id) && item.chapterId !== undefined);
+  if (!restored.length) return;
+  state = { ...state, items: restored };
+  notify();
+  scheduleDownloads();
+}).catch(() => {});
 
 // ─── Download loop ────────────────────────────────────────────────────────────
 
@@ -168,9 +198,20 @@ async function runDownload(id: string): Promise<void> {
     // API returns PageListResponse: { chapterId, pages: [{index, url}] }
     // Extract the .url string from each page object (or pass through if already a string).
     const rawPages: unknown[] = Array.isArray(raw) ? raw : (raw.pages ?? raw.data ?? []);
-    const pageUrls: string[] = rawPages
-      .map((p: unknown) => (typeof p === 'string' ? p : (p as { url: string }).url))
-      .filter(Boolean);
+    const offlinePages: OfflinePage[] = rawPages
+      .map((p: unknown, index) => {
+        if (typeof p === 'string') return { index, url: p };
+        const page = p as { index?: number; url?: string; videoTracks?: OfflineVideoTrack[]; text?: string; title?: string };
+        return {
+          index: page.index ?? index,
+          url: page.url ?? '',
+          videoTracks: page.videoTracks,
+          text: page.text,
+          title: page.title,
+        };
+      })
+      .filter(page => Boolean(page.url));
+    const pageUrls = offlinePages.map(page => page.url);
 
     if (pageUrls.length === 0) throw new Error('empty page list');
     mutateItem(id, { pagesTotal: pageUrls.length });
@@ -182,7 +223,7 @@ async function runDownload(id: string): Promise<void> {
         const key = apiUrl(`/api/chapter/${item.chapterId}/pages`);
         await pagesCache.put(
           key,
-          new Response(JSON.stringify(pageUrls), {
+          new Response(JSON.stringify(offlinePages), {
             headers: { 'Content-Type': 'application/json', 'sw-cached-at': Date.now().toString() },
           }),
         );
@@ -295,6 +336,8 @@ async function runDownload(id: string): Promise<void> {
         chapterNumber:  finalItem.chapterNumber,
         chapterTitle:   finalItem.chapterTitle,
         pageUrls:       mediaUrls,
+        pages:          offlinePages.map((page, index) => ({ ...page, index, url: mediaUrls[index] })),
+        pageListCacheKey: apiUrl(`/api/chapter/${item.chapterId}/pages`),
         downloadedAt:   Date.now(),
         sizeBytes:      totalBytes,
       });
@@ -391,6 +434,7 @@ export const queueActions = {
       status: 'queued',
     };
     state = { ...state, items: [...state.items, item] };
+    persistItem(item);
     notify();
     scheduleDownloads();
   },
@@ -410,6 +454,7 @@ export const queueActions = {
       status: 'queued' as const,
     }));
     state = { ...state, items: [...state.items, ...newItems] };
+    persistItems(newItems);
     notify();
     scheduleDownloads();
   },
@@ -419,11 +464,14 @@ export const queueActions = {
     const handle = inFlight.get(id);
     if (handle) handle.cancelled = true;
     state = { ...state, items: state.items.filter(i => i.id !== id) };
+    void offlineDb.deleteDownloadJob(id).catch(() => {});
     notify();
   },
 
   clearDone() {
+    const done = state.items.filter(i => i.status === 'done');
     state = { ...state, items: state.items.filter(i => i.status !== 'done') };
+    void Promise.all(done.map(item => offlineDb.deleteDownloadJob(item.id))).catch(() => {});
     notify();
   },
 
