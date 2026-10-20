@@ -718,13 +718,21 @@ export const storeActions = {
   },
 
   exportBackup(): string {
-    return JSON.stringify(memoryState);
+    return JSON.stringify({
+      format: 'comihub-backup',
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      state: memoryState,
+    });
   },
   
   importBackup(json: string): { ok: boolean; error?: string } {
     try {
       const parsed = JSON.parse(json);
-      const validated = StoreStateSchema.safeParse(parsed);
+      // Version 1 backups were the raw StoreState object. Version 2 wraps the
+      // same state with format/version metadata so future migrations are safe.
+      const candidate = parsed?.format === 'comihub-backup' ? parsed.state : parsed;
+      const validated = StoreStateSchema.safeParse(candidate);
       if (validated.success) {
         saveState(validated.data);
         return { ok: true };

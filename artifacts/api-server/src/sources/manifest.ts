@@ -44,6 +44,9 @@ export interface SourceManifest {
     pages: boolean;
     tags: boolean;
     pagination: boolean;
+    requestHeaders: boolean;
+    referer: boolean;
+    rangeRequests: boolean;
     mediaTypes: Array<"manga" | "anime" | "novel">;
   };
   filters: SourceFilterManifest[];
@@ -136,6 +139,9 @@ export function createSourceManifest(
       pages: Boolean(source.pages),
       tags: Boolean(source.tags),
       pagination: true,
+      requestHeaders: Boolean(source.requestPolicy?.headers),
+      referer: Boolean(source.requestPolicy?.referer || source.imageReferer),
+      rangeRequests: Boolean(source.requestPolicy?.supportsRange),
       mediaTypes: mediaTypes(source),
     },
     filters: filtersFor(source),

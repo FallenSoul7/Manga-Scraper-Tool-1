@@ -94,6 +94,15 @@ export interface ChapterSummary {
   attachmentCount?: number;
 }
 
+export interface SourceRequestPolicy {
+  /** Headers required by the upstream source or CDN. */
+  headers?: Record<string, string>;
+  /** Referer to use when fetching protected images, pages, or videos. */
+  referer?: string;
+  /** Whether the source expects byte-range requests for media. */
+  supportsRange?: boolean;
+}
+
 export interface ChapterListResponse {
   items: ChapterSummary[];
 }
@@ -107,6 +116,7 @@ export interface PageInfo {
   text?: string;
   /** Optional chapter title for text-based sources. */
   title?: string;
+  request?: SourceRequestPolicy;
 }
 
 export interface VideoTrack {
@@ -117,6 +127,7 @@ export interface VideoTrack {
   audioLanguage?: string;
   subtitleLanguage?: string;
   kind: "original" | "dub" | "sub";
+  request?: SourceRequestPolicy;
 }
 
 export interface PageListResponse {
@@ -147,4 +158,6 @@ export interface MangaSource {
   popularSorts?: PopularSortOption[];
 
   imageReferer?: string;
+  /** Shared request contract for adapters that need source headers/referers. */
+  requestPolicy?: SourceRequestPolicy;
 }

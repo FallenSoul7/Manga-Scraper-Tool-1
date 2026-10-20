@@ -31,6 +31,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { useOfflineChapters } from "@/lib/offline-db";
 import { useOnlineStatus } from "@/lib/offline-catalog";
 import { getClientSourceAdapter } from "@/lib/client-sources";
+import { getTrackerLinks } from "@/lib/tracker-links";
 
 
 /** Decode a Koofr base64url manga ID back to its file path and check if it's a video. */
@@ -797,6 +798,22 @@ export default function MangaDetail() {
             <Button className="w-full h-12 text-base font-semibold rounded-xl" disabled>
               No chapters available
             </Button>
+          )}
+          {manga && (
+            <div className="flex items-center gap-2 mt-3">
+              <span className="text-[11px] text-muted-foreground mr-1">Track on</span>
+              {getTrackerLinks(manga.title).map(tracker => (
+                <a
+                  key={tracker.id}
+                  href={tracker.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted"
+                >
+                  {tracker.label}<ExternalLink className="h-3 w-3" />
+                </a>
+              ))}
+            </div>
           )}
         </div>
 
