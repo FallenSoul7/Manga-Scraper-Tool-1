@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ComiHub</string>
+    <string name="title_activity_main">ComiHub</string>
+    <string name="package_name">com.comihub.reader</string>
+    <string name="custom_url_scheme">com.comihub.reader</string>
+</resources>

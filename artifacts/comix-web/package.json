@@ -11,7 +11,12 @@
     "app:build": "pnpm build",
     "ios:sync": "pnpm build && cap sync ios",
     "ios:open": "cap open ios",
-    "ios:run": "cap run ios"
+    "ios:run": "cap run ios",
+    "android:sync": "pnpm build && cap sync android",
+    "android:open": "cap open android",
+    "android:run": "cap run android",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",
@@ -49,6 +54,7 @@
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",
+    "@tauri-apps/cli": "^2.12.3",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
@@ -80,6 +86,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
     "@capacitor/core": "^8.5.3",
     "@capacitor/ios": "^8.5.3",
     "@types/jszip": "^3.4.1",
