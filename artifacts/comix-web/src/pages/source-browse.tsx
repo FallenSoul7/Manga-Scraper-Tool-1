@@ -26,7 +26,7 @@ import { requestBackendRefresh } from "@/components/backend-warmup";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-interface MangaSummary { id: string; title: string; thumbnail: string; type: string; isNsfw: boolean; mediaType?: "manga" | "anime" }
+interface MangaSummary { id: string; title: string; thumbnail: string; type: string; isNsfw: boolean; mediaType?: "manga" | "anime" | "novel" }
 interface ListResponse { items: MangaSummary[]; page: number; hasNextPage: boolean }
 interface PageSnapshot {
   tab: ActiveTab;
