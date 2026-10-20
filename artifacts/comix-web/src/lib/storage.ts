@@ -116,6 +116,11 @@ const InstalledSourceSchema = z.object({
   id: z.string(),
   name: z.string(),
   lang: z.string(),
+  /** Explicit languages advertised by the extension manifest. */
+  languages: z.array(z.string()).default([]),
+  /** Shared adapter family advertised by the extension manifest. */
+  adapter: z.string().optional(),
+  manifestVersion: z.number().optional(),
   isNsfw: z.boolean(),
   iconUrl: z.string().nullable(),
   installedAt: z.number(),
@@ -127,6 +132,9 @@ export const DEFAULT_SOURCE: InstalledSource = {
   id: 'en.comix',
   name: 'Comix',
   lang: 'en',
+  languages: ['en'],
+  adapter: 'html',
+  manifestVersion: 1,
   isNsfw: false,
   iconUrl: null,
   installedAt: 0,
@@ -137,6 +145,9 @@ export const UNIVERSAL_SOURCE: InstalledSource = {
   id: 'builtin.universal',
   name: 'Universal',
   lang: 'all',
+  languages: ['all'],
+  adapter: 'builtin',
+  manifestVersion: 1,
   isNsfw: false,
   iconUrl: null,
   installedAt: 0,
@@ -729,13 +740,18 @@ export const storeActions = {
     saveState(DEFAULT_STATE);
   },
 
-  installSource(source: Omit<InstalledSource, 'installedAt'>) {
+  installSource(source: Omit<InstalledSource, 'installedAt' | 'languages' | 'adapter' | 'manifestVersion'> & Partial<Pick<InstalledSource, 'languages' | 'adapter' | 'manifestVersion'>>) {
     if (memoryState.installedSources[source.id]) return;
     saveState({
       ...memoryState,
       installedSources: {
         ...memoryState.installedSources,
-        [source.id]: { ...source, installedAt: Date.now() },
+        [source.id]: {
+          ...source,
+          languages: source.languages?.length ? source.languages : [source.lang],
+          manifestVersion: source.manifestVersion ?? 1,
+          installedAt: Date.now(),
+        },
       },
     });
   },

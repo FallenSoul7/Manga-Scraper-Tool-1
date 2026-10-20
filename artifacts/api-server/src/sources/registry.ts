@@ -24,6 +24,7 @@ import { AnimeGGSource } from "./animegg";
 import { NovelFullSource, NovelHallSource } from "./novelsites";
 import { AtsuSource } from "./atsu";
 import { createUniversalSource } from "./universal";
+import { createSourceManifest, type SourceManifest } from "./manifest";
 import catalogJson from "./catalog.generated.json" with { type: "json" };
 
 interface CatalogExtension {
@@ -155,4 +156,12 @@ export function listSupportedIds(): string[] {
 
 export function getCatalog(): CatalogFile {
   return catalog;
+}
+
+export function getSourceManifests(): SourceManifest[] {
+  const catalogById = new Map(catalog.extensions.map(ext => [ext.id, ext]));
+  return Array.from(SOURCES_BY_ID.values()).map(source => {
+    const catalogEntry = catalogById.get(source.id);
+    return createSourceManifest(source, catalogEntry);
+  });
 }

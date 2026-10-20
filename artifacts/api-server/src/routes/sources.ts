@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { isSupported } from "../sources/registry";
+import { getSourceManifests, isSupported } from "../sources/registry";
 import catalogRaw from "../sources/catalog.generated.json" assert { type: "json" };
 
 const router = Router();
-
+const manifests = getSourceManifests();
 const universal = {
   id: "builtin.universal",
   slug: "builtin-universal",
@@ -13,6 +13,7 @@ const universal = {
   versionCode: 1,
   iconUrl: "/public/source-icons/universal.svg",
   supported: true,
+  manifest: manifests.find(manifest => manifest.id === "builtin.universal") ?? null,
 };
 
 const enriched = {
@@ -29,11 +30,16 @@ const enriched = {
       ? `/public/source-icons/${ext.icon as string}`
       : ext.id === "all.atsu" ? "https://atsu.moe/favicon.ico" : null,
     supported: isSupported(ext.id as string),
+    manifest: manifests.find(manifest => manifest.id === ext.id || (ext.id === "en.allanime" && manifest.id === "en.allmanga")) ?? null,
   }))],
 };
 
 router.get("/catalog", (_req, res) => {
   res.json(enriched);
+});
+
+router.get("/manifests", (_req, res) => {
+  res.json({ manifests });
 });
 
 export default router;

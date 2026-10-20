@@ -34,6 +34,12 @@ import { requestBackendRefresh } from "@/components/backend-warmup";
 interface CatalogExtension {
   id: string; slug: string; name: string; lang: string;
   isNsfw: boolean; versionCode: number; iconUrl: string | null; supported: boolean;
+  manifest?: {
+    languages: string[];
+    languageAware: boolean;
+    adapter: string;
+    filters: Array<{ id: string; label: string; type: string }>;
+  } | null;
 }
 interface CatalogResponse {
   generatedAt: number; count: number; supportedIds: string[]; extensions: CatalogExtension[];
@@ -774,7 +780,11 @@ function BrowseTab({
   const allLangs = useMemo(() => {
     if (!catalog) return [] as string[];
     const set = new Set<string>();
-    for (const e of catalog.extensions ?? []) set.add(e.lang);
+    for (const e of catalog.extensions ?? []) {
+      for (const language of e.manifest?.languages ?? [e.lang]) {
+        if (language !== "all") set.add(language);
+      }
+    }
     return Array.from(set).sort();
   }, [catalog]);
 
@@ -782,7 +792,7 @@ function BrowseTab({
     if (!catalog) return [];
     const q = search.trim().toLowerCase();
     return (catalog.extensions ?? [])
-      .filter(e => lang === "all-langs" ? true : e.lang === lang)
+      .filter(e => lang === "all-langs" ? true : (e.manifest?.languages ?? [e.lang]).includes(lang))
       // Only genuinely adult-only extensions are gated. Mixed catalogues such
       // as MangaDex and Comix remain visible; individual titles are filtered
       // by their own isNsfw metadata.
@@ -872,7 +882,12 @@ function BrowseTab({
                   {!isSupported && <span className="text-[10px] px-1.5 py-0 rounded bg-muted text-muted-foreground">Coming soon</span>}
                   <SourceStatusTag sourceId={canonicalId} supported={isSupported} />
                 </div>
-                <p className="text-xs text-muted-foreground">{langLabel(ext.lang)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(ext.manifest?.languages?.length && ext.manifest.languages[0] !== "all")
+                      ? ext.manifest.languages.map(langLabel).join(" · ")
+                      : langLabel(ext.lang)}
+                    {ext.manifest?.languageAware && " · language-aware"}
+                  </p>
               </div>
               {isInstalled ? (
                 <span className="inline-flex items-center gap-1 text-xs text-primary px-1">
@@ -883,7 +898,7 @@ function BrowseTab({
                   size="sm" variant={isSupported ? "default" : "outline"}
                   disabled={!isSupported || !online} className="h-8 text-xs px-3 shrink-0"
                   onClick={() => {
-                    storeActions.installSource({ id: canonicalId, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl, isPinned: false });
+                    storeActions.installSource({ id: canonicalId, name: ext.name, lang: ext.lang, languages: ext.manifest?.languages ?? [ext.lang], adapter: ext.manifest?.adapter, manifestVersion: ext.versionCode, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl, isPinned: false });
                     toast({ title: `Added ${ext.name}`, description: "Open the Sources tab to browse it." });
                   }}
                 >
