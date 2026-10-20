@@ -3,8 +3,18 @@ import { ArrowLeft, AppWindow, Share, Plus, CheckCircle2, Smartphone } from "luc
 import { Button } from "@/components/ui/button";
 import { usePwa } from "@/lib/pwa-context";
 
+function desktopPlatform(): "Windows" | "macOS" | "Linux" | "Desktop" {
+  if (typeof navigator === "undefined") return "Desktop";
+  const ua = navigator.userAgent;
+  if (/Windows/i.test(ua)) return "Windows";
+  if (/Macintosh|Mac OS X/i.test(ua)) return "macOS";
+  if (/Linux/i.test(ua)) return "Linux";
+  return "Desktop";
+}
+
 export default function InstallPage() {
   const { deferredPrompt, isInstalled, isIOS, isAndroid, promptInstall } = usePwa();
+  const platform = desktopPlatform();
 
   return (
     <main className="container mx-auto px-4 py-12 max-w-2xl animate-in fade-in duration-500">
@@ -107,7 +117,7 @@ export default function InstallPage() {
                 <AppWindow className="h-5 w-5" />
               </div>
               <div>
-                <p className="font-semibold text-foreground">Desktop / Chrome or Edge</p>
+                <p className="font-semibold text-foreground">{platform} / Chrome or Edge</p>
                 <p className="text-sm text-muted-foreground">
                   {deferredPrompt ? "Click below to install ComiHub as a desktop app." : "Use the browser menu to install."}
                 </p>

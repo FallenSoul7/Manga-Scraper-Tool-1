@@ -2,12 +2,16 @@
   "name": "ComiHub",
   "short_name": "ComiHub",
   "description": "Your personal manga reading library",
+  "id": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "portrait",
   "start_url": "/",
   "scope": "/",
   "background_color": "#000000",
   "theme_color": "#000000",
+  "categories": ["books", "entertainment"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icon-192.png",
