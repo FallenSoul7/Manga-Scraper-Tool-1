@@ -35,7 +35,7 @@ A personal Apple Developer account can be used to sign and install the app on pe
 
 Signing an iOS build still requires access to Xcode on macOS and the user's Apple Account. This sandbox has no Mac/Xcode environment, so it can prepare the project but cannot produce the user's signed IPA.
 
-The **Install ComiHub** page links to GitHub Release assets. The release workflow builds a directly installable Android APK, Windows NSIS installer, Linux AppImage, and an unsigned iOS IPA for a sideloader to sign with the user's own Apple Account. The iOS button remains marked **Coming soon** until the sideload package is ready and verified.
+The **Install ComiHub** page links to GitHub Release assets. The release workflow builds an Android APK, Windows NSIS installer, Linux AppImage, and an unsigned iOS IPA. The iOS IPA is a real native package, but it is intentionally unsigned: SideStore, AltStore, Sideloadly, or another compatible sideloader must sign it with the user's own Apple Account before installation. A sideloader package is not the same as a permanently signed App Store or Ad Hoc build; free Personal Team provisioning still expires periodically.
 
 ## Windows, Linux, and macOS
 

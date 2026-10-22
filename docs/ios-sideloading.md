@@ -31,9 +31,11 @@ In Xcode:
 
 For a free Apple ID, the installed app is normally limited by Apple's personal-team signing rules and may need periodic re-signing. Paid Apple Developer membership provides normal development provisioning and broader distribution options.
 
-## IPA export
+## IPA export and download
 
-For an IPA usable by AltStore, SideStore, Sideloadly, or another compatible sideloader, use Xcode's archive/export flow or a macOS CI runner with the appropriate provisioning profile. The exact export method depends on the signing identity and provisioning profile; ComiHub must not embed developer credentials in the repository.
+The tagged installer workflow builds `ComiHub-ios.ipa` on a macOS runner and publishes it with the GitHub release. The **Install ComiHub** page links to the latest release asset. This IPA is intentionally unsigned so that the user can import it into SideStore, AltStore, Sideloadly, or another compatible sideloader and sign it with their own Apple Account. The repository never contains Apple signing credentials or provisioning profiles.
+
+An unsigned IPA cannot be installed by iOS directly. The sideloader must sign it first; with a free Personal Team, Apple generally limits the installation to personal devices and requires periodic refresh/re-signing.
 
 ## Important architecture detail
 
