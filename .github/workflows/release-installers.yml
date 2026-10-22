@@ -132,7 +132,9 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/ipa/Payload"
           cp -R "$RUNNER_TEMP/ios-build/Build/Products/Release-iphoneos/App.app" "$RUNNER_TEMP/ipa/Payload/ComiHub.app"
-          (cd "$RUNNER_TEMP/ipa" && /usr/bin/zip -r "$GITHUB_WORKSPACE/ComiHub-ios.ipa" Payload)
+          # ditto preserves the executable/resource metadata expected by iOS
+          # sideloaders more reliably than a generic zip invocation.
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/ipa/Payload" "$GITHUB_WORKSPACE/ComiHub-ios.ipa"
       - uses: actions/upload-artifact@v4
         with:
           name: ios-sideload-ipa

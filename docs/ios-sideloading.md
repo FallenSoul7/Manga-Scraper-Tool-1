@@ -40,3 +40,9 @@ An unsigned IPA cannot be installed by iOS directly. The sideloader must sign it
 ## Important architecture detail
 
 The iOS app is a thin native shell around the same Vite build. It preserves the existing ComiHub reader, extension adapters, IndexedDB downloads, offline cache, and API configuration. It does not create a second native reader or duplicate the extension system.
+
+## Branding and Scarlet troubleshooting
+
+The iOS AppIcon asset is the branded ComiHub artwork. The macOS/Tauri desktop build intentionally uses a separate desktop-window variant in `src-tauri/icons`, so desktop and iOS releases do not share the same native icon asset.
+
+The release IPA is unsigned by design and the workflow packages it with Apple's `ditto` archive tool, preserving the standard `Payload/ComiHub.app` structure for sideloaders. A successful signing step does not guarantee installation: Scarlet still needs a valid certificate and provisioning profile that cover the device and the app bundle identifier. If the signed app remains stuck on “Install”, verify the certificate is trusted under **Settings → General → VPN & Device Management**, that the device is registered/allowed by the provisioning profile, and that the certificate has not expired or been revoked. Remove the failed signed copy and sign/import a fresh IPA after correcting the certificate/profile; changing the icon cannot repair a provisioning failure.
