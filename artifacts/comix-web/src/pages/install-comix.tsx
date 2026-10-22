@@ -1,7 +1,6 @@
 import { Link } from "wouter";
 import {
   ArrowLeft,
-  Clock3,
   Download,
   Monitor,
   Smartphone,
@@ -30,7 +29,9 @@ const targets = [
   {
     name: "iOS" as const,
     icon: Smartphone,
-    detail: "A sideloadable iOS package is coming soon. For now, add the web app from Safari to your Home Screen.",
+    detail: "Download the IPA, import it into SideStore, AltStore, or Sideloadly, and let your own Apple ID sign it before installing.",
+    asset: "ComiHub-ios.ipa",
+    button: "Download iOS IPA",
   },
   {
     name: "Windows" as const,
@@ -70,7 +71,6 @@ export default function InstallComihubPage() {
         {targets.map(target => {
           const Icon = target.icon;
           const isCurrent = currentPlatform === target.name;
-          const comingSoon = target.name === "iOS";
 
           return (
             <section key={target.name} className="flex flex-col rounded-2xl border border-border bg-card p-5">
@@ -81,8 +81,8 @@ export default function InstallComihubPage() {
                   </div>
                   <div>
                     <h2 className="font-semibold text-foreground">{target.name}</h2>
-                    <span className={`text-xs ${comingSoon ? "text-muted-foreground" : "text-primary"}`}>
-                      {comingSoon ? "Native app coming soon" : "Installer available"}
+                    <span className="text-xs text-primary">
+                      Installer available
                     </span>
                   </div>
                 </div>
@@ -91,22 +91,11 @@ export default function InstallComihubPage() {
 
               <p className="mb-5 flex-1 text-sm leading-relaxed text-muted-foreground">{target.detail}</p>
 
-              {comingSoon ? (
-                <div className="space-y-3">
-                  <Button variant="outline" className="w-full" disabled>
-                    <Clock3 className="mr-2 h-4 w-4" /> iOS — Coming soon
-                  </Button>
-                  <Link href="/install" className="inline-flex text-sm font-medium text-primary hover:underline">
-                    Add the web app to Home Screen instead
-                  </Link>
-                </div>
-              ) : (
-                <Button asChild className="w-full">
-                  <a href={`${releasesBase}/${target.asset}`}>
-                    <Download className="mr-2 h-4 w-4" /> {target.button}
-                  </a>
-                </Button>
-              )}
+              <Button asChild className="w-full">
+                <a href={`${releasesBase}/${target.asset}`}>
+                  <Download className="mr-2 h-4 w-4" /> {target.button}
+                </a>
+              </Button>
             </section>
           );
         })}
