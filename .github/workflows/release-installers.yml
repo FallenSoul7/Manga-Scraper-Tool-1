@@ -142,20 +142,23 @@ jobs:
   release:
     name: Publish release assets
     needs: [android, windows, linux, ios]
-    if: ${{ always() && needs.android.result == 'success' && needs.windows.result == 'success' && needs.linux.result == 'success' && needs.ios.result == 'success' }}
+    if: ${{ always() && needs.ios.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
+        if: ${{ needs.android.result == 'success' }}
         with:
           name: android-installer
           path: release-assets
       - uses: actions/download-artifact@v4
+        if: ${{ needs.windows.result == 'success' }}
         with:
           name: windows-installer
           path: release-assets
       - uses: actions/download-artifact@v4
+        if: ${{ needs.linux.result == 'success' }}
         with:
           name: linux-installer
           path: release-assets
