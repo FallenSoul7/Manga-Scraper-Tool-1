@@ -28,6 +28,13 @@ import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Capacitor, registerPlugin } from "@capacitor/core";
+
+interface ImmersiveModePlugin {
+  setEnabled(options: { enabled: boolean }): Promise<void>;
+}
+
+const ImmersiveMode = registerPlugin<ImmersiveModePlugin>("ImmersiveMode");
 
 function resolveReaderMediaUrl(url: string, sourceId?: string | null): string {
   if (url.startsWith("/")) return apiUrl(url);
@@ -152,12 +159,19 @@ export default function Reader() {
   }, [regionTargetPage, pageTranslations]);
   const handleSelectionHandled = useCallback(() => setSelectionRequest(null), []);
 
-  // Entering document fullscreen hides the browser/PWA status area (battery,
-  // clock, and browser chrome) when the platform supports immersive fullscreen.
-  // The toolbar itself is fixed, so hiding it never reserves space in the page.
+  // The Android shell can hide both native system bars through its Capacitor
+  // bridge. Browsers and PWAs retain the document Fullscreen API fallback.
   const toggleReaderControls = async (next?: boolean) => {
     const shouldShow = next ?? !showControls;
     setShowControls(shouldShow);
+    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+      try {
+        await ImmersiveMode.setEnabled({ enabled: !shouldShow });
+      } catch {
+        // Keep the reader usable if an older installed shell lacks this bridge.
+      }
+      return;
+    }
     try {
       if (shouldShow) {
         if (document.fullscreenElement) await document.exitFullscreen();
@@ -177,7 +191,12 @@ export default function Reader() {
       if (!document.fullscreenElement) setShowControls(true);
     };
     document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+        void ImmersiveMode.setEnabled({ enabled: false }).catch(() => undefined);
+      }
+    };
   }, []);
   const [loadedImgs, setLoadedImgs] = useState<Record<number, boolean>>({});
   const [failedImgs, setFailedImgs] = useState<Record<number, boolean>>({});
