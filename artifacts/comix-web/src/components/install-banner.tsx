@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { X, AppWindow, Share } from "lucide-react";
+import { Link } from "wouter";
 import { usePwa } from "@/lib/pwa-context";
 
 const DISMISSED_KEY = "comihub-install-dismissed";
@@ -34,12 +35,12 @@ export function InstallBanner() {
       <div className="flex-1 min-w-0">
         {isIOS ? (
           <p className="text-foreground leading-tight">
-            <span className="font-semibold">Install ComiHub</span>
+            <span className="font-semibold">Add to Home Screen</span>
             {" — tap "}<strong>Share</strong>{" → "}<strong>Add to Home Screen</strong>
           </p>
         ) : (
           <p className="text-foreground leading-tight">
-            <span className="font-semibold">Install ComiHub</span>{" for offline reading"}
+            <span className="font-semibold">Add ComiHub to Home Screen</span>{" for offline reading"}
           </p>
         )}
       </div>
@@ -48,8 +49,13 @@ export function InstallBanner() {
           onClick={handleInstall}
           className="shrink-0 bg-primary text-primary-foreground rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-primary/90 transition-colors"
         >
-          Install
+          Add
         </button>
+      )}
+      {isIOS && (
+        <Link href="/install" className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90">
+          Steps
+        </Link>
       )}
       <button
         onClick={handleDismiss}

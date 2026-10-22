@@ -23,8 +23,8 @@ export default function InstallPage() {
       </Link>
 
       <div className="mb-8">
-        <h1 className="text-3xl font-serif font-bold text-foreground mb-2">Install</h1>
-        <p className="text-muted-foreground">Add ComiHub to your home screen for a full-screen offline experience.</p>
+        <h1 className="text-3xl font-serif font-bold text-foreground mb-2">Add to Home Screen</h1>
+        <p className="text-muted-foreground">Add ComiHub to your home screen for quick access and offline reading.</p>
       </div>
 
       <div className="bg-card border border-border rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
@@ -57,7 +57,7 @@ export default function InstallPage() {
 
             {deferredPrompt ? (
               <Button className="w-full" onClick={promptInstall}>
-                <AppWindow className="mr-2 h-4 w-4" /> Install ComiHub
+                <AppWindow className="mr-2 h-4 w-4" /> Add to Home Screen
               </Button>
             ) : (
               <div className="space-y-3 rounded-xl border border-border p-4 text-sm text-muted-foreground">
@@ -126,7 +126,7 @@ export default function InstallPage() {
 
             {deferredPrompt ? (
               <Button className="w-full" onClick={promptInstall}>
-                <AppWindow className="mr-2 h-4 w-4" /> Install ComiHub
+                <AppWindow className="mr-2 h-4 w-4" /> Add to Home Screen
               </Button>
             ) : (
               <div className="space-y-3 rounded-xl border border-border p-4 text-sm text-muted-foreground">

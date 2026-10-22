@@ -89,6 +89,7 @@
     "@capacitor/android": "^8.5.3",
     "@capacitor/core": "^8.5.3",
     "@capacitor/ios": "^8.5.3",
+    "@capacitor/status-bar": "^8.0.4",
     "@types/jszip": "^3.4.1",
     "axios": "^1.17.0",
     "jszip": "^3.10.1",

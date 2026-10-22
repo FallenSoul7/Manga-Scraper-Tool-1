@@ -1,0 +1,175 @@
+name: Build and publish platform installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish
+        required: true
+        default: v1.0.0
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/comix-web build
+      - run: pnpm --filter @workspace/comix-web exec cap sync android
+      - run: ./gradlew assembleDebug
+        working-directory: artifacts/comix-web/android
+      - run: cp artifacts/comix-web/android/app/build/outputs/apk/debug/app-debug.apk ComiHub-android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-installer
+          path: ComiHub-android.apk
+          if-no-files-found: error
+
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+        working-directory: artifacts/comix-web
+      - run: pnpm exec tauri build --bundles nsis
+        working-directory: artifacts/comix-web
+      - shell: pwsh
+        run: |
+          $installer = Get-ChildItem artifacts/comix-web/src-tauri/target/release/bundle/nsis -Filter *.exe | Select-Object -First 1
+          if (-not $installer) { throw 'Tauri did not produce a Windows NSIS installer.' }
+          Copy-Item $installer.FullName ComiHub-windows-x64-setup.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: ComiHub-windows-x64-setup.exe
+          if-no-files-found: error
+
+  linux:
+    name: Linux AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev patchelf libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libfuse2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+        working-directory: artifacts/comix-web
+      - run: pnpm exec tauri build --bundles appimage
+        working-directory: artifacts/comix-web
+      - run: cp artifacts/comix-web/src-tauri/target/release/bundle/appimage/*.AppImage ComiHub-linux-x64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-installer
+          path: ComiHub-linux-x64.AppImage
+          if-no-files-found: error
+
+  ios:
+    name: iOS sideload IPA
+    runs-on: macos-15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/comix-web build
+      - run: pnpm --filter @workspace/comix-web exec cap sync ios
+      - name: Build unsigned iOS app for sideloading
+        run: |
+          xcodebuild \
+            -project artifacts/comix-web/ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+      - name: Package IPA
+        run: |
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP/ios-build/Build/Products/Release-iphoneos/App.app" "$RUNNER_TEMP/ipa/Payload/ComiHub.app"
+          (cd "$RUNNER_TEMP/ipa" && /usr/bin/zip -r "$GITHUB_WORKSPACE/ComiHub-ios.ipa" Payload)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-sideload-ipa
+          path: ComiHub-ios.ipa
+          if-no-files-found: error
+
+  release:
+    name: Publish release assets
+    needs: [android, windows, linux, ios]
+    if: ${{ always() && needs.android.result == 'success' && needs.windows.result == 'success' && needs.linux.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-installer
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-installer
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        if: ${{ needs.ios.result == 'success' }}
+        with:
+          name: ios-sideload-ipa
+          path: release-assets
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          target_commitish: main
+          name: ComiHub ${{ inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: release-assets/*
+          overwrite_files: true

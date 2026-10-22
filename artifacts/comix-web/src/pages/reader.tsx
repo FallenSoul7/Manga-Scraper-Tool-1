@@ -29,6 +29,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { StatusBar } from "@capacitor/status-bar";
 
 interface ImmersiveModePlugin {
   setEnabled(options: { enabled: boolean }): Promise<void>;
@@ -172,6 +173,15 @@ export default function Reader() {
       }
       return;
     }
+    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios") {
+      try {
+        if (shouldShow) await StatusBar.show();
+        else await StatusBar.hide();
+      } catch {
+        // Keep the reader usable if native status-bar control is unavailable.
+      }
+      return;
+    }
     try {
       if (shouldShow) {
         if (document.fullscreenElement) await document.exitFullscreen();
@@ -195,6 +205,8 @@ export default function Reader() {
       document.removeEventListener("fullscreenchange", onFullscreenChange);
       if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
         void ImmersiveMode.setEnabled({ enabled: false }).catch(() => undefined);
+      } else if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios") {
+        void StatusBar.show().catch(() => undefined);
       }
     };
   }, []);

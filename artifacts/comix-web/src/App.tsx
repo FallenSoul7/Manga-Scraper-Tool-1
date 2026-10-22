@@ -63,6 +63,7 @@ const DownloadsLibraryPage = lazy(() => import("@/pages/downloads-library"));
 const ComiAIPage           = lazy(() => import("@/pages/comi-ai"));
 const CachePage            = lazy(() => import("@/pages/cache"));
 const InstallPage          = lazy(() => import("@/pages/install"));
+const InstallComihubPage   = lazy(() => import("@/pages/install-comix"));
 const LoginPage            = lazy(() => import("@/pages/login"));
 const OwnerRecoveryPage    = lazy(() => import("@/pages/owner-recovery"));
 const ResetPasswordPage    = lazy(() => import("@/pages/reset-password"));
@@ -292,6 +293,9 @@ function AppContent() {
               </Route>
               <Route path="/install">
                 <Lazy><InstallPage /></Lazy>
+              </Route>
+              <Route path="/install-comihub">
+                <Lazy><InstallComihubPage /></Lazy>
               </Route>
               <Route path="/login">
                 <Lazy><LoginPage /></Lazy>

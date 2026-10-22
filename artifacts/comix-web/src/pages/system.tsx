@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import {
   Settings, Download, BarChart3, Info, FolderOpen, Sparkles,
-  Trash2, AppWindow, LogIn, Lock, Crown,
+  Trash2, AppWindow, LogIn, Lock, Crown, Smartphone,
 } from "lucide-react";
 
 interface SystemBlock {
@@ -102,8 +102,14 @@ const blocks: SystemBlock[] = [
   },
   {
     href: "/install",
-    label: "Install",
-    description: "Add ComiHub to your home screen for offline use.",
+    label: "Add to Home Screen",
+    description: "Add ComiHub to this device for quick access and offline reading.",
+    icon: Smartphone,
+  },
+  {
+    href: "/install-comihub",
+    label: "Install ComiHub",
+    description: "Choose Android, iOS, Windows, or Linux installation options.",
     icon: AppWindow,
   },
   {
