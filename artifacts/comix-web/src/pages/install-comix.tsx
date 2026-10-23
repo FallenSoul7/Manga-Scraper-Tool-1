@@ -63,7 +63,7 @@ export default function InstallComihubPage() {
       <header className="mb-8">
         <h1 className="mb-2 text-3xl font-serif font-bold text-foreground sm:text-4xl">Install ComiHub</h1>
         <p className="max-w-2xl text-muted-foreground">
-          Choose your platform to get the ComiHub app. Each download is served from the latest GitHub release.
+          Choose your platform to get the ComiHub app.
         </p>
       </header>
 
@@ -92,7 +92,10 @@ export default function InstallComihubPage() {
               <p className="mb-5 flex-1 text-sm leading-relaxed text-muted-foreground">{target.detail}</p>
 
               <Button asChild className="w-full">
-                <a href={`${releasesBase}/${target.asset}`}>
+                <a
+                  href={target.name === "Android" ? "/ComiHub-android.apk" : `${releasesBase}/${target.asset}`}
+                  download={target.name === "Android" ? "ComiHub-android.apk" : undefined}
+                >
                   <Download className="mr-2 h-4 w-4" /> {target.button}
                 </a>
               </Button>
