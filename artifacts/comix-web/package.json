@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "vite build --config vite.config.ts",
+    "build": "vite build --config vite.config.ts && node scripts/create-native-update.mjs",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "app:build": "pnpm build",
@@ -90,6 +90,7 @@
     "@capacitor/core": "^8.5.3",
     "@capacitor/ios": "^8.5.3",
     "@capacitor/status-bar": "^8.0.4",
+    "@capawesome/capacitor-live-update": "^8.7.1",
     "@types/jszip": "^3.4.1",
     "axios": "^1.17.0",
     "jszip": "^3.10.1",

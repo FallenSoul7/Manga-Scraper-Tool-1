@@ -1,18 +1,21 @@
 name: Build and publish platform installers
-
 on:
   workflow_dispatch:
     inputs:
       tag:
         description: Release tag to publish
         required: true
-        default: v1.0.0
+        default: v1.1.0
   push:
     tags:
       - "v*"
-
 permissions:
   contents: read
+
+env:
+  # Native shells (Capacitor and Tauri) load the app from a local origin, so the
+  # API base must be absolute. Relative paths caused endless loading screens.
+  VITE_API_URL: https://www.comihub.top
 
 jobs:
   android:
@@ -92,14 +95,32 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
         working-directory: artifacts/comix-web
-      - run: pnpm exec tauri build --bundles appimage
+      # The .deb links against the system web stack, so it stays small enough to
+      # ship from the ComiHub domain. The AppImage bundles its own libraries and
+      # is only attached to the GitHub release.
+      - name: Build Linux deb package
+        run: pnpm exec tauri build --bundles deb
         working-directory: artifacts/comix-web
-      - run: cp artifacts/comix-web/src-tauri/target/release/bundle/appimage/*.AppImage ComiHub-linux-x64.AppImage
+      - name: Build Linux AppImage (best effort)
+        continue-on-error: true
+        run: pnpm exec tauri build --bundles appimage
+        working-directory: artifacts/comix-web
+      - name: Collect Linux artifacts
+        run: |
+          set -euo pipefail
+          cp artifacts/comix-web/src-tauri/target/release/bundle/deb/*.deb ComiHub-linux-x64.deb
+          ls -l ComiHub-linux-x64.deb
+          if ls artifacts/comix-web/src-tauri/target/release/bundle/appimage/*.AppImage >/dev/null 2>&1; then
+            cp artifacts/comix-web/src-tauri/target/release/bundle/appimage/*.AppImage ComiHub-linux-x64.AppImage
+            ls -l ComiHub-linux-x64.AppImage
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: linux-installer
-          path: ComiHub-linux-x64.AppImage
-          if-no-files-found: error
+          path: |
+            ComiHub-linux-x64.deb
+            ComiHub-linux-x64.AppImage
+          if-no-files-found: warn
 
   ios:
     name: iOS sideload IPA
@@ -141,10 +162,87 @@ jobs:
           path: ComiHub-ios.ipa
           if-no-files-found: error
 
+  # The install page downloads from the ComiHub domain, so a successful build has
+  # to land in the repository itself. Release assets on a private repository are
+  # not downloadable by signed-out visitors, which produced 404 pages on phones.
+  publish:
+    name: Publish installers to comihub.top
+    needs: [android, windows, linux, ios]
+    if: ${{ always() && needs.android.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        if: ${{ needs.ios.result == 'success' }}
+        with:
+          name: ios-sideload-ipa
+          path: staged
+      - uses: actions/download-artifact@v4
+        if: ${{ needs.windows.result == 'success' }}
+        with:
+          name: windows-installer
+          path: staged
+      - uses: actions/download-artifact@v4
+        if: ${{ needs.linux.result == 'success' }}
+        with:
+          name: linux-installer
+          path: staged
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-installer
+          path: staged
+      - name: Copy installers into the web app
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/comix-web/public/installers
+          if [ -f staged/ComiHub-android.apk ]; then
+            cp staged/ComiHub-android.apk artifacts/comix-web/public/ComiHub-android.apk
+          fi
+          # GitHub rejects pushes containing files over 100 MB. Anything larger
+          # stays on the GitHub release only, and the install page reports the
+          # platform as unavailable instead of linking to a dead file.
+          for asset in ComiHub-ios.ipa ComiHub-windows-x64-setup.exe ComiHub-linux-x64.deb ComiHub-linux-x64.AppImage; do
+            if [ -f "staged/$asset" ]; then
+              size=$(stat -c %s "staged/$asset")
+              if [ "$size" -gt 95000000 ]; then
+                echo "Skipping $asset ($size bytes) because it exceeds the repository file size limit."
+                continue
+              fi
+              cp "staged/$asset" "artifacts/comix-web/public/installers/$asset"
+            fi
+          done
+          # Remove installers for platforms that did not produce a fresh build so
+          # the page never serves a stale binary from an older release.
+          find artifacts/comix-web/public/installers -type f | while read -r file; do
+            base=$(basename "$file")
+            if [ ! -f "staged/$base" ]; then
+              echo "Removing stale installer $base"
+              rm -f "$file"
+            fi
+          done
+          ls -la artifacts/comix-web/public/installers
+      - name: Commit and push the refreshed installers
+        run: |
+          set -euo pipefail
+          git config user.name "ComiHub release bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          git add -f artifacts/comix-web/public/ComiHub-android.apk artifacts/comix-web/public/installers
+          if git diff --staged --quiet; then
+            echo "Installers already up to date."
+            exit 0
+          fi
+          git commit -m "Publish platform installers ${{ inputs.tag || github.ref_name }}"
+          git pull --rebase --autostash origin main
+          git push origin HEAD:main
+
   release:
     name: Publish release assets
     needs: [android, windows, linux, ios]
-    if: ${{ always() && needs.ios.result == 'success' }}
+    if: ${{ always() && needs.android.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -165,6 +263,7 @@ jobs:
           name: linux-installer
           path: release-assets
       - uses: actions/download-artifact@v4
+        if: ${{ needs.ios.result == 'success' }}
         with:
           name: ios-sideload-ipa
           path: release-assets

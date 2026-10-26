@@ -122,6 +122,9 @@ export function BackendWarmup() {
     }, SHOW_AFTER_MS);
     const timeoutTimer = window.setTimeout(() => {
       setState(current => current === "warming" ? "timeout" : current);
+      // Never trap native users behind an unbounded server-wake screen. The app
+      // shell and cached/offline sections stay usable while live APIs recover.
+      setVisible(false);
     }, GIVE_UP_AFTER_MS);
     void warmBackend(controller.signal);
 
