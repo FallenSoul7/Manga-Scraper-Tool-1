@@ -12,7 +12,7 @@ const PROXIED_MEDIA_SOURCES = new Set([
 
 const INFERRED_MEDIA_HOSTS: Array<{ source: string; hosts: string[] }> = [
   { source: "all.pawchive", hosts: ["img.pawchive.pw", "file.pawchive.pw"] },
-  { source: "all.webtoons", hosts: ["webtoon-phinf.pstatic.net"] },
+  { source: "all.webtoons", hosts: ["webtoon-phinf.pstatic.net", "swebtoon-phinf.pstatic.net"] },
   { source: "all.atsu", hosts: ["cdn.atsu.moe"] },
   { source: "all.mangadex", hosts: ["uploads.mangadex.org", "mangadex.network"] },
   { source: "en.asurascans", hosts: ["asurascans.com"] },

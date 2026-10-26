@@ -319,7 +319,7 @@ app.get("/api/animegg/embed", async (req, res) => {
 // missing (notably Webtoons). Keep this proxy narrowly allow-listed.
 const SOURCE_MEDIA_HOSTS: Record<string, { hosts: string[]; referer: string }> = {
   "all.pawchive": { hosts: ["img.pawchive.pw", "file.pawchive.pw"], referer: "https://pawchive.pw/" },
-  "all.webtoons": { hosts: ["webtoon-phinf.pstatic.net"], referer: "https://www.webtoons.com/" },
+  "all.webtoons": { hosts: ["webtoon-phinf.pstatic.net", "swebtoon-phinf.pstatic.net"], referer: "https://www.webtoons.com/" },
   "all.atsu": { hosts: ["cdn.atsu.moe"], referer: "https://atsu.moe/" },
   "en.resetscans": { hosts: ["cdn.resetscans.net", "resetscans.net", ".resetscans.net"], referer: "https://www.resetscans.net/" },
   "en.novelfull": { hosts: ["novelfull.com", ".novelfull.com"], referer: "https://novelfull.com/" },
