@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PwaProvider } from "@/lib/pwa-context";
 import { Header } from "@/components/header";
 import { InstallBanner } from "@/components/install-banner";
+import { NativeUpdateBanner } from "@/components/native-update-banner";
 import { WelcomeOverlay } from "@/components/welcome-overlay";
 import { FirstUseConsent } from "@/components/first-use-consent";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -248,6 +249,7 @@ function AppContent() {
         <Route>
           <Header />
           <InstallBanner />
+          <NativeUpdateBanner />
           <WelcomeOverlay />
           <OfflineBanner />
           <div className="flex-1 pb-16 md:pb-0">

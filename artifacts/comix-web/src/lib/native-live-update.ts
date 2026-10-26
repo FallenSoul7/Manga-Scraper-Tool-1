@@ -3,7 +3,11 @@ import { LiveUpdate } from "@capawesome/capacitor-live-update";
 
 const UPDATE_MANIFEST_URL = "https://www.comihub.top/native-updates/latest.json";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// A failed attempt (offline, throttled, signature mismatch) should not wait a
+// full day before retrying, but it must also not download on every resume.
+const RETRY_INTERVAL_MS = 60 * 60 * 1000;
 const LAST_CHECK_KEY = "comihub.native-update.last-check";
+const LAST_FAILURE_KEY = "comihub.native-update.last-failure";
 const UPDATE_CHECK_TIMEOUT_MS = 5_000;
 
 interface UpdateManifest {
@@ -73,7 +77,7 @@ export async function checkForNativeUpdate(): Promise<void> {
     const lastCheck = Number(localStorage.getItem(LAST_CHECK_KEY) ?? 0);
     if (manifest.bundleId === localStorage.getItem("comihub.native-update.bundle-id")) return;
     if (Date.now() - lastCheck < CHECK_INTERVAL_MS) return;
-    localStorage.setItem(LAST_CHECK_KEY, String(Date.now()));
+    if (Date.now() - Number(localStorage.getItem(LAST_FAILURE_KEY) ?? 0) < RETRY_INTERVAL_MS) return;
 
     await LiveUpdate.downloadBundle({
       artifactType: "zip",
@@ -84,11 +88,18 @@ export async function checkForNativeUpdate(): Promise<void> {
     });
     await LiveUpdate.setNextBundle({ bundleId: manifest.bundleId });
     localStorage.setItem("comihub.native-update.bundle-id", manifest.bundleId);
+    localStorage.setItem(LAST_CHECK_KEY, String(Date.now()));
+    localStorage.removeItem(LAST_FAILURE_KEY);
     // Keep this version running now. Capawesome applies the staged bundle next time
     // the app is opened, allowing its rollback timer to protect startup.
   } catch (error) {
     // OTA is opportunistic: network, signing, or compatibility errors must never
     // block the bundled app or its normal backend loading.
+    try {
+      localStorage.setItem(LAST_FAILURE_KEY, String(Date.now()));
+    } catch {
+      /* storage may be unavailable */
+    }
     console.warn("ComiHub native update check skipped", error);
   }
 }

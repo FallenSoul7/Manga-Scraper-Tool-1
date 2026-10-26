@@ -225,12 +225,33 @@ jobs:
             fi
           done
           ls -la artifacts/comix-web/public/installers
+      - name: Publish the native release manifest
+        run: |
+          set -euo pipefail
+          gradle_file=artifacts/comix-web/android/app/build.gradle
+          version_code=$(grep -oP 'versionCode\s+\K[0-9]+' "$gradle_file" | head -1)
+          version_name=$(grep -oP 'versionName\s+"\K[^"]+' "$gradle_file" | head -1)
+          if [ -z "$version_code" ] || [ -z "$version_name" ]; then
+            echo "Could not read the Android version from $gradle_file"
+            exit 1
+          fi
+          mkdir -p artifacts/comix-web/public/native-updates
+          cat > artifacts/comix-web/public/native-updates/native-release.json <<JSON
+          {
+            "versionCode": ${version_code},
+            "versionName": "${version_name}",
+            "androidUrl": "https://www.comihub.top/ComiHub-android.apk",
+            "iosUrl": "https://www.comihub.top/installers/ComiHub-ios.ipa",
+            "releasedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          JSON
+          cat artifacts/comix-web/public/native-updates/native-release.json
       - name: Commit and push the refreshed installers
         run: |
           set -euo pipefail
           git config user.name "ComiHub release bot"
           git config user.email "release-bot@users.noreply.github.com"
-          git add -f artifacts/comix-web/public/ComiHub-android.apk artifacts/comix-web/public/installers
+          git add -f artifacts/comix-web/public/ComiHub-android.apk artifacts/comix-web/public/installers artifacts/comix-web/public/native-updates
           if git diff --staged --quiet; then
             echo "Installers already up to date."
             exit 0
