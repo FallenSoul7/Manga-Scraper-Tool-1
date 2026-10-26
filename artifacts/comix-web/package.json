@@ -19,6 +19,7 @@
     "desktop:build": "tauri build"
   },
   "devDependencies": {
+    "@vercel/analytics": "^1.4.1",
     "@capacitor/cli": "^8.5.3",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.4",
