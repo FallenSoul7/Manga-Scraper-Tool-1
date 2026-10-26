@@ -58,6 +58,7 @@ const allowedOrigins = [
   "https://comihub.vercel.app",
   // Capacitor Android and iOS WebViews use these stable local origins when
   // calling the explicitly configured production API from the native shell.
+  "https://localhost",
   "http://localhost",
   "capacitor://localhost",
   ...(process.env["FRONTEND_URL"]
