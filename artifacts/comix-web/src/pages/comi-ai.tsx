@@ -20,11 +20,11 @@ import {
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { appApiUrl } from "@/lib/api-url";
 import { storeActions, getStoreSnapshot } from "@/lib/storage";
 
 // Keep AI requests same-origin. Vercel rewrites /api/* to Render, avoiding
 // browser CORS failures when the public backend URL is configured separately.
-const API_BASE = "";
 const FETCH_TIMEOUT_MS = 60_000;
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ async function callAIWithWaterfall(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${API_BASE}/api/ai/chat`, {
+    const res = await fetch(appApiUrl("/api/ai/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages: msgs, modelMode }),
@@ -96,7 +96,7 @@ async function callAIWithWaterfall(
 function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  return fetch(`${API_BASE}${path}`, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+  return fetch(appApiUrl(path), { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
 // ── Helper: format items with thumbnails ──────────────────────────────────

@@ -10,3 +10,24 @@ export function apiUrl(path: string): string {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   return `${API_BASE}${cleanPath}`;
 }
+
+/**
+ * Resolve an API path for native shells whose document origin is local
+ * (Capacitor Android/iOS use https://localhost). Browser builds keep relative
+ * paths so Vercel can route them through its same-origin API proxy.
+ */
+export function appApiUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  if (typeof window === "undefined") return cleanPath;
+
+  const { protocol, hostname } = window.location;
+  const isNativeShell =
+    protocol === "capacitor:" ||
+    protocol === "ionic:" ||
+    protocol === "tauri:" ||
+    hostname === "localhost" ||
+    hostname === "tauri.localhost";
+
+  return isNativeShell && API_BASE ? `${API_BASE}${cleanPath}` : cleanPath;
+}

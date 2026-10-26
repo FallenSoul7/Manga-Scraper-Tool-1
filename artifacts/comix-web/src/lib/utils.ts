@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { appApiUrl } from "./api-url"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -39,7 +40,7 @@ export function mediaImage(url: string | undefined, source?: string): string {
   const resolvedSource = source || inferApprovedMediaSource(url);
   // Keep image-proxy requests on the app origin so the service worker can cache
   // successful responses instead of seeing opaque cross-origin image requests.
-  if (url.startsWith('/api/')) return url;
+  if (url.startsWith('/api/')) return appApiUrl(url);
   // These are bundled frontend assets; keep them on the fast app/CDN origin.
   if (url.startsWith('/public/')) return url;
   const sourceMediaPath = (sourceId: string) =>
