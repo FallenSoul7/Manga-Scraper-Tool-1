@@ -36,10 +36,21 @@ jobs:
           java-version: 21
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @workspace/comix-web build
+      - name: Exclude installer binaries from the Android app bundle
+        run: |
+          rm -f artifacts/comix-web/dist/public/ComiHub-android.apk
+          rm -rf artifacts/comix-web/dist/public/installers
+          rm -rf artifacts/comix-web/dist/public/native-updates
       - run: pnpm --filter @workspace/comix-web exec cap sync android
       - run: ./gradlew assembleDebug
         working-directory: artifacts/comix-web/android
       - run: cp artifacts/comix-web/android/app/build/outputs/apk/debug/app-debug.apk ComiHub-android.apk
+      - name: Verify the Android APK does not contain nested installers
+        run: |
+          if unzip -Z1 ComiHub-android.apk | grep -Eq '^assets/public/(ComiHub-android\.apk|installers/|native-updates/)'; then
+            echo "Android bundle unexpectedly contains installer or OTA files."
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: android-installer
