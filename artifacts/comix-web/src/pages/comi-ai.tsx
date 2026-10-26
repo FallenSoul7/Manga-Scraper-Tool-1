@@ -80,6 +80,9 @@ async function callAIWithWaterfall(
       body: JSON.stringify({ messages: msgs, modelMode }),
       signal: controller.signal,
     });
+    if (!res.headers.get("content-type")?.toLowerCase().includes("json")) {
+      throw new Error(`AI service returned a non-JSON response (HTTP ${res.status}).`);
+    }
     if (!res.ok) {
       const body = await res.json().catch(() => ({ error: res.statusText })) as any;
       throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -97,6 +100,21 @@ function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   return fetch(appApiUrl(path), { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+async function apiJsonFetch(path: string, init?: RequestInit): Promise<Response> {
+  const response = await apiFetch(path, init);
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.includes("json")) {
+    throw new Error(`API returned a non-JSON response for ${path} (HTTP ${response.status}).`);
+  }
+  return response;
+}
+
+function sourceApiFetch(sourceId: string, path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  headers.set("X-Source", sourceId);
+  return apiJsonFetch(path, { ...init, headers });
 }
 
 // ── Helper: format items with thumbnails ──────────────────────────────────
@@ -118,7 +136,7 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
   try {
     if (name === "list_sources") {
-      const res = await apiFetch("/api/sources/catalog");
+      const res = await apiJsonFetch("/api/sources/catalog");
       if (!res.ok) return { result: "Failed to load sources." };
       const data = await res.json() as any;
       const supported = (data.extensions ?? []).filter((e: any) => e.supported);
@@ -129,7 +147,7 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
     if (name === "browse_popular") {
       const { sourceId, page = 1 } = args;
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/popular?page=${page}`);
+      const res = await sourceApiFetch(sourceId, `/api/popular?page=${page}`);
       if (!res.ok) return { result: `Could not browse ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
@@ -140,7 +158,7 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
     if (name === "browse_latest") {
       const { sourceId, page = 1 } = args;
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/latest?page=${page}`);
+      const res = await sourceApiFetch(sourceId, `/api/latest?page=${page}`);
       if (!res.ok) return { result: `Could not browse latest from ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
@@ -151,7 +169,8 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
     if (name === "search_manga") {
       const { sourceId, query, page = 1 } = args;
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/search?q=${encodeURIComponent(query)}&page=${page}`);
+      const params = new URLSearchParams({ query: String(query), page: String(page) });
+      const res = await sourceApiFetch(sourceId, `/api/search?${params}`);
       if (!res.ok) return { result: `Search failed in ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
@@ -162,7 +181,8 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
     if (name === "global_search") {
       const { query } = args;
-      const res = await apiFetch(`/api/sources/search/global?q=${encodeURIComponent(query)}`);
+      const params = new URLSearchParams({ query: String(query), page: "1" });
+      const res = await sourceApiFetch("builtin.universal", `/api/search?${params}`);
       if (!res.ok) return { result: `Global search failed for "${query}".` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
@@ -173,20 +193,27 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
     if (name === "browse_by_tag") {
       const { sourceId, tagIds, tag, page = 1 } = args;
-      let tagParam = tagIds ? (Array.isArray(tagIds) ? tagIds.join(',') : tagIds) : tag;
-      if (!tagParam) return { result: "No tag provided." };
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tag/${encodeURIComponent(tagParam)}?page=${page}`);
-      if (!res.ok) return { result: `Could not browse tag "${tagParam}" in ${sourceId}.` };
+      const requestedTags = tagIds
+        ? (Array.isArray(tagIds) ? tagIds : String(tagIds).split(","))
+        : tag
+          ? [tag]
+          : [];
+      if (!requestedTags.length) return { result: "No tag provided." };
+      const tagLabel = requestedTags.map(String).join(", ");
+      const params = new URLSearchParams({ page: String(page) });
+      requestedTags.forEach((tagId: string) => params.append("tagIds[]", String(tagId)));
+      const res = await sourceApiFetch(sourceId, `/api/popular?${params}`);
+      if (!res.ok) return { result: `Could not browse tag "${tagLabel}" in ${sourceId}.` };
       const data = await res.json() as any;
       const items: any[] = data.items ?? data.results ?? [];
-      if (!items.length) return { result: `No results for tag "${tagParam}" in ${sourceId}.` };
+      if (!items.length) return { result: `No results for tag "${tagLabel}" in ${sourceId}.` };
       const formatted = formatItems(items);
-      return { result: `Results for tag "${tagParam}" in ${sourceId}:\n${formatted}` };
+      return { result: `Results for tag "${tagLabel}" in ${sourceId}:\n${formatted}` };
     }
 
     if (name === "get_source_tags") {
       const { sourceId } = args;
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/tags`);
+      const res = await sourceApiFetch(sourceId, "/api/tags");
       if (!res.ok) return { result: `Could not fetch tags for ${sourceId}.` };
       const tags = await res.json() as any[];
       if (!tags.length) return { result: `No tags found for ${sourceId}.` };
@@ -196,7 +223,7 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
     if (name === "get_manga_details") {
       const { sourceId, mangaId } = args;
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/manga/${encodeURIComponent(mangaId)}`);
+      const res = await sourceApiFetch(sourceId, `/api/manga/${encodeURIComponent(mangaId)}`);
       if (!res.ok) return { result: `Could not fetch details for manga ${mangaId}.` };
       const m = await res.json() as any;
       const genres = m.genres?.join(", ") ?? "N/A";
@@ -215,7 +242,7 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
     if (name === "get_chapters") {
       const { sourceId, mangaId } = args;
-      const res = await apiFetch(`/api/sources/${encodeURIComponent(sourceId)}/manga/${encodeURIComponent(mangaId)}/chapters`);
+      const res = await sourceApiFetch(sourceId, `/api/manga/${encodeURIComponent(mangaId)}/chapters`);
       if (!res.ok) return { result: `Could not fetch chapters for manga ${mangaId}.` };
       const data = await res.json() as any;
       const chapters: any[] = data.chapters ?? data.items ?? [];
@@ -251,14 +278,28 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
     if (name === "add_to_library") {
       const { sourceId, mangaId, categoryId } = args;
-      const res = await apiFetch("/api/library/add", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceId, mangaId, categoryId }),
+      const res = await sourceApiFetch(sourceId, `/api/manga/${encodeURIComponent(mangaId)}`);
+      if (!res.ok) return { result: "Failed to load manga details." };
+      const manga = await res.json() as any;
+      const title = String(manga.title ?? mangaId);
+      storeActions.addToLibrary({
+        id: String(manga.id ?? mangaId),
+        title,
+        thumbnail: manga.thumbnail ?? "",
+        type: manga.type ?? "manga",
+        isNsfw: Boolean(manga.isNsfw),
+        author: manga.author || manga.artist || "",
+        status: manga.status ?? "Unknown",
+        sourceId,
+        addedAt: Date.now(),
+        categoryIds: [categoryId || "default"],
+        lastChapterCountSeen: Number(manga.chapterCount ?? 0),
+        pendingUpdates: [],
+        updatesEnabled: false,
+        updatesInitialized: false,
+        trackedChapterIds: [],
       });
-      if (!res.ok) return { result: `Failed to add manga to library.` };
-      const data = await res.json() as any;
-      return { result: `Added "${data.title ?? mangaId}" to library${categoryId ? ` in category ${categoryId}` : ""}.` };
+      return { result: `Added "${title}" to library${categoryId ? ` in category ${categoryId}` : ""}.` };
     }
 
     if (name === "create_category") {
@@ -302,21 +343,14 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
     // ─── NEW SKILLS ────────────────────────────────────────────────────────────
 
     if (name === "web_search") {
-      const { query } = args;
-      const res = await apiFetch(`/api/search/web?q=${encodeURIComponent(query)}`);
-      if (!res.ok) return { result: `Web search failed.` };
-      const data = await res.json() as any;
-      const results = data.results || [];
-      if (!results.length) return { result: `No web results for "${query}".` };
-      const list = results.slice(0, 5).map((r: any) =>
-        `• ${r.title}\n  ${r.snippet}\n  ${r.url}`
-      ).join('\n\n');
-      return { result: `Web results for "${query}":\n${list}` };
+      return { result: "Web search is not available in this version. I can search manga in the installed sources instead." };
     }
 
     if (name === "manga_unified_search") {
       const { query, source = 'all' } = args;
-      const res = await apiFetch(`/api/search/manga-unified?q=${encodeURIComponent(query)}&source=${encodeURIComponent(source)}`);
+      const sourceId = source === "all" ? "builtin.universal" : String(source);
+      const params = new URLSearchParams({ query: String(query), page: "1" });
+      const res = await sourceApiFetch(sourceId, `/api/search?${params}`);
       if (!res.ok) return { result: `Unified search failed.` };
       const data = await res.json() as any;
       const items = data.items || [];
@@ -329,7 +363,8 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
     if (name === "ai_source_search") {
       const { sourceId, query, page = 1 } = args;
-      const res = await apiFetch(`/api/ai/sources/${encodeURIComponent(sourceId)}/search?q=${encodeURIComponent(query)}&page=${page}`);
+      const params = new URLSearchParams({ query: String(query), page: String(page) });
+      const res = await sourceApiFetch(sourceId, `/api/search?${params}`);
       if (!res.ok) return { result: `AI search failed in ${sourceId}.` };
       const data = await res.json() as any;
       const items = data.items ?? data.results ?? [];

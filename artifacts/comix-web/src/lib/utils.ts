@@ -44,7 +44,7 @@ export function mediaImage(url: string | undefined, source?: string): string {
   // These are bundled frontend assets; keep them on the fast app/CDN origin.
   if (url.startsWith('/public/')) return url;
   const sourceMediaPath = (sourceId: string) =>
-    `/api/source-media?source=${encodeURIComponent(sourceId)}&url=${encodeURIComponent(url)}`;
+    appApiUrl(`/api/source-media?source=${encodeURIComponent(sourceId)}&url=${encodeURIComponent(url)}`);
   if (
     resolvedSource === "all.pawchive" &&
     /^https:\/\/(?:img|file)\.pawchive\.pw\//i.test(url) &&
