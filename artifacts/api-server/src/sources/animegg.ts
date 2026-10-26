@@ -66,6 +66,12 @@ function absolute(value: string): string {
   return value.startsWith("http") ? value : `${BASE}${value.startsWith("/") ? "" : "/"}${value}`;
 }
 function slugFromId(id: string): string { return decodeURIComponent(id).replace(/^\/series\//, "").replace(/\/$/, ""); }
+function imageUrl(...candidates: Array<string | undefined>): string {
+  const candidate = candidates
+    .map(value => value?.trim() ?? "")
+    .find(value => value && !/^data:/i.test(value) && !/(?:transparent|placeholder|blank|spacer)/i.test(value));
+  return candidate ? absolute(candidate) : ANIMEGG_ICON;
+}
 
 function toSummary($: cheerio.CheerioAPI, root: any) {
   const link = $(root).find("a[href^='/series/']").first().length
@@ -74,8 +80,14 @@ function toSummary($: cheerio.CheerioAPI, root: any) {
   const href = link.attr("href") || "";
   const title = $(root).find(".rightpop a[href^='/series/'], .releaseLink, h2").first().text().trim() || link.text().trim();
   if (!href || !title) return null;
-  const thumbnail = $(root).find("img").first().attr("src") || $(root).find("img").first().attr("data-src") || "";
-  return { id: slugFromId(href), title, thumbnail: absolute(thumbnail), type: "Anime", isNsfw: false, mediaType: "anime" as const };
+  const image = $(root).find("img").first();
+  const thumbnail = imageUrl(
+    image.attr("data-src"),
+    image.attr("data-original"),
+    image.attr("data-lazy-src"),
+    image.attr("src"),
+  );
+  return { id: slugFromId(href), title, thumbnail, type: "Anime", isNsfw: false, mediaType: "anime" as const };
 }
 
 function parseListing(document: cheerio.CheerioAPI, page: number): MangaListResponse {
@@ -141,7 +153,13 @@ async function details(id: string): Promise<MangaDetail> {
   const title = $("h1").first().text().trim() || $("title").text().replace(/^Watch\s+|\s+Episodes.*$/gi, "").trim() || slug;
   const info = $(".infoami").map((_i, el) => $(el).text().trim()).get().join(" ");
   const status = /completed|finished/i.test(info) ? "Completed" : "Ongoing";
-  const thumbnail = $(".media-object").first().attr("src") || $("meta[property='og:image']").attr("content") || ANIMEGG_ICON;
+  const poster = $(".media-object").first();
+  const thumbnail = imageUrl(
+    poster.attr("data-src"),
+    poster.attr("data-original"),
+    poster.attr("src"),
+    $("meta[property='og:image']").attr("content"),
+  );
   const synopsis = $(".ptext").first().text().trim();
   const alt = $(".infoami").filter((_i, el) => /Alternate Titles/i.test($(el).text())).text().replace(/^Alternate Titles:\s*/i, "").split(",").map(s => s.trim()).filter(Boolean);
   const genres = $(".tagscat a").map((_i, el) => $(el).text().trim()).get().filter(Boolean);

@@ -317,7 +317,12 @@ app.get("/api/animegg/embed", async (req, res) => {
 // ── Source image proxy ──────────────────────────────────────────────────────
 // Some source CDNs reject browser image requests when the source referer is
 // missing (notably Webtoons). Keep this proxy narrowly allow-listed.
-const SOURCE_MEDIA_HOSTS: Record<string, { hosts: string[]; referer: string }> = {
+type SourceMediaPolicy = {
+  hosts: string[];
+  referer: string;
+  extraPortsByHost?: Record<string, number[]>;
+};
+const SOURCE_MEDIA_HOSTS: Record<string, SourceMediaPolicy> = {
   "all.pawchive": { hosts: ["img.pawchive.pw", "file.pawchive.pw"], referer: "https://pawchive.pw/" },
   "all.webtoons": { hosts: ["webtoon-phinf.pstatic.net", "swebtoon-phinf.pstatic.net"], referer: "https://www.webtoons.com/" },
   "all.atsu": { hosts: ["cdn.atsu.moe"], referer: "https://atsu.moe/" },
@@ -328,7 +333,11 @@ const SOURCE_MEDIA_HOSTS: Record<string, { hosts: string[]; referer: string }> =
   "all.mangadex": { hosts: ["uploads.mangadex.org", ".mangadex.network"], referer: "https://mangadex.org/" },
   "en.asurascans": { hosts: [".asurascans.com"], referer: "https://asurascans.com/" },
   "all.thunderscans": { hosts: ["en-thunderscans.com", ".thunderscans.com"], referer: "https://en-thunderscans.com/" },
-  "en.animegg": { hosts: ["vidcache.net", ".vidcache.net", "animegg.org", ".animegg.org"], referer: "https://www.animegg.org/" },
+  "en.animegg": {
+    hosts: ["vidcache.net", ".vidcache.net", "animegg.org", ".animegg.org"],
+    extraPortsByHost: { "vidcache.net": [8161] },
+    referer: "https://www.animegg.org/",
+  },
 };
 
 type MediaCacheEntry = { body: Buffer; contentType: string; expiresAt: number };
@@ -338,7 +347,7 @@ const SOURCE_MEDIA_CACHE_TTL = 6 * 60 * 60 * 1000;
 const SOURCE_MEDIA_CACHE_MAX = 160;
 const SOURCE_MEDIA_CACHE_MAX_BYTES = 1024 * 1024;
 
-function isAllowedSourceMediaUrl(target: URL, source: { hosts: string[] }): boolean {
+function isAllowedSourceMediaUrl(target: URL, source: SourceMediaPolicy): boolean {
   const hostname = target.hostname.toLowerCase();
   const allowedHost = source.hosts.some(host => {
     const normalizedHost = host.toLowerCase();
@@ -346,10 +355,12 @@ function isAllowedSourceMediaUrl(target: URL, source: { hosts: string[] }): bool
       ? hostname.endsWith(normalizedHost)
       : hostname === normalizedHost;
   });
-  return target.protocol === "https:" && target.port === "" && !target.username && !target.password && allowedHost;
+  const allowedPort = target.port === "" ||
+    (source.extraPortsByHost?.[hostname]?.includes(Number(target.port)) ?? false);
+  return target.protocol === "https:" && allowedPort && !target.username && !target.password && allowedHost;
 }
 
-async function fetchSourceMedia(sourceId: string, targetUrl: string, source: { hosts: string[]; referer: string }): Promise<MediaCacheEntry> {
+async function fetchSourceMedia(sourceId: string, targetUrl: string, source: SourceMediaPolicy): Promise<MediaCacheEntry> {
   const key = `${sourceId}|${targetUrl}`;
   const hit = sourceMediaCache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit;
@@ -427,10 +438,9 @@ app.get("/api/source-media", async (req, res) => {
   if (!source || !targetUrl) return res.status(400).json({ error: "source and url are required" });
   let target: URL;
   try { target = new URL(targetUrl); } catch { return res.status(400).json({ error: "Invalid media URL" }); }
-  const allowedHost = source.hosts.some(host => target.hostname === host || (host.startsWith(".") && target.hostname.endsWith(host)));
-    if (target.protocol !== "https:" || !allowedHost) {
-      return res.status(403).json({ error: "Media host is not allowed for this source" });
-    }
+  if (!isAllowedSourceMediaUrl(target, source)) {
+    return res.status(403).json({ error: "Media host is not allowed for this source" });
+  }
   if (sourceId === "all.pawchive" && /\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(target.toString())) {
     return res.status(415).json({ error: "Video files must use the streaming media route" });
   }

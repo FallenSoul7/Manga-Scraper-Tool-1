@@ -53,6 +53,10 @@ export const MangaCard = memo(function MangaCard({
   const { settings } = useSettings();
   const [imageFailed, setImageFailed] = useState(false);
   const savedMediaType = (manga as MangaSummary & { mediaType?: string }).mediaType;
+  const isAnimeGGResult = sourceId === "en.animegg" ||
+    (sourceId === "builtin.universal" && savedMediaType === "anime");
+  const isAnimeGGLogo = isAnimeGGResult &&
+    /\/source-icons\/en\.animegg\.svg(?:[?#]|$)/i.test(manga.thumbnail);
   const isPawchiveSource = sourceId === "all.pawchive";
   const isPawchiveVideo = isPawchiveSource && (
     /\.(mp4|webm|mov|mkv|avi|m4v)(?:[?#&]|$)/i.test(manga.thumbnail) ||
@@ -85,13 +89,23 @@ export const MangaCard = memo(function MangaCard({
             src={thumbnail}
             alt={manga.title}
             className={[
-              "h-full w-full object-cover object-center bg-muted/60 transition-opacity duration-300",
+              "h-full w-full bg-muted/60 transition-opacity duration-300",
+              isAnimeGGLogo ? "object-contain p-5" : "object-cover object-center",
               isSelected && "opacity-70",
             ].filter(Boolean).join(" ")}
             loading="lazy"
             decoding="async"
             draggable={false}
             onError={() => setImageFailed(true)}
+          />
+        ) : isAnimeGGResult ? (
+          <img
+            src="/public/source-icons/en.animegg.svg"
+            alt="AnimeGG"
+            className="h-full w-full object-contain bg-muted p-5"
+            loading="lazy"
+            decoding="async"
+            draggable={false}
           />
         ) : isPawchiveSource ? (
           <img
