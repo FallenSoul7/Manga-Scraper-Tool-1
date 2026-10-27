@@ -14,6 +14,6 @@
 - [API runtime bundle freshness](api-runtime-bundle-freshness.md) — source registry changes require rebuilding and restarting the API workflow; a stale dist bundle can report catalog handlers as missing.
 - [Scrapling browser dependency](scrapling-curl-cffi.md) — Scrapling 0.4.x lazily imports curl_cffi for StealthyFetcher; health must reflect browser-engine readiness.
 - [Web workspace dependency repair](web-workspace-dependencies.md) — workspace-scoped pnpm install may be needed when the package installer targets the monorepo root.
-- [Type contract drift](type-contract-drift.md) — source routes must use MangaSource details/chapters/pages, and Plyr's bundled declarations need an explicit default-import exception.
+- [Type contract drift](type-contract-drift.md) — use canonical API types and rebuild ignored shared declarations before diagnosing consumer-only type errors.
 - [AnimeGG response latency](animegg-response-latency.md) — valid series pages can take 23–30s; short timeouts cause false Cloudflare fallbacks, so retain successful HTML in cache.
 - [Android update expectations](android-update-expectations.md) — users expect installed Android apps to receive web-feature updates after production releases.
