@@ -13,6 +13,9 @@ const SKIPPED_DIRECTORIES = new Set(["native-updates", "installers"]);
 const SKIPPED_FILE_PATTERN = /\.(apk|aab|ipa|exe|msi|appimage|deb|rpm|dmg|map)$/i;
 
 if (!privateKey) {
+  if (process.env.VERCEL_ENV === "production") {
+    throw new Error("COMIHUB_OTA_PRIVATE_KEY must be configured for Vercel production builds.");
+  }
   console.log("COMIHUB_OTA_PRIVATE_KEY is not configured; skipping signed native update publication.");
   process.exit(0);
 }

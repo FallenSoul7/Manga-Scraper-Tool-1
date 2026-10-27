@@ -18,7 +18,7 @@ Let existing Android and iOS installs receive compatible ComiHub web changes aft
 1. Keep update checks event-driven: check when the native app opens and when it returns to the foreground. Do not poll on a timer.
 2. Remove the 24-hour delay between successful updates. Continue deduplicating a bundle already staged, verify the signature and checksum, and stage a valid newer bundle.
 3. Keep applying a staged bundle on the next app launch rather than forcibly reloading during reading. Failed checks must not block normal startup.
-4. Give `/native-updates/latest.json` a `no-store` cache policy. Keep immutable, content-addressed ZIP bundles cacheable.
+4. Give `/native-updates/latest.json` and `/native-updates/native-release.json` a `no-store` cache policy. Keep immutable, content-addressed ZIP bundles cacheable.
 5. On a Vercel production build, fail with a clear error if the OTA signing key is missing. Local and preview builds may continue without publishing an OTA bundle. The signing key must be configured in Vercel's secret settings and must match the public key embedded in the app.
 6. Keep the existing minimum native version requirement. App binaries below the published minimum need one compatible APK/IPA update before they can use OTA updates.
 
@@ -34,6 +34,6 @@ Let existing Android and iOS installs receive compatible ComiHub web changes aft
 
 - Build and typecheck the web and API workspaces.
 - Confirm local builds without the signing key still work, while a production Vercel build without the key fails clearly.
-- Confirm the latest manifest is not cached and a second bundle is not blocked by the previous successful update.
+- Confirm both update manifests are not cached, versioned ZIPs remain cacheable, and a second bundle is not blocked by the previous successful update.
 - After the user deploys, confirm the live manifest references that Vercel commit and that its ZIP checksum and signature validate.
 - Confirm current Android and iOS app versions meet the manifest minimum; verify a staged bundle applies after reopening the app.

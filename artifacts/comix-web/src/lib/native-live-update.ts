@@ -2,13 +2,11 @@ import { Capacitor } from "@capacitor/core";
 import { LiveUpdate } from "@capawesome/capacitor-live-update";
 
 const UPDATE_MANIFEST_URL = "https://www.comihub.top/native-updates/latest.json";
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
-// A failed attempt (offline, throttled, signature mismatch) should not wait a
-// full day before retrying, but it must also not download on every resume.
+// Avoid repeated downloads after a transient network or signature failure.
 const RETRY_INTERVAL_MS = 60 * 60 * 1000;
-const LAST_CHECK_KEY = "comihub.native-update.last-check";
 const LAST_FAILURE_KEY = "comihub.native-update.last-failure";
 const UPDATE_CHECK_TIMEOUT_MS = 5_000;
+let updateCheckInFlight: Promise<void> | null = null;
 
 interface UpdateManifest {
   bundleId: string;
@@ -49,57 +47,61 @@ export async function markNativeBundleReady(): Promise<void> {
 }
 
 /** Check for a signed, binary-compatible web bundle; native code changes still require a new APK/IPA. */
-export async function checkForNativeUpdate(): Promise<void> {
-  if (!isNativeUpdatePlatform()) return;
+export function checkForNativeUpdate(): Promise<void> {
+  if (!isNativeUpdatePlatform()) return Promise.resolve();
+  if (updateCheckInFlight) return updateCheckInFlight;
 
-  try {
-    const version = await LiveUpdate.getVersionCode();
-    const appVersionCode = Number(version.versionCode);
-    if (!Number.isFinite(appVersionCode)) return;
-
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS);
-    let response: Response;
+  updateCheckInFlight = (async () => {
     try {
-      response = await fetch(UPDATE_MANIFEST_URL, {
-        cache: "no-store",
-        credentials: "omit",
-        signal: controller.signal,
+      const version = await LiveUpdate.getVersionCode();
+      const appVersionCode = Number(version.versionCode);
+      if (!Number.isFinite(appVersionCode)) return;
+
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS);
+      let response: Response;
+      try {
+        response = await fetch(UPDATE_MANIFEST_URL, {
+          cache: "no-store",
+          credentials: "omit",
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeout);
+      }
+      if (!response.ok) return;
+
+      const manifest = parseManifest(await response.json());
+      if (!manifest || appVersionCode < manifest.minimumVersionCode) return;
+
+      if (manifest.bundleId === localStorage.getItem("comihub.native-update.bundle-id")) return;
+      if (Date.now() - Number(localStorage.getItem(LAST_FAILURE_KEY) ?? 0) < RETRY_INTERVAL_MS) return;
+
+      await LiveUpdate.downloadBundle({
+        artifactType: "zip",
+        bundleId: manifest.bundleId,
+        url: manifest.url,
+        checksum: manifest.checksum,
+        signature: manifest.signature,
       });
+      await LiveUpdate.setNextBundle({ bundleId: manifest.bundleId });
+      localStorage.setItem("comihub.native-update.bundle-id", manifest.bundleId);
+      localStorage.removeItem(LAST_FAILURE_KEY);
+      // Keep this version running now. Capawesome applies the staged bundle next time
+      // the app is opened, allowing its rollback timer to protect startup.
+    } catch (error) {
+      // OTA is opportunistic: network, signing, or compatibility errors must never
+      // block the bundled app or its normal backend loading.
+      try {
+        localStorage.setItem(LAST_FAILURE_KEY, String(Date.now()));
+      } catch {
+        /* storage may be unavailable */
+      }
+      console.warn("ComiHub native update check skipped", error);
     } finally {
-      window.clearTimeout(timeout);
+      updateCheckInFlight = null;
     }
-    if (!response.ok) return;
+  })();
 
-    const manifest = parseManifest(await response.json());
-    if (!manifest || appVersionCode < manifest.minimumVersionCode) return;
-
-    const lastCheck = Number(localStorage.getItem(LAST_CHECK_KEY) ?? 0);
-    if (manifest.bundleId === localStorage.getItem("comihub.native-update.bundle-id")) return;
-    if (Date.now() - lastCheck < CHECK_INTERVAL_MS) return;
-    if (Date.now() - Number(localStorage.getItem(LAST_FAILURE_KEY) ?? 0) < RETRY_INTERVAL_MS) return;
-
-    await LiveUpdate.downloadBundle({
-      artifactType: "zip",
-      bundleId: manifest.bundleId,
-      url: manifest.url,
-      checksum: manifest.checksum,
-      signature: manifest.signature,
-    });
-    await LiveUpdate.setNextBundle({ bundleId: manifest.bundleId });
-    localStorage.setItem("comihub.native-update.bundle-id", manifest.bundleId);
-    localStorage.setItem(LAST_CHECK_KEY, String(Date.now()));
-    localStorage.removeItem(LAST_FAILURE_KEY);
-    // Keep this version running now. Capawesome applies the staged bundle next time
-    // the app is opened, allowing its rollback timer to protect startup.
-  } catch (error) {
-    // OTA is opportunistic: network, signing, or compatibility errors must never
-    // block the bundled app or its normal backend loading.
-    try {
-      localStorage.setItem(LAST_FAILURE_KEY, String(Date.now()));
-    } catch {
-      /* storage may be unavailable */
-    }
-    console.warn("ComiHub native update check skipped", error);
-  }
+  return updateCheckInFlight;
 }
