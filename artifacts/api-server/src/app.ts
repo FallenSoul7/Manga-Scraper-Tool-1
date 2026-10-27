@@ -335,7 +335,8 @@ const SOURCE_MEDIA_HOSTS: Record<string, SourceMediaPolicy> = {
   "all.thunderscans": { hosts: ["en-thunderscans.com", ".thunderscans.com"], referer: "https://en-thunderscans.com/" },
   "en.animegg": {
     hosts: ["vidcache.net", ".vidcache.net", "animegg.org", ".animegg.org"],
-    extraPortsByHost: { "vidcache.net": [8161] },
+    // AnimeGG's public URL redirects to sharded CDN hosts on port 8166.
+    extraPortsByHost: { "vidcache.net": [8161], ".vidcache.net": [8166] },
     referer: "https://www.animegg.org/",
   },
 };
@@ -356,7 +357,13 @@ function isAllowedSourceMediaUrl(target: URL, source: SourceMediaPolicy): boolea
       : hostname === normalizedHost;
   });
   const allowedPort = target.port === "" ||
-    (source.extraPortsByHost?.[hostname]?.includes(Number(target.port)) ?? false);
+    Object.entries(source.extraPortsByHost ?? {}).some(([host, ports]) => {
+      const normalizedHost = host.toLowerCase();
+      const matches = normalizedHost.startsWith(".")
+        ? hostname.endsWith(normalizedHost)
+        : hostname === normalizedHost;
+      return matches && ports.includes(Number(target.port));
+    });
   return target.protocol === "https:" && allowedPort && !target.username && !target.password && allowedHost;
 }
 
