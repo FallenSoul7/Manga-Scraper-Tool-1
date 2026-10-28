@@ -1,7 +1,13 @@
-import type { MangaSource, PopularSortOption } from "./types";
+import type {
+  MangaSource,
+  PopularSortOption,
+  SourceManifestCapabilities,
+  SourceManifestFilter,
+} from "./types";
 
 export type SourceAdapterFamily =
   | "builtin"
+  | "api"
   | "mangadex-api"
   | "madara"
   | "manga-themesia"
@@ -14,15 +20,7 @@ export type SourceAdapterFamily =
 
 export type SourceFilterType = "search" | "select" | "multi-select" | "tri-state";
 
-export interface SourceFilterManifest {
-  id: string;
-  label: string;
-  type: SourceFilterType;
-  /** Values are populated for select-like filters when the source exposes them. */
-  options?: Array<{ value: string; label: string }>;
-  /** Query field consumed by the source adapter. */
-  queryKey?: string;
-}
+export type SourceFilterManifest = SourceManifestFilter;
 
 export interface SourceManifest {
   id: string;
@@ -35,20 +33,7 @@ export interface SourceManifest {
   languageAware: boolean;
   isNsfw: boolean;
   adapter: SourceAdapterFamily;
-  capabilities: {
-    search: boolean;
-    popular: boolean;
-    latest: boolean;
-    detail: boolean;
-    chapters: boolean;
-    pages: boolean;
-    tags: boolean;
-    pagination: boolean;
-    requestHeaders: boolean;
-    referer: boolean;
-    rangeRequests: boolean;
-    mediaTypes: Array<"manga" | "anime" | "novel">;
-  };
+  capabilities: SourceManifestCapabilities;
   filters: SourceFilterManifest[];
 }
 
@@ -120,6 +105,20 @@ export function createSourceManifest(
   catalog?: { slug?: string; versionCode?: number; isNsfw?: boolean },
 ): SourceManifest {
   const lang = source.lang || "all";
+  const inferredCapabilities: SourceManifestCapabilities = {
+    search: Boolean(source.search),
+    popular: Boolean(source.popular),
+    latest: Boolean(source.latest),
+    detail: Boolean(source.details),
+    chapters: Boolean(source.chapters),
+    pages: Boolean(source.pages),
+    tags: Boolean(source.tags),
+    pagination: true,
+    requestHeaders: Boolean(source.requestPolicy?.headers),
+    referer: Boolean(source.requestPolicy?.referer || source.imageReferer),
+    rangeRequests: Boolean(source.requestPolicy?.supportsRange),
+    mediaTypes: mediaTypes(source),
+  };
   return {
     id: source.id,
     name: source.name,
@@ -129,21 +128,12 @@ export function createSourceManifest(
     languages: LANGUAGE_ALIASES[lang] ?? [lang],
     languageAware: lang === "all" || source.id === "all.mangadex",
     isNsfw: catalog?.isNsfw ?? source.isNsfw,
-    adapter: adapterFamily(source),
+    adapter: (source.manifestAdapter as SourceAdapterFamily | undefined) ?? adapterFamily(source),
     capabilities: {
-      search: Boolean(source.search),
-      popular: Boolean(source.popular),
-      latest: Boolean(source.latest),
-      detail: Boolean(source.details),
-      chapters: Boolean(source.chapters),
-      pages: Boolean(source.pages),
-      tags: Boolean(source.tags),
-      pagination: true,
-      requestHeaders: Boolean(source.requestPolicy?.headers),
-      referer: Boolean(source.requestPolicy?.referer || source.imageReferer),
-      rangeRequests: Boolean(source.requestPolicy?.supportsRange),
-      mediaTypes: mediaTypes(source),
+      ...inferredCapabilities,
+      ...source.manifestCapabilities,
+      mediaTypes: source.manifestCapabilities?.mediaTypes ?? inferredCapabilities.mediaTypes,
     },
-    filters: filtersFor(source),
+    filters: source.manifestFilters ?? filtersFor(source),
   };
 }

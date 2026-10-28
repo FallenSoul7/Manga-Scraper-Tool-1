@@ -18,14 +18,33 @@ ported automatically.
   `isSupported()` reports whether a handler is registered; unsupported catalog
   entries remain unavailable.
 - `extensions/sdk.ts` defines a versioned manifest and `ExtensionAdapter`
-  interface, but no runtime or installed-extension loader consumes it yet.
-  `asMangaSource()` shows how an adapter can preserve compatibility with the
-  current API, reader, and library.
+  interface. Reviewed build-time adapters can now be validated and registered
+  without replacing handwritten handlers, but no adapter module uses that
+  bridge yet and there is no runtime installed-extension loader.
+- `asMangaSource()` preserves compatibility with the current API, reader, and
+  library while keeping declared capabilities and filters visible.
 - Pawchive is already a separate registered source with dedicated creator and
   post pages. It is not part of the Keiyoushi manga-adapter pilot.
 - The existing `extension-rewrite.md` already rules out executing downloaded
   source code with unrestricted server privileges. This plan makes that rule
   concrete.
+
+### Supported-ID snapshot
+
+The current registry exposes these supported IDs; catalog entries not listed
+here remain metadata-only:
+
+`all.atsu`, `all.danbooru`, `all.hentaifox`, `all.mangadex`,
+`all.pandachaika`, `all.pawchive`, `all.thunderscans`, `all.webtoons`,
+`builtin.universal`, `en.allanime`, `en.animegg`, `en.asurascans`,
+`en.comickfan`, `en.comix`, `en.elftoon`, `en.mangafreak`, `en.manhuaplus`,
+`en.ninehentai`, `en.novelfull`, `en.novelhall`, `en.onlythebesthentai`,
+`en.ravenscans`, `en.resetscans`, `en.royalroad`, `en.rule34`, `en.utoon`,
+`en.xkcd`, `local.koofr`.
+
+Pilot status: `en.comicasura` is unsupported; `en.comickfan` is supported;
+AllManga is listed as `en.allanime` and is supported, with `en.allmanga` kept
+as the implementation ID.
 
 ## Findings from the three representative extensions
 
@@ -108,6 +127,9 @@ cannot represent the upstream behavior without loss.
 
 ### Phase 0 — Catalog and contract baseline
 
+**Status:** The fixture-backed listing-to-page contract and manifest validation
+are in place. The supported-ID inventory remains part of the pilot baseline.
+
 - Keep the imported catalog as metadata; do not rebuild or recrawl it.
 - Record the current supported IDs and the three pilot examples' current
   handler status.
@@ -117,6 +139,10 @@ cannot represent the upstream behavior without loss.
   checks separate from deterministic tests.
 
 ### Phase 1 — SDK-to-registry bridge
+
+**Status:** The validated build-time bridge is in place. Incomplete adapters
+cannot be registered as supported sources; no new catalog source is registered
+until its implementation and source-contract checks are complete.
 
 - Make the existing `ExtensionAdapter` path usable by the registry without
   replacing existing handwritten handlers.

@@ -1,4 +1,28 @@
 export type PosterQuality = "small" | "medium" | "large";
+export type SourceMediaType = "manga" | "anime" | "novel";
+
+export interface SourceManifestCapabilities {
+  search: boolean;
+  popular: boolean;
+  latest: boolean;
+  detail: boolean;
+  chapters: boolean;
+  pages: boolean;
+  tags: boolean;
+  pagination: boolean;
+  requestHeaders: boolean;
+  referer: boolean;
+  rangeRequests: boolean;
+  mediaTypes: SourceMediaType[];
+}
+
+export interface SourceManifestFilter {
+  id: string;
+  label: string;
+  type: "search" | "select" | "multi-select" | "tri-state";
+  options?: Array<{ value: string; label: string }>;
+  queryKey?: string;
+}
 
 export interface ListOptions {
   page: number;
@@ -160,4 +184,10 @@ export interface MangaSource {
   imageReferer?: string;
   /** Shared request contract for adapters that need source headers/referers. */
   requestPolicy?: SourceRequestPolicy;
+  /** Explicit capabilities for SDK-backed adapters; handwritten sources are inferred. */
+  manifestCapabilities?: Partial<SourceManifestCapabilities>;
+  /** Explicit filter definitions for SDK-backed adapters. */
+  manifestFilters?: SourceManifestFilter[];
+  /** Optional adapter family override for SDK-backed adapters. */
+  manifestAdapter?: string;
 }

@@ -25,6 +25,10 @@ import { NovelFullSource, NovelHallSource } from "./novelsites";
 import { AtsuSource } from "./atsu";
 import { createUniversalSource } from "./universal";
 import { createSourceManifest, type SourceManifest } from "./manifest";
+import {
+  registerExtensionAdapter as registerSdkExtensionAdapter,
+  type ExtensionAdapter,
+} from "../extensions/sdk";
 import catalogJson from "./catalog.generated.json" with { type: "json" };
 
 interface CatalogExtension {
@@ -50,6 +54,15 @@ const SOURCES_BY_ID = new Map<string, MangaSource>();
 function register(source: MangaSource) {
   SOURCES_BY_ID.set(source.id, source);
 }
+
+/**
+ * Register a reviewed, build-time SDK adapter. Existing handwritten handlers
+ * retain priority; an adapter cannot silently replace an installed source ID.
+ */
+export function registerExtensionAdapter(adapter: ExtensionAdapter): MangaSource {
+  return registerSdkExtensionAdapter(SOURCES_BY_ID, adapter);
+}
+
 register(ComixSource);
 register(MangaDexSource);
 register(MangafreakSource);
