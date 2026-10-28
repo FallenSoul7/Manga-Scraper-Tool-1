@@ -1,6 +1,6 @@
 # Keiyoushi Web Compatibility Design
 
-**Status:** Approved design; implementation has not started.
+**Status:** Implementation in progress.
 
 ## Goal
 
@@ -94,8 +94,11 @@ Show the compatibility state and isolate failures to the affected source.
 - Show the Custom badge only for ComiXHub-owned handlers, including ID
   collisions. Repository-only entries receive no origin badge.
 - Show compatibility state separately from the Custom badge. Keep entries
-  visible when they need an adapter; only enable Add when a usable handler is
-  registered, or when an Experimental handler has an explicit supported path.
+  visible when they need an adapter, and enable Add for every repository entry
+  so users can try each one. Add registers source metadata locally; it does not
+  download or execute the Android APK/JAR. Opening an entry without a web handler
+  must show an explicit Needs adapter state rather than fake results or a generic
+  failure.
 - Do not change the existing Sources or Anime tab behavior as part of the
   initial compatibility work.
 
@@ -105,7 +108,8 @@ Show the compatibility state and isolate failures to the affected source.
    the source-code repository, and produce a family/override coverage report.
 2. **Compiler and runtime boundary:** Add deterministic input validation,
    source-to-handler mapping, explicit compatibility states, and source-scoped
-   errors. Keep source code out of runtime execution.
+   errors. Keep source code out of runtime execution. Keep metadata Add available
+   for every catalog entry, independently of scraper readiness.
 3. **First family adapters:** Choose the largest genuinely shared families
    after inspecting their source modules. Verify representative sources with
    fixtures before enabling the family broadly.
@@ -126,8 +130,9 @@ Show the compatibility state and isolate failures to the affected source.
 - Registry tests verify stable IDs, custom-handler precedence, and explicit
   compatibility states.
 - UI tests verify all catalog entries remain visible/searchable, Custom badges
-  appear only for ComiXHub-owned handlers, and one source failure does not
-  replace the catalog with an error state.
+  appear only for ComiXHub-owned handlers, Add is available for handled and
+  unhandled entries, and one source failure does not replace the catalog with an
+  error state.
 - Live upstream checks are separate from deterministic CI tests.
 
 ## Limits and success criteria
