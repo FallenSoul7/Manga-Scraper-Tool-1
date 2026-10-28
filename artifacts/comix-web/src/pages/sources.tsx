@@ -185,9 +185,15 @@ function canonicalSourceId(id: string): string {
 }
 
 function sourceAvailabilityRank(extension: CatalogExtension): number {
-  const id = canonicalSourceId(extension.id);
-  if (!extension.supported && id !== ALLMANGA_SOURCE_ID) return 2;
-  return NOT_WORKING_SOURCE_IDS.has(id) || UPSTREAM_BLOCKED_SOURCE_IDS.has(id) ? 1 : 0;
+  const origin = extension.origin ??
+    (extension.supported ? "custom" : "repository");
+  if (origin === "custom") return 0;
+
+  switch (getCompatibility(extension)) {
+    case "ready": return 1;
+    case "experimental": return 2;
+    case "needs-adapter": return 3;
+  }
 }
 
 // Mirrors Mihon's BrowseIcons defaultModifier: a fixed square icon slot with
