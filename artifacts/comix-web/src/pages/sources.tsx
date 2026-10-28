@@ -34,6 +34,8 @@ import { requestBackendRefresh } from "@/components/backend-warmup";
 interface CatalogExtension {
   id: string; slug: string; name: string; lang: string;
   isNsfw: boolean; versionCode: number; iconUrl: string | null; supported: boolean;
+  origin?: "repository" | "custom";
+  compatibility?: "ready" | "experimental" | "needs-adapter";
   manifest?: {
     languages: string[];
     languageAware: boolean;
@@ -96,6 +98,35 @@ const NOT_WORKING_SOURCE_IDS = new Set([
   "en.allmanga",
 ]);
 const UPSTREAM_BLOCKED_SOURCE_IDS = new Set(["en.royalroad"]);
+
+type CompatibilityState = "ready" | "experimental" | "needs-adapter";
+
+function getCompatibility(extension: CatalogExtension): CompatibilityState {
+  if (extension.compatibility) return extension.compatibility;
+  const sourceId = canonicalSourceId(extension.id);
+  if (NOT_WORKING_SOURCE_IDS.has(sourceId) || UPSTREAM_BLOCKED_SOURCE_IDS.has(sourceId)) {
+    return "experimental";
+  }
+  return extension.supported ? "ready" : "needs-adapter";
+}
+
+function CompatibilityBadge({ state }: { state: CompatibilityState }) {
+  const styles: Record<CompatibilityState, string> = {
+    ready: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+    experimental: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
+    "needs-adapter": "bg-muted text-muted-foreground border-border",
+  };
+  const labels: Record<CompatibilityState, string> = {
+    ready: "Ready",
+    experimental: "Experimental",
+    "needs-adapter": "Needs adapter",
+  };
+  return (
+    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 ${styles[state]}`}>
+      {labels[state]}
+    </span>
+  );
+}
 
 function SourceStatusTag({ sourceId, supported = true }: { sourceId: string; supported?: boolean }) {
   if (!supported) return null;
@@ -798,7 +829,7 @@ function BrowseTab({
       // by their own isNsfw metadata.
       .filter(e => !showNsfw || isInherentlyMature(e))
       .filter(e => !isInherentlyMature(e) || adultAccess)
-      .filter(e => supportedOnly ? e.supported : true)
+      .filter(e => supportedOnly ? getCompatibility(e) !== "needs-adapter" : true)
       // Keep the four curated sources and the other anime integrations out of
       // the default list; they remain discoverable through explicit search.
       .filter(e => q ? true : !HIDDEN_FROM_DEFAULT_BROWSE.has(e.id))
@@ -871,6 +902,8 @@ function BrowseTab({
         {visible.map(ext => {
           const canonicalId = ext.id === ALLMANGA_CATALOG_ID ? ALLMANGA_SOURCE_ID : ext.id;
           const isSupported = ext.supported || ext.id === ALLMANGA_CATALOG_ID;
+          const compatibility = getCompatibility({ ...ext, supported: isSupported });
+          const isCustom = ext.origin === "custom" || (ext.origin === undefined && isSupported);
           const isInstalled = !!installedMap[canonicalId];
           return (
             <div key={ext.id} className="flex items-center gap-3 px-4 py-3">
@@ -879,8 +912,8 @@ function BrowseTab({
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-semibold text-sm truncate">{ext.name}</span>
                   {ext.isNsfw && <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">18+</span>}
-                  {!isSupported && <span className="text-[10px] px-1.5 py-0 rounded bg-muted text-muted-foreground">Coming soon</span>}
-                  <SourceStatusTag sourceId={canonicalId} supported={isSupported} />
+                  {isCustom && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-primary/20 bg-primary/10 text-primary shrink-0">Custom</span>}
+                  <CompatibilityBadge state={compatibility} />
                 </div>
                   <p className="text-xs text-muted-foreground">
                     {(ext.manifest?.languages?.length && ext.manifest.languages[0] !== "all")
@@ -896,13 +929,18 @@ function BrowseTab({
               ) : (
                 <Button
                   size="sm" variant={isSupported ? "default" : "outline"}
-                  disabled={!isSupported || !online} className="h-8 text-xs px-3 shrink-0"
+                  className="h-8 text-xs px-3 shrink-0"
                   onClick={() => {
                     storeActions.installSource({ id: canonicalId, name: ext.name, lang: ext.lang, languages: ext.manifest?.languages ?? [ext.lang], adapter: ext.manifest?.adapter, manifestVersion: ext.versionCode, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl, isPinned: false });
-                    toast({ title: `Added ${ext.name}`, description: "Open the Sources tab to browse it." });
+                    toast({
+                      title: `Added ${ext.name}`,
+                      description: compatibility === "needs-adapter"
+                        ? "Saved on this device. This adds source metadata only; ComiXHub will not download or run its APK/JAR."
+                        : "Open the Sources tab to browse it.",
+                    });
                   }}
                 >
-                  <Plus className="h-3.5 w-3.5 mr-1" /> {online ? "Add" : "Online only"}
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add
                 </Button>
               )}
             </div>

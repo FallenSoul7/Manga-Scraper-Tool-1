@@ -75,6 +75,7 @@ interface PopularSortOption { value: string; label: string; }
 interface CatalogEntry {
   id: string; name: string; lang: string; isNsfw: boolean;
   iconUrl?: string | null; supported?: boolean;
+  compatibility?: "ready" | "experimental" | "needs-adapter";
   popularSorts?: PopularSortOption[];
 }
 
@@ -161,8 +162,10 @@ export default function SourceBrowsePage() {
     () => catalogData?.extensions?.find(e => e.id === sourceId) ?? null,
     [catalogData, sourceId],
   );
+  const compatibility = catalogEntry?.compatibility ??
+    (catalogEntry?.supported ? "ready" : catalogEntry ? "needs-adapter" : null);
 
-  const source = installedSource ?? (catalogEntry ? {
+  const source = compatibility === "needs-adapter" ? null : installedSource ?? (catalogEntry ? {
     id: sourceId,
     name: catalogEntry.name,
     lang: catalogEntry.lang,
@@ -495,6 +498,24 @@ export default function SourceBrowsePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (catalogEntry && compatibility === "needs-adapter") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background px-6 text-center">
+        <div className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
+          Needs adapter
+        </div>
+        <div className="max-w-md">
+          <h1 className="text-lg font-semibold">{catalogEntry.name} is not ready to browse</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            This entry is saved as repository metadata, but ComiXHub does not have a web scraper for it yet.
+            Its Android APK/JAR is not downloaded or executed.
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => setLocation("/sources")}>Back to sources</Button>
       </div>
     );
   }

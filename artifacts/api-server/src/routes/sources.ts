@@ -4,6 +4,27 @@ import catalogRaw from "../sources/catalog.generated.json" assert { type: "json"
 
 const router = Router();
 const manifests = getSourceManifests();
+type CompatibilityState = "ready" | "experimental" | "needs-adapter";
+
+// Keep known incomplete/blocked handlers distinct from both fully usable
+// sources and catalog entries that do not yet have a web implementation.
+const EXPERIMENTAL_SOURCE_IDS = new Set([
+  "en.comix",
+  "en.comickfan",
+  "en.utoon",
+  "en.manhuaplus",
+  "en.elftoon",
+  "en.onlythebesthentai",
+  "en.allmanga",
+  "en.allanime",
+  "en.royalroad",
+]);
+
+function compatibilityFor(id: string): CompatibilityState {
+  if (!isSupported(id)) return "needs-adapter";
+  return EXPERIMENTAL_SOURCE_IDS.has(id) ? "experimental" : "ready";
+}
+
 const universal = {
   id: "builtin.universal",
   slug: "builtin-universal",
@@ -13,6 +34,8 @@ const universal = {
   versionCode: 1,
   iconUrl: "/public/source-icons/universal.svg",
   supported: true,
+  origin: "custom" as const,
+  compatibility: "ready" as const,
   manifest: manifests.find(manifest => manifest.id === "builtin.universal") ?? null,
 };
 
@@ -30,6 +53,8 @@ const enriched = {
       ? `/public/source-icons/${ext.icon as string}`
       : ext.id === "all.atsu" ? "https://atsu.moe/favicon.ico" : null,
     supported: isSupported(ext.id as string),
+    origin: isSupported(ext.id as string) ? "custom" : "repository",
+    compatibility: compatibilityFor(ext.id as string),
     manifest: manifests.find(manifest => manifest.id === ext.id || (ext.id === "en.allanime" && manifest.id === "en.allmanga")) ?? null,
   }))],
 };
