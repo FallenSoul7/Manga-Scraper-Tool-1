@@ -19,6 +19,7 @@ const CLIENT_FIRST_SOURCE_IDS = new Set([
   "all.atsu",
   "all.danbooru",
   "all.mangadex",
+  "all.pawchive",
   "all.webtoons",
   "en.asurascans",
   "all.thunderscans",

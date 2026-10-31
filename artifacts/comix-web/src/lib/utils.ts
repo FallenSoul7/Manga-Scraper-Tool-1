@@ -11,7 +11,7 @@ const PROXIED_MEDIA_SOURCES = new Set([
   "all.webtoons", "all.atsu", "en.novelfull", "all.mangadex", "en.asurascans", "all.thunderscans", "en.animegg", "en.resetscans",
 ]);
 const NATIVE_DIRECT_MEDIA_SOURCES = new Set([
-  "all.atsu", "all.danbooru", "all.webtoons", "all.mangadex", "en.asurascans", "all.thunderscans",
+  "all.atsu", "all.danbooru", "all.pawchive", "all.webtoons", "all.mangadex", "en.asurascans", "all.thunderscans",
 ]);
 
 const INFERRED_MEDIA_HOSTS: Array<{ source: string; hosts: string[] }> = [
@@ -86,6 +86,9 @@ export function shouldProxySourceMedia(source?: string | null): boolean {
 export function mediaVideo(url: string | undefined, source?: string): string {
   if (!url) return "";
   const apiOrigin = (import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL ?? "").replace(/\/+$/, "");
+  if (Capacitor.isNativePlatform() && source === "all.pawchive" && /^https:\/\//i.test(url)) {
+    return url;
+  }
   if (source === "all.pawchive" && /^https:\/\//i.test(url)) {
     return `${apiOrigin}/api/source-video?source=${encodeURIComponent(source)}&url=${encodeURIComponent(url)}`;
   }

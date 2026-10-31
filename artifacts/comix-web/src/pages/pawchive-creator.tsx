@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
+import { Capacitor } from "@capacitor/core";
 import { ArrowLeft, ArrowUp, Calendar, Image as ImageIcon, Loader2, Search, X, Youtube } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { getClientSourceAdapter } from "@/lib/client-sources";
 import { mediaImage } from "@/lib/utils";
-
 type Creator = { id: string; title: string; thumbnail: string; author?: string; synopsis?: string };
 type Post = {
   id: string;
@@ -82,6 +83,11 @@ export default function PawchiveCreatorPage() {
     staleTime: Infinity,
     enabled: false,
   });
+  const pawchiveAdapter = getClientSourceAdapter("all.pawchive");
+  const isNativeApp = Capacitor.isNativePlatform();
+  const sourceReady = isNativeApp
+    ? Boolean(pawchiveAdapter?.details && pawchiveAdapter?.chapters)
+    : backendReady;
   const [search, setSearch] = useState("");
   const [mediaFilter, setMediaFilter] = useState<"all" | "image" | "video" | "mixed">("all");
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -95,18 +101,36 @@ export default function PawchiveCreatorPage() {
 
   const details = useQuery<Creator>({
     queryKey: ["pawchive-creator", creatorId],
-    queryFn: () => customFetch<Creator>(`/api/manga/${encodeURIComponent(creatorId)}`, {
-      headers: { "X-Source": "all.pawchive" },
-    }),
-    enabled: !!creatorId && backendReady,
+    queryFn: async () => {
+      if (isNativeApp && pawchiveAdapter?.details) {
+        const detail = await pawchiveAdapter.details(creatorId);
+        return {
+          id: detail.id,
+          title: detail.title,
+          thumbnail: detail.thumbnail,
+          author: detail.author,
+          synopsis: detail.synopsis,
+        };
+      }
+      return customFetch<Creator>(`/api/manga/${encodeURIComponent(creatorId)}`, {
+        headers: { "X-Source": "all.pawchive" },
+      });
+    },
+    enabled: !!creatorId && sourceReady,
   });
   const posts = useQuery<{ items: Post[] }>({
     queryKey: ["pawchive-creator-posts", creatorId],
-    queryFn: () => customFetch<{ items: Post[] }>(
-      `/api/manga/${encodeURIComponent(creatorId)}/chapters?dedupe=false`,
-      { headers: { "X-Source": "all.pawchive" } },
-    ),
-    enabled: !!creatorId && backendReady,
+    queryFn: async () => {
+      if (isNativeApp && pawchiveAdapter?.chapters) {
+        const response = await pawchiveAdapter.chapters(creatorId);
+        return { items: response.items.map(post => ({ ...post, id: String(post.id) })) };
+      }
+      return customFetch<{ items: Post[] }>(
+        `/api/manga/${encodeURIComponent(creatorId)}/chapters?dedupe=false`,
+        { headers: { "X-Source": "all.pawchive" } },
+      );
+    },
+    enabled: !!creatorId && sourceReady,
   });
 
   const visiblePosts = useMemo(() => {
@@ -169,7 +193,7 @@ export default function PawchiveCreatorPage() {
           </div>
         )}
 
-        {backendReady && !posts.isLoading && !posts.isError && (
+        {sourceReady && !posts.isLoading && !posts.isError && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <label htmlFor="pawchive-media-filter" className="text-xs font-medium text-muted-foreground">Category</label>
             <select
@@ -191,7 +215,7 @@ export default function PawchiveCreatorPage() {
           </div>
         )}
 
-        {!backendReady || posts.isLoading ? (
+        {!sourceReady || posts.isLoading ? (
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
         ) : posts.isError ? (
           <div className="py-20 text-center text-sm text-muted-foreground">This creator’s posts could not be loaded.</div>

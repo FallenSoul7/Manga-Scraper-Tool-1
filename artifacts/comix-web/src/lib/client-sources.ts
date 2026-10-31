@@ -2,6 +2,7 @@ import { createTier1ClientAdapter, getImportedTier1Extension } from "./imported-
 import { clientFetch } from "./client-fetch";
 import { atsuAdapter } from "./native-adapters/all-atsu";
 import danbooruAdapter from "./native-adapters/all-danbooru";
+import { pawchiveAdapter } from "./native-adapters/all-pawchive";
 
 export interface ClientMangaSummary {
   id: string;
@@ -46,6 +47,9 @@ export interface ClientChapter {
   isOfficial?: boolean;
   lang?: string;
   mediaType?: "image" | "video" | "mixed";
+  thumbnail?: string;
+  thumbnailIsStatic?: boolean;
+  attachmentCount?: number;
 }
 
 export interface ClientChapterResponse { items: ClientChapter[]; }
@@ -84,6 +88,7 @@ function clientSourceLabel(key: string): string {
     mangadex: "MangaDex",
     thunderscans: "Thunder Scans",
     webtoons: "Webtoons",
+    pawchive: "Pawchive",
   };
   return labels[id] ?? "This source";
 }
@@ -500,8 +505,26 @@ const thunderAdapter: ClientSourceAdapter = {
   pages: thunderPages,
 };
 
-const sourceModes: Record<string, ClientSourceMode> = { "all.atsu": "client", "all.danbooru": "client", "all.webtoons": "client", "en.asurascans": "client", "all.mangadex": "client", "all.thunderscans": "client", "en.ninehentai": "server", "en.royalroad": "server", "all.pawchive": "server" };
-const clientAdapters: Record<string, ClientSourceAdapter> = { "all.atsu": atsuAdapter, "all.danbooru": danbooruAdapter, "all.webtoons": webtoonsAdapter, "en.asurascans": asuraAdapter, "all.mangadex": mangaDexAdapter, "all.thunderscans": thunderAdapter };
+const sourceModes: Record<string, ClientSourceMode> = {
+  "all.atsu": "client",
+  "all.danbooru": "client",
+  "all.webtoons": "client",
+  "en.asurascans": "client",
+  "all.mangadex": "client",
+  "all.thunderscans": "client",
+  "all.pawchive": "client",
+  "en.ninehentai": "server",
+  "en.royalroad": "server",
+};
+const clientAdapters: Record<string, ClientSourceAdapter> = {
+  "all.atsu": atsuAdapter,
+  "all.danbooru": danbooruAdapter,
+  "all.webtoons": webtoonsAdapter,
+  "en.asurascans": asuraAdapter,
+  "all.mangadex": mangaDexAdapter,
+  "all.thunderscans": thunderAdapter,
+  "all.pawchive": pawchiveAdapter,
+};
 const tier1Adapters = new Map<string, { key: string; adapter: ClientSourceAdapter }>();
 function getTier1Adapter(sourceId: string): ClientSourceAdapter | null {
   const extension = getImportedTier1Extension(sourceId);

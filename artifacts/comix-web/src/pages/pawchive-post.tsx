@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRoute, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
+import { Capacitor } from "@capacitor/core";
 import { ArrowLeft, ArrowUp, Check, Download, FileImage, Heart, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getClientSourceAdapter } from "@/lib/client-sources";
 import { mediaImage, mediaVideo, warmMediaImage } from "@/lib/utils";
 import { saveChapterToFile } from "@/lib/save-to-file";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -62,6 +64,9 @@ export default function PawchivePostPage() {
     staleTime: Infinity,
     enabled: false,
   });
+  const pawchiveAdapter = getClientSourceAdapter("all.pawchive");
+  const isNativeApp = Capacitor.isNativePlatform();
+  const sourceReady = isNativeApp ? Boolean(pawchiveAdapter?.pages) : backendReady;
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(["default"]);
   const [videoFallbacks, setVideoFallbacks] = useState<Set<string>>(() => new Set());
@@ -162,11 +167,13 @@ export default function PawchivePostPage() {
 
   const pages = useQuery<PagesResponse>({
     queryKey: ["pawchive-post", postId],
-    queryFn: () => customFetch<PagesResponse>(
-      `/api/chapter/${encodeURIComponent(postId)}/pages`,
-      { headers: { "X-Source": "all.pawchive" } },
-    ),
-    enabled: !!postId && backendReady,
+    queryFn: () => isNativeApp && pawchiveAdapter?.pages
+      ? pawchiveAdapter.pages(postId)
+      : customFetch<PagesResponse>(
+          `/api/chapter/${encodeURIComponent(postId)}/pages`,
+          { headers: { "X-Source": "all.pawchive" } },
+        ),
+    enabled: !!postId && sourceReady,
   });
 
   const media = useMemo(() => pages.data?.pages ?? [], [pages.data]);
@@ -253,7 +260,7 @@ export default function PawchivePostPage() {
         </Button>
       </header>
 
-      {!backendReady || pages.isLoading ? (
+      {!sourceReady || pages.isLoading ? (
         <div className="flex min-h-[70vh] items-center justify-center"><Loader2 className="h-9 w-9 animate-spin text-white/50" /></div>
       ) : pages.isError ? (
         <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 px-6 text-center text-white/60">
