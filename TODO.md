@@ -1,0 +1,20 @@
+# ComiHub Native Client Migration
+
+This is a staged migration. Keep Render scraper routes and media fallbacks active until the client-side replacement is built and verified. Do not promise zero Render scraping traffic or remove existing source routes prematurely.
+
+## Completed in this phase
+
+- [x] **Native networking foundation:** Capacitor's bundled `CapacitorHttp` fetch bridge is enabled in the Android/iOS config; `clientFetch()` applies `credentials: "omit"`, redirect blocking, and `no-referrer`. Tier 1 requests and current client adapters use it. Android and iOS `cap sync` both passed. This is not yet an APK/IPA build or on-device network test.
+- [x] **Initial device-first sources:** MangaDex, Webtoons, Asura Scans, and Thunder Scans try bundled client adapters first, even if Render is not ready. Render remains a temporary fallback when these local requests fail. The index exposes `runtime` labels; other sources are honestly marked backend.
+- [x] **Local metadata cache:** Official source metadata is cached locally and in IndexedDB; Tier 1 JSON manifests are validated, non-executable configuration and mirrored into IndexedDB. Installed source records remain in device storage.
+- [x] **Registry route:** `GET /api/sources/registry` is now the only public source-index route. Its response is strict, metadata-only, and generated from the private adapter package. It does not yet provide selectors/URL rules for every official source.
+- [x] **Supabase sync guardrails:** `/api/library/sync` uses strict bounded Zod schemas for text library/progress/history/category metadata and installed source IDs. Legacy full source objects from older clients are validated and reduced to IDs. Unknown fields and embedded `data:`/`blob:` media are rejected; media bytes are not synced. Five focused schema tests and the API regression suite pass.
+- [x] **Koofr/K-Cafe code removal:** Removed its private adapter/export/registry entry, API routes/proxies, frontend source and reader behavior, icons/covers, and ZIP-only dependencies. Local load, cloud restore, and backup import discard the old installation without deleting saved library metadata. The user confirmed they removed `KOOFR_EMAIL` and `KOOFR_APP_PASSWORD` from Render; this was not independently re-read from Render.
+
+## Remaining work
+
+- [ ] **Audit every official source adapter:** Classify each supported source as already client-capable, suitable for a strict declarative recipe, requiring a reviewed bundled adapter, or unsuitable for direct client execution. Record CORS, page structure, API/login/anti-bot dependencies, and image-host requirements. Do not convert any source to downloaded executable JavaScript.
+- [ ] **Declarative recipes for supported sources:** Extend `/api/sources/registry` with versioned, allowlisted JSON recipe metadata (selectors/routes/host allowlists) only for sources that can safely use it. Validate it on-device and parse fetched HTML using `DOMParser`; save recipes in IndexedDB. Keep complex APIs as bundled, reviewed adapters where feasible.
+- [ ] **Complete client execution coverage:** Move source search/list, details, chapters, pages, reader, media, downloads, and AI source tools to the local engine or reviewed device adapters. Keep no-referrer, omitted credentials, HTTPS host restrictions, response limits, and timeouts. Verify representative Android/iOS sources on-device.
+- [ ] **Remove server scraping only after verification:** Once all supported app sources work locally, remove Render source scraping and media-proxy routes (including `/api/popular`, `/api/manga`, `/api/chapter`, and other source-specific content handlers) and make the website's CORS limitation clear. Preserve AI, authentication, billing, library metadata sync, health checks, and the registry endpoint.
+- [ ] **Final cloud/privacy verification:** Confirm Supabase persists only approved text metadata and source IDs in the library-sync JSONB payload. Ensure no source image/video files, binary data URLs, or blobs are uploaded or proxied for the migrated sources.

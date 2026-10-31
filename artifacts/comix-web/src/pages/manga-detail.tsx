@@ -33,18 +33,6 @@ import { useOnlineStatus } from "@/lib/offline-catalog";
 import { getClientSourceAdapter } from "@/lib/client-sources";
 import { getTrackerLinks } from "@/lib/tracker-links";
 
-
-/** Decode a Koofr base64url manga ID back to its file path and check if it's a video. */
-function isKoofrVideoId(mangaId: string): boolean {
-  try {
-    const b64 = mangaId.replace(/-/g, '+').replace(/_/g, '/');
-    const path = atob(b64);
-    return /\.(mp4|webm|mov|mkv|avi)$/i.test(path);
-  } catch {
-    return false;
-  }
-}
-
 function dedupeChapters(items: any[]): any[] {
   // Keep one preferred scanlation per chapter and language. Deduplicating only
   // by chapter number hides Spanish, Japanese, and other MangaDex variants.
@@ -562,7 +550,6 @@ export default function MangaDetail() {
   const effectiveSource = sourceContext ?? activeSourceId;
   const sourceName = effectiveSource ? formatSourceId(effectiveSource) : null;
   const isRule34 = effectiveSource === "en.rule34";
-  const isKoofrVideo = effectiveSource === 'local.koofr' && !!id && isKoofrVideoId(id);
 
   if (showLoading) {
     return <div className="flex justify-center py-32"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -792,8 +779,8 @@ export default function MangaDetail() {
               className="w-full h-12 text-base font-semibold rounded-xl"
               onClick={() => setLocation(readerUrl(latestProgress.chapterId, manga.id, effectiveSourceForKey ?? activeSourceId, !online))}
             >
-              {isKoofrVideo ? <Play className="mr-2 h-5 w-5" /> : <BookOpen className="mr-2 h-5 w-5" />}
-              {isKoofrVideo ? 'Continue watching' : isRule34 ? "View artwork" : `Continue reading · Ch. ${latestProgress.chapterNumber}`}
+              <BookOpen className="mr-2 h-5 w-5" />
+              {isRule34 ? "View artwork" : `Continue reading · Ch. ${latestProgress.chapterNumber}`}
             </Button>
           ) : firstChapter ? (
             <Button
@@ -801,7 +788,7 @@ export default function MangaDetail() {
               onClick={() => setLocation(readerUrl(firstChapter.id, manga.id, effectiveSourceForKey ?? activeSourceId, !online))}
             >
               <Play className="mr-2 h-5 w-5" />
-              {isKoofrVideo ? 'Watch' : isRule34 ? "View artwork" : "Start reading"}
+              {isRule34 ? "View artwork" : "Start reading"}
             </Button>
           ) : (
             <Button className="w-full h-12 text-base font-semibold rounded-xl" disabled>

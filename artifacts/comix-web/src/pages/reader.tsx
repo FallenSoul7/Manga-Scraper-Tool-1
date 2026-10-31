@@ -578,14 +578,11 @@ export default function Reader() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [effectiveDirection]);
 
-  // Detect if a page URL is a video file or a video proxy endpoint.
-  // Matches file extensions (.mp4, .webm, etc.) as well as AllManga's
-  // /api/allmanga/video?url=... proxy path which has no file extension.
+  // Detect direct video files and the remaining AllManga/AnimeGG stream routes.
   const isVideoUrl = (url: string) =>
     /\.(mp4|webm|ogg|mov|mkv|avi)(\?|$|&)/i.test(url) ||
     /\.(mp4|webm|mov|mkv|avi)$/i.test(decodeURIComponent(url)) ||
     /\/api\/allmanga\/video(\?|$)/i.test(url) ||
-    /\/api\/koofr\/proxy\?.*video/i.test(decodeURIComponent(url)) ||
     /animegg\.org\/embed\//i.test(url) || /\/api\/animegg\/embed(?:\?|$)/i.test(url);
 
   const textPage = effectivePages.find((page) => Boolean(page.text));
@@ -683,7 +680,7 @@ export default function Reader() {
   }
 
   // ── Video content → render dedicated cinematic player ─────────────────────
-  // When ANY page is a video URL (Koofr video files, AllManga anime episodes),
+  // When ANY page is a video URL (for example, AllManga anime episodes),
   // bypass the manga strip entirely and show the full-screen video player.
   if (effectivePages.length > 0 && effectivePages.some(p => isVideoUrl(p.url))) {
     const videoUrl = effectivePages[0].url;

@@ -10,7 +10,7 @@ Make the existing `en.allanime` / AllManga extension a reliable dual-media sourc
 - Show manga and anime together in one browse/search experience.
 - Let users filter the same source to Manga only or Anime only.
 - Open manga chapters in the existing comic reader.
-- Open anime episodes through the existing in-app `VideoPlayer`, using the same media flow already used by Koofr-style video sources.
+- Open anime episodes through the existing in-app `VideoPlayer`, using the shared source-video playback flow.
 - Repair AllManga manga page loading so valid chapters do not end in an empty reader.
 
 ## Scope and non-goals

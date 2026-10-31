@@ -11,6 +11,8 @@ export function useLibrarySync() {
   const library = useStore(s => s.library);
   const categories = useStore(s => s.categories);
   const installedSources = useStore(s => s.installedSources);
+  const progress = useStore(s => s.progress);
+  const history = useStore(s => s.history);
   
   const [state, setState] = useState<SyncState>("idle");
   const [message, setMessage] = useState("");
@@ -56,7 +58,9 @@ export function useLibrarySync() {
           body: JSON.stringify({
             library: snap.library,
             categories: snap.categories,
-            installedSources: snap.installedSources,
+            installedSourceIds: Object.keys(snap.installedSources),
+            progress: snap.progress,
+            history: snap.history,
             strategy: "merge",
           }),
         });
@@ -101,10 +105,10 @@ export function useLibrarySync() {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ library, categories, installedSources, strategy: "merge" }),
+      body: JSON.stringify({ library, categories, installedSourceIds: Object.keys(installedSources), progress, history, strategy: "merge" }),
     }).catch(() => {});
 
-  }, [library, categories, installedSources, backendReady]);
+  }, [library, categories, installedSources, progress, history, backendReady]);
 
   const uploadLibrary = useCallback(async () => {
     setState("uploading");
@@ -114,7 +118,7 @@ export function useLibrarySync() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ library, categories, installedSources, strategy: "merge" }),
+        body: JSON.stringify({ library, categories, installedSourceIds: Object.keys(installedSources), progress, history, strategy: "merge" }),
       });
       
       const data = await res.json().catch(() => ({}));
@@ -132,7 +136,7 @@ export function useLibrarySync() {
       setState("error");
       setMessage(err.message ?? "Upload failed");
     }
-  }, [library, categories, installedSources]);
+  }, [library, categories, installedSources, progress, history]);
 
   const downloadLibrary = useCallback(async () => {
     setState("downloading");

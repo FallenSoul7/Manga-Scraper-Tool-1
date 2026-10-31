@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { z } from "zod";
 import { customFetch } from "@workspace/api-client-react";
+import { cacheExtensionManifest } from "./extension-manifest-db";
 
 export const APPROVED_EXTENSION_REPOSITORY_URL = "https://github.com/FallenSoul7/Frwilxe-Hub";
 const OFFICIAL_REGISTRY_ENDPOINT = "/api/sources/registry";
@@ -25,6 +26,7 @@ const RegistryEntrySchema = z.object({
   versionCode: z.number().finite().optional(),
   iconUrl: SafeIconUrlSchema,
   compatibility: z.enum(["ready", "experimental"]),
+  runtime: z.enum(["device-first", "backend"]).default("backend"),
   kind: z.literal("server"),
 }).strict();
 
@@ -136,6 +138,9 @@ export async function loadOfficialSourceRegistry(): Promise<LoadOfficialSourceRe
     if (!publish(result.registry)) {
       return { ok: false, error: "The index loaded but could not be saved on this device." };
     }
+    await Promise.all(result.registry.extensions.map(extension =>
+      cacheExtensionManifest(extension.id, extension).catch(() => undefined),
+    ));
     return result;
   } catch {
     return { ok: false, error: "Could not load official sources. Try again when the content service is online." };

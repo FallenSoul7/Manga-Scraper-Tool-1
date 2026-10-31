@@ -3,6 +3,7 @@ import { getDb, isDbConfigured } from "../db";
 import { users, librarySync } from "../schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { LibrarySyncDataSchema, LibrarySyncPayloadSchema, type LibrarySyncData } from "../lib/library-sync-schema";
 
 const router = Router();
 
@@ -73,9 +74,18 @@ router.post("/sync", requireAuth, async (req, res) => {
   try {
     const db = getDb();
     const userId = (req.user as any).id as string;
-    
-    // ✅ Fix: Accept library, categories, and installedSources
-    const { library: incomingLib, categories: incomingCats, installedSources: incomingSrcs, strategy = "merge" } = req.body as any;
+    const validation = LibrarySyncPayloadSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: "Invalid sync payload. Only bounded text metadata is accepted." });
+    }
+    const {
+      library: incomingLib = {},
+      categories: incomingCats = [],
+      installedSourceIds: incomingSourceIds = [],
+      progress: incomingProgress = {},
+      history: incomingHistory = [],
+      strategy,
+    } = validation.data;
 
     try {
       await db.insert(users).values({
@@ -93,18 +103,40 @@ router.post("/sync", requireAuth, async (req, res) => {
       logger.warn("User upsert skipped during library sync");
     }
 
-    let finalData: any = {};
+    let finalData: LibrarySyncData;
 
     if (strategy === "upload") {
-      finalData = { library: incomingLib, categories: incomingCats, installedSources: incomingSrcs };
+      finalData = {
+        library: incomingLib,
+        categories: incomingCats,
+        installedSourceIds: incomingSourceIds.filter((id) => id !== "local.koofr" && id !== "builtin.universal"),
+        progress: incomingProgress,
+        history: incomingHistory,
+      };
     } else {
       const existing = await db.select().from(librarySync).where(eq(librarySync.userId, userId));
-      const rawStored = (existing[0]?.data ?? {}) as any;
-      
-      // Backwards compatibility for old accounts that only saved the library object
-      const storedLib = rawStored.library ? rawStored.library : rawStored;
-      const storedCats = rawStored.categories || [];
-      const storedSrcs = rawStored.installedSources || {};
+      const rawStored = existing[0]?.data;
+      const storedObject = rawStored && typeof rawStored === "object" && !Array.isArray(rawStored)
+        ? rawStored as Record<string, unknown>
+        : {};
+      const isWrapped = ["library", "categories", "installedSourceIds", "installedSources", "progress", "history"]
+        .some((key) => Object.prototype.hasOwnProperty.call(storedObject, key));
+      const legacySources = storedObject.installedSources && typeof storedObject.installedSources === "object" && !Array.isArray(storedObject.installedSources)
+        ? storedObject.installedSources as Record<string, unknown>
+        : {};
+      const storedValidation = LibrarySyncDataSchema.safeParse({
+        library: isWrapped ? storedObject.library ?? {} : storedObject,
+        categories: storedObject.categories ?? [],
+        installedSourceIds: Array.isArray(storedObject.installedSourceIds)
+          ? storedObject.installedSourceIds
+          : Object.keys(legacySources),
+        progress: storedObject.progress ?? {},
+        history: storedObject.history ?? [],
+      });
+      const stored: LibrarySyncData = storedValidation.success
+        ? storedValidation.data
+        : { library: {}, categories: [], installedSourceIds: [], progress: {}, history: [] };
+      if (!storedValidation.success) logger.warn("Stored library sync data failed metadata validation; invalid fields will be discarded.");
 
       // Merge Library — use the highest of addedAt/updatedAt so that mutations
       // like category changes (which bump updatedAt but not addedAt) always win
@@ -112,28 +144,40 @@ router.post("/sync", requireAuth, async (req, res) => {
       const effectiveTs = (e: any) =>
         Math.max((e.addedAt ?? 0), (e.updatedAt ?? 0));
 
-      const finalLibrary = { ...storedLib };
-      if (incomingLib) {
-        for (const [id, entry] of Object.entries(incomingLib)) {
-          const current = storedLib[id];
-          if (!current || effectiveTs(entry) >= effectiveTs(current)) {
-            finalLibrary[id] = entry;
-          }
+      const finalLibrary = { ...stored.library };
+      for (const [id, entry] of Object.entries(incomingLib)) {
+        const current = stored.library[id];
+        if (!current || effectiveTs(entry) >= effectiveTs(current)) {
+          finalLibrary[id] = entry;
         }
       }
 
-      // Merge Categories (Keep existing, add any new ones)
-      const finalCategories = [...storedCats];
-      if (incomingCats) {
-        for (const cat of incomingCats) {
-          if (!finalCategories.find((c: any) => c.id === cat.id)) finalCategories.push(cat);
-        }
+      // Merge categories, retaining the existing device-independent behavior.
+      const finalCategories = [...stored.categories];
+      for (const cat of incomingCats) {
+        if (!finalCategories.find((current) => current.id === cat.id)) finalCategories.push(cat);
       }
 
-      // Merge Extensions (Local overwrites if conflict)
-      const finalSources = { ...storedSrcs, ...(incomingSrcs || {}) };
+      // Cloud sync stores IDs only; the source manifests and install metadata
+      // stay on-device. Removed/hidden sources cannot be restored from cloud.
+      const finalSourceIds = Array.from(new Set([...stored.installedSourceIds, ...incomingSourceIds]))
+        .filter((id) => id !== "local.koofr" && id !== "builtin.universal");
 
-      finalData = { library: finalLibrary, categories: finalCategories, installedSources: finalSources };
+      // Progress uses its update timestamp; history is most-recent-first locally.
+      const finalProgress = { ...stored.progress };
+      for (const [key, entry] of Object.entries(incomingProgress)) {
+        const current = stored.progress[key];
+        if (!current || entry.updatedAt >= current.updatedAt) finalProgress[key] = entry;
+      }
+      const finalHistory = Array.from(new Set([...incomingHistory, ...stored.history])).slice(0, 200);
+
+      finalData = {
+        library: finalLibrary,
+        categories: finalCategories,
+        installedSourceIds: finalSourceIds,
+        progress: finalProgress,
+        history: finalHistory,
+      };
     }
 
     try {

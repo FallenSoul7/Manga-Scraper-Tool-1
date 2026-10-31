@@ -244,6 +244,9 @@ function loadState(): StoreState {
       // Universal remains available in the scraper package for backend use,
       // but it is no longer auto-installed or exposed as a user source.
       delete validated.data.installedSources["builtin.universal"];
+      // K-Cafe has been removed. Drop only its source registration; preserve
+      // any saved library metadata that users already own.
+      delete validated.data.installedSources["local.koofr"];
       // Comix is no longer pre-installed. Drop the legacy auto-installed copy
       // (installedAt === 0) so it behaves like any other optional source; a
       // copy the user installed manually (installedAt > 0) is kept.
@@ -254,14 +257,6 @@ function loadState(): StoreState {
       // Make sure activeSourceId points at an installed source (or is empty)
       if (!validated.data.installedSources[validated.data.activeSourceId]) {
         validated.data.activeSourceId = Object.keys(validated.data.installedSources)[0] ?? "";
-      }
-      // Migration: rename "My Koofr Library" → "K-Cafe" and ensure it is not pinned
-      if (validated.data.installedSources["local.koofr"]) {
-        validated.data.installedSources["local.koofr"] = {
-          ...validated.data.installedSources["local.koofr"],
-          name: "K-Cafe",
-          isPinned: false,
-        };
       }
       return validated.data;
     }
@@ -462,14 +457,18 @@ export const storeActions = {
     saveState({ ...memoryState, library: newLibrary });
   },
 
-  // ✅ NEW: Restores library, categories, and extensions from the cloud
+  // Restores text library state from cloud. Source IDs may be synced, but
+  // install metadata/manifests are device-local and are never reconstructed here.
   restoreCloudSync(data: { 
     library?: Record<string, SavedManga>; 
     categories?: Category[]; 
-    installedSources?: Record<string, InstalledSource> 
+    installedSourceIds?: string[];
+    progress?: Record<string, ChapterProgress>;
+    history?: string[];
   }) {
-    const installedSources = { ...(data.installedSources || memoryState.installedSources) };
+    const installedSources = { ...memoryState.installedSources };
     delete installedSources["builtin.universal"];
+    delete installedSources["local.koofr"];
     const activeSourceId = installedSources[memoryState.activeSourceId]
       ? memoryState.activeSourceId
       : Object.keys(installedSources)[0] ?? "";
@@ -478,6 +477,8 @@ export const storeActions = {
       library: data.library || memoryState.library,
       categories: data.categories || memoryState.categories,
       installedSources,
+      progress: data.progress ?? memoryState.progress,
+      history: data.history ?? memoryState.history,
       activeSourceId,
     });
   },
@@ -734,6 +735,7 @@ export const storeActions = {
           installedSources: { ...validated.data.installedSources },
         };
         delete restored.installedSources["builtin.universal"];
+        delete restored.installedSources["local.koofr"];
         if (!restored.installedSources[restored.activeSourceId]) {
           restored.activeSourceId = Object.keys(restored.installedSources)[0] ?? "";
         }
@@ -752,6 +754,7 @@ export const storeActions = {
   },
 
   installSource(source: Omit<InstalledSource, 'installedAt' | 'languages' | 'adapter' | 'manifestVersion'> & Partial<Pick<InstalledSource, 'languages' | 'adapter' | 'manifestVersion'>>) {
+    if (source.id === "local.koofr") return;
     const existing = memoryState.installedSources[source.id];
     saveState({
       ...memoryState,

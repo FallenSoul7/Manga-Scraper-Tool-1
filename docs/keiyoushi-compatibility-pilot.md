@@ -40,7 +40,7 @@ here remain metadata-only:
 `en.comickfan`, `en.comix`, `en.elftoon`, `en.mangafreak`, `en.manhuaplus`,
 `en.ninehentai`, `en.novelfull`, `en.novelhall`, `en.onlythebesthentai`,
 `en.ravenscans`, `en.resetscans`, `en.royalroad`, `en.rule34`, `en.utoon`,
-`en.xkcd`, `local.koofr`.
+`en.xkcd`.
 
 Pilot status: `en.comicasura` is unsupported; `en.comickfan` is supported;
 AllManga is listed as `en.allanime` and is supported, with `en.allmanga` kept

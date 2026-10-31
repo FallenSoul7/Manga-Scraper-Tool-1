@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
+import { cacheExtensionManifest } from "@/lib/extension-manifest-db";
 import { storeActions, useStore } from "@/lib/storage";
 import {
   loadOfficialSourceRegistry,
@@ -73,6 +74,7 @@ export default function ExtensionRepositoryConnector() {
   };
 
   const install = (extension: OfficialExtensionEntry) => {
+    void cacheExtensionManifest(extension.id, extension).catch(() => {});
     storeActions.installSource({
       id: extension.id,
       name: extension.name,
@@ -89,7 +91,7 @@ export default function ExtensionRepositoryConnector() {
       <div className="space-y-3">
         <div className="space-y-1">
           <h2 className="text-sm font-medium">Official sources</h2>
-          <p className="text-xs text-muted-foreground">Install an official source to add it to this device. For simple custom sites, use the Tier 1 JSON option below.</p>
+          <p className="text-xs text-muted-foreground">The source list and installed metadata stay on this device. “Device-first” sources try local fetching with a temporary service fallback; other sources still use server adapters. Tier 1 JSON sources use local declarative rules.</p>
         </div>
         <Button type="button" onClick={() => void browseSources()} disabled={loading}>
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -131,6 +133,7 @@ export default function ExtensionRepositoryConnector() {
                         <p className="truncate text-sm font-semibold">{extension.name}</p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {extension.lang.toUpperCase()}
+                          {extension.runtime === "device-first" ? " · Device-first, service fallback" : " · Server adapter"}
                           {extension.compatibility === "experimental" ? " · Not working reliably" : ""}
                           {extension.isNsfw ? " · 18+" : ""}
                         </p>

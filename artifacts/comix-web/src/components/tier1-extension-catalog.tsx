@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
+import { cacheExtensionManifest } from "@/lib/extension-manifest-db";
 import { useOfficialExtensionRegistry } from "@/lib/extension-registry";
 import { storeActions, useStore } from "@/lib/storage";
 import {
@@ -82,13 +83,16 @@ export default function Tier1ExtensionCatalog() {
                         {extension.isNsfw && <span className="rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] text-rose-600 dark:text-rose-400">18+</span>}
                       </div>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {extension.lang.toUpperCase()}{extension.compatibility === "experimental" ? " · Not working reliably" : ""}
+                        {extension.lang.toUpperCase()}
+                        {extension.runtime === "device-first" ? " · Device-first, service fallback" : " · Server adapter"}
+                        {extension.compatibility === "experimental" ? " · Not working reliably" : ""}
                       </p>
                     </div>
                     {installed ? (
                       <span className="inline-flex shrink-0 items-center gap-1 text-xs text-primary"><CheckCircle2 className="h-4 w-4" /> Installed</span>
                     ) : (
                       <Button size="sm" className="h-8 shrink-0 text-xs" onClick={() => {
+                        void cacheExtensionManifest(extension.id, extension).catch(() => {});
                         storeActions.installSource({
                           id: extension.id,
                           name: extension.name,

@@ -15,6 +15,12 @@ const EXPERIMENTAL_SOURCE_IDS = new Set([
   "en.animegg",
   "en.royalroad",
 ]);
+const CLIENT_FIRST_SOURCE_IDS = new Set([
+  "all.mangadex",
+  "all.webtoons",
+  "en.asurascans",
+  "all.thunderscans",
+]);
 
 const registryExtensions = Array.from(new Map(
   catalogRaw.extensions
@@ -30,6 +36,7 @@ const registryExtensions = Array.from(new Map(
         : extension.id === "all.atsu" ? "https://atsu.moe/favicon.ico" : null,
       compatibility: EXPERIMENTAL_SOURCE_IDS.has(extension.id as string) ? "experimental" as const : "ready" as const,
       kind: "server" as const,
+      runtime: CLIENT_FIRST_SOURCE_IDS.has(extension.id as string) ? "device-first" as const : "backend" as const,
     }]),
 ).values()).sort((a, b) => a.name.localeCompare(b.name) || a.lang.localeCompare(b.lang));
 
@@ -45,13 +52,10 @@ const officialRegistry = {
 };
 
 function sendOfficialRegistry(_req: unknown, res: import("express").Response) {
-  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=86400");
   res.json(officialRegistry);
 }
 
 router.get("/registry", sendOfficialRegistry);
-// Keep the old URL stable for clients that still request it, but never expose
-// the legacy 1,362-entry server catalog from this route again.
-router.get("/catalog", sendOfficialRegistry);
 
 export default router;

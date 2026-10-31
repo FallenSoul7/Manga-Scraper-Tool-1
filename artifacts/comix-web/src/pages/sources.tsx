@@ -82,7 +82,6 @@ function SourceStatusTag({ sourceId, supported = true }: { sourceId: string; sup
 const INHERENTLY_MATURE_SOURCE_IDS = new Set([
   "en.ninehentai",
   "all.pawchive",
-  "local.koofr",
 ]);
 // Older catalog snapshots incorrectly marked several general catalogues as
 // adult-only. These IDs must stay visible even if an installed device still

@@ -94,7 +94,7 @@ const GENERAL_SOURCE_IDS = new Set([
   "en.webtoontr", "en.webtoonscan", "en.webtoonxyz",
 ]);
 const INHERENTLY_MATURE_SOURCE_IDS = new Set([
-  "en.ninehentai", "all.pawchive", "local.koofr",
+  "en.ninehentai", "all.pawchive",
 ]);
 function isAdultOnlySource(source: { id: string; isNsfw?: boolean } | null | undefined): boolean {
   if (!source || GENERAL_SOURCE_IDS.has(source.id)) return false;
@@ -273,11 +273,15 @@ export default function SourceBrowsePage() {
   const serverFetch = <T,>(path: string) => customFetch<T>(path, { headers: { "X-Source": sourceId } });
   const clientAdapter = getClientSourceAdapter(sourceId);
   const clientOnlySource = clientAdapter?.fallbackToServer === false;
-  const sourceQueriesEnabled = online && (backendReady || clientOnlySource) && !!sourceId && !!source;
+  const sourceQueriesEnabled = online && (backendReady || !!clientAdapter) && !!sourceId && !!source;
   const withServerFallback = <T,>(request: Promise<T>, path: string) => request.catch(error => {
     if (clientOnlySource) throw error;
     return serverFetch<T>(path);
   });
+
+  useEffect(() => {
+    if (clientAdapter) setAppliedTagState({});
+  }, [sourceId, clientAdapter]);
 
   useEffect(() => {
     if (searchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
@@ -288,7 +292,7 @@ export default function SourceBrowsePage() {
     queryFn: () => serverFetch<SourceTag[]>(`/api/tags`),
     // Tag discovery can be much slower than the first browse request for
     // sources with large tag catalogues. Never make it block the main list.
-    enabled: online && backendReady && !!sourceId && !!source && tagsEnabled && !clientOnlySource,
+    enabled: online && backendReady && !!sourceId && !!source && tagsEnabled && !clientAdapter,
     staleTime: 60 * 60 * 1000,
   });
 
@@ -320,16 +324,15 @@ export default function SourceBrowsePage() {
 
   const filterQuery = useQuery<ListResponse>({
     queryKey: ["source-filter", sourceId, mediaType, searchQuery, allTagIds.join(","), filterPage, settings.hideNsfw, settings.posterQuality],
-    queryFn: () => clientAdapter && isSearching
-      ? withServerFallback(clientAdapter.search(searchQuery, filterPage), `/api/search${buildQuery({
-          ...commonOpts,
-          query: searchQuery,
-          page: String(filterPage),
-          "tagIds[]": allTagIds,
-        })}`)
-      : clientOnlySource
-        ? clientAdapter!.latest(filterPage)
-        : serverFetch<ListResponse>(`/api/search${buildQuery({
+    queryFn: () => clientAdapter
+      ? isSearching
+        ? withServerFallback(clientAdapter.search(searchQuery, filterPage), `/api/search${buildQuery({
+            ...commonOpts,
+            query: searchQuery,
+            page: String(filterPage),
+          })}`)
+        : clientAdapter.latest(filterPage)
+      : serverFetch<ListResponse>(`/api/search${buildQuery({
           ...commonOpts,
           query: searchQuery || undefined,
           page: String(filterPage),
@@ -386,7 +389,7 @@ export default function SourceBrowsePage() {
   }, []);
 
   const activeQuery = isFiltering ? filterQuery : tab === "latest" ? latestQuery : popularQuery;
-  const isSourceError = backendReady && activeQuery.isError;
+  const isSourceError = activeQuery.isError;
 
   // Save snapshot
   useEffect(() => {
@@ -691,7 +694,7 @@ export default function SourceBrowsePage() {
               </>
             )}
 
-            {availableTags.length > 0 && (
+            {!clientAdapter && availableTags.length > 0 && (
               <Popover open={filterPopoverOpen} onOpenChange={setFilterPopoverOpen}>
                 <PopoverTrigger asChild>
                   <button
@@ -778,7 +781,7 @@ export default function SourceBrowsePage() {
 
       {/* Content */}
       <main className="flex-1 container mx-auto px-4 py-3 max-w-7xl">
-        {!backendReady && (
+        {!backendReady && !clientAdapter && (
           <div role="status" className="mb-4 flex items-center gap-2 rounded-xl border border-primary/15 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
             <span className="flex-1">Connecting to the content service…</span>

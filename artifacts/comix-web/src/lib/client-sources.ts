@@ -1,4 +1,5 @@
 import { createTier1ClientAdapter, getImportedTier1Extension } from "./imported-extensions";
+import { clientFetch } from "./client-fetch";
 
 export interface ClientMangaSummary {
   id: string;
@@ -111,7 +112,7 @@ async function cachedText(key: string, loader: () => Promise<string>): Promise<s
 
 async function clientJson<T>(key: string, url: string, init?: RequestInit): Promise<T> {
   const raw = await cachedText(`client-json:${key}`, async () => {
-    const response = await fetch(url, { credentials: "omit", ...init, referrerPolicy: "no-referrer", headers: { Accept: "application/json", ...(init?.headers ?? {}) } });
+    const response = await clientFetch(url, { ...init, headers: { Accept: "application/json", ...(init?.headers ?? {}) } });
     if (!response.ok) throw new Error(`Client source request failed: ${response.status}`);
     return response.text();
   });
@@ -120,7 +121,7 @@ async function clientJson<T>(key: string, url: string, init?: RequestInit): Prom
 
 async function clientHtml(key: string, url: string, init?: RequestInit): Promise<Document> {
   const raw = await cachedText(`client-html:${key}`, async () => {
-    const response = await fetch(url, { credentials: "omit", ...init, referrerPolicy: "no-referrer", headers: { Accept: "text/html", ...(init?.headers ?? {}) } });
+    const response = await clientFetch(url, { ...init, headers: { Accept: "text/html", ...(init?.headers ?? {}) } });
     if (!response.ok) throw new Error(`Client source request failed: ${response.status}`);
     return response.text();
   });
@@ -294,7 +295,7 @@ const mangaDexAdapter: ClientSourceAdapter = { sourceId: "all.mangadex", mode: "
 async function themesiaList(order: string, page: number, query = ""): Promise<ClientListResponse> { const params = new URLSearchParams({ order, page: String(page) }); if (query) params.set("title", query); const document = await clientHtml(`thunderscans:list:${params}`, `https://en-thunderscans.com/comics/?${params}`); const items: ClientMangaSummary[] = []; document.querySelectorAll(".listupd .bs .bsx, .listo .bs .bsx, .utao .uta .imgu").forEach(root => { const a = root.matches("a") ? root : root.querySelector("a"); const href = a?.getAttribute("href"); const title = a?.getAttribute("title") || root.querySelector(".tt")?.textContent?.trim() || a?.textContent?.trim() || root.textContent?.trim(); if (!href || !title || items.some(item => item.id === href)) return; const image = root.querySelector("img"); const candidates = ["data-src", "data-original", "data-lazy-src", "data-image", "srcset", "src"].map(attr => image?.getAttribute(attr)).filter(Boolean) as string[]; const raw = candidates.find(value => !value.startsWith("data:") && !/transparent|blank|placeholder/i.test(value)) || ""; const thumbnail = raw.split(",")[0].trim().split(/\s+/)[0]; items.push({ id: encodeURIComponent(href.replace("https://en-thunderscans.com", "").replace(/^\/+|\/+$/g, "")), title, thumbnail, type: "Manga", isNsfw: false }); }); return { items, page, hasNextPage: Boolean(document.querySelector(".pagination .next, .hpage .r")) }; }
 const thunderAdapter: ClientSourceAdapter = { sourceId: "all.thunderscans", mode: "client", popular: p => themesiaList("popular", p), latest: p => themesiaList("update", p), search: (q, p) => themesiaList("search", p, q) };
 
-const sourceModes: Record<string, ClientSourceMode> = { "all.webtoons": "server", "en.asurascans": "server", "all.mangadex": "client", "all.thunderscans": "server", "en.ninehentai": "server", "en.royalroad": "server", "all.pawchive": "server" };
+const sourceModes: Record<string, ClientSourceMode> = { "all.webtoons": "client", "en.asurascans": "client", "all.mangadex": "client", "all.thunderscans": "client", "en.ninehentai": "server", "en.royalroad": "server", "all.pawchive": "server" };
 const clientAdapters: Record<string, ClientSourceAdapter> = { "all.webtoons": webtoonsAdapter, "en.asurascans": asuraAdapter, "all.mangadex": mangaDexAdapter, "all.thunderscans": thunderAdapter };
 const tier1Adapters = new Map<string, { key: string; adapter: ClientSourceAdapter }>();
 function getTier1Adapter(sourceId: string): ClientSourceAdapter | null {

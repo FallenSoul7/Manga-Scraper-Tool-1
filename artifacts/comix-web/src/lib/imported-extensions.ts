@@ -7,6 +7,8 @@ import type {
   ClientPageResponse,
   ClientSourceAdapter,
 } from "./client-sources";
+import { clientFetch } from "./client-fetch";
+import { cacheExtensionManifest, removeCachedExtensionManifest } from "./extension-manifest-db";
 
 export const APPROVED_GITHUB_OWNER = "FallenSoul7";
 export const MAX_MANIFEST_BYTES = 256 * 1024;
@@ -233,7 +235,7 @@ export async function fetchTier1Manifest(input: string): Promise<LoadedManifestR
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), 12_000);
   try {
-    const response = await fetch(checked.url.href, {
+    const response = await clientFetch(checked.url.href, {
       method: "GET",
       credentials: "omit",
       cache: "no-store",
@@ -358,11 +360,13 @@ export function saveImportedTier1Extension(loaded: LoadedTier1Manifest): SaveMan
     ? snapshot.map(item => item.sourceId === sourceId ? extension : item)
     : [...snapshot, extension];
   if (!publish(next)) return { ok: false, error: "This browser could not save the manifest locally. Check local storage settings or available device space, then try again." };
+  void cacheExtensionManifest(sourceId, extension).catch(() => {});
   return { ok: true, extension, replaced };
 }
 
 export function removeImportedTier1Extension(sourceId: string): boolean {
   if (!snapshot.some(item => item.sourceId === sourceId)) return true;
+  void removeCachedExtensionManifest(sourceId).catch(() => {});
   return publish(snapshot.filter(item => item.sourceId !== sourceId));
 }
 
@@ -450,7 +454,7 @@ async function fetchHtml(manifest: Tier1Manifest, url: string, sourceId: string)
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), 15_000);
   try {
-    const response = await fetch(checkedUrl, {
+    const response = await clientFetch(checkedUrl, {
       credentials: "omit",
       cache: "no-store",
       redirect: "error",

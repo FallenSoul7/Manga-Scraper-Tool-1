@@ -1,15 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  CACHE_ROOT,
   getCatalog,
-  getKoofrCover,
   getSource,
+  getSourceOrNull,
   getSourceManifests,
-  isProxySafe,
   isSupported,
-  koofrStream,
-  koofrThumbnail,
 } from "@fallensoul7/frwilxe-hub-sources";
 
 test("source package exposes the existing backend registry and catalog", () => {
@@ -19,10 +15,8 @@ test("source package exposes the existing backend registry and catalog", () => {
   assert.ok(getCatalog().count > 0);
 });
 
-test("source package preserves Koofr proxy helpers used by the backend", () => {
-  assert.equal(typeof getKoofrCover, "function");
-  assert.equal(typeof koofrStream, "function");
-  assert.equal(typeof koofrThumbnail, "function");
-  assert.equal(typeof isProxySafe, "function");
-  assert.equal(CACHE_ROOT, "/tmp/koofr-cache");
+test("source package no longer registers K-Cafe", () => {
+  assert.equal(isSupported("local.koofr"), false);
+  assert.equal(getSourceOrNull("local.koofr"), null);
+  assert.equal(getSourceManifests().some(manifest => manifest.id === "local.koofr"), false);
 });

@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { Capacitor } from "@capacitor/core"
 import { appApiUrl } from "./api-url"
 
 export function cn(...inputs: ClassValue[]) {
@@ -8,6 +9,9 @@ export function cn(...inputs: ClassValue[]) {
 
 const PROXIED_MEDIA_SOURCES = new Set([
   "all.webtoons", "all.atsu", "en.novelfull", "all.mangadex", "en.asurascans", "all.thunderscans", "en.animegg", "en.resetscans",
+]);
+const NATIVE_DIRECT_MEDIA_SOURCES = new Set([
+  "all.webtoons", "all.mangadex", "en.asurascans", "all.thunderscans",
 ]);
 
 const INFERRED_MEDIA_HOSTS: Array<{ source: string; hosts: string[] }> = [
@@ -43,6 +47,12 @@ export function mediaImage(url: string | undefined, source?: string): string {
   if (url.startsWith('/api/')) return appApiUrl(url);
   // These are bundled frontend assets; keep them on the fast app/CDN origin.
   if (url.startsWith('/public/')) return url;
+  // Native WebViews can load cross-origin media through the device network
+  // stack; don't send these client-first sources' images through Render.
+  // Ordinary browsers retain the proxy as a temporary migration fallback.
+  if (Capacitor.isNativePlatform() && resolvedSource && NATIVE_DIRECT_MEDIA_SOURCES.has(resolvedSource)) {
+    return url;
+  }
   const sourceMediaPath = (sourceId: string) =>
     appApiUrl(`/api/source-media?source=${encodeURIComponent(sourceId)}&url=${encodeURIComponent(url)}`);
   if (
