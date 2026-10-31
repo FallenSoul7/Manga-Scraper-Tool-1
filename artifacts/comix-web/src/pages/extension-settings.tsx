@@ -14,7 +14,8 @@ export default function ExtensionSettingsPage() {
       </div>
       <ExtensionRepositoryConnector />
       <details className="mt-8 rounded-xl border border-border/60 p-4">
-        <summary className="cursor-pointer text-sm font-medium">Add a Tier 1 JSON manifest</summary>
+        <summary className="cursor-pointer text-sm font-medium">Add a custom Tier 1 JSON source</summary>
+        <p className="mt-1 text-xs text-muted-foreground">This imports a declarative JSON manifest. It is separate from the official source list and does not run JavaScript.</p>
         <div className="mt-4">
           <Tier1ExtensionImporter />
         </div>

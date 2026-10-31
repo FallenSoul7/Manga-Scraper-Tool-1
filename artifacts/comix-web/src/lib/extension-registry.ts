@@ -52,36 +52,23 @@ const ExtensionRegistrySchema = z.object({
 
 export type OfficialExtensionEntry = z.infer<typeof RegistryEntrySchema>;
 export type OfficialExtensionRegistry = z.infer<typeof ExtensionRegistrySchema>;
-export type ConnectRegistryResult =
+export type LoadOfficialSourceRegistryResult =
   | { ok: true; registry: OfficialExtensionRegistry }
   | { ok: false; error: string };
 
-function isApprovedRepositoryUrl(input: string): boolean {
-  let url: URL;
-  try {
-    url = new URL(input.trim());
-  } catch {
-    return false;
-  }
-  return url.protocol === "https:" &&
-    url.hostname.toLowerCase() === "github.com" &&
-    url.pathname.replace(/\/+$/, "").toLowerCase() === "/fallensoul7/frwilxe-hub" &&
-    !url.username && !url.password && !url.port && !url.search && !url.hash;
-}
-
-function validateRegistry(value: unknown): ConnectRegistryResult {
+function validateRegistry(value: unknown): LoadOfficialSourceRegistryResult {
   let size: number;
   try {
     size = JSON.stringify(value).length;
   } catch {
-    return { ok: false, error: "The repository returned an unreadable index." };
+    return { ok: false, error: "The source list could not be read." };
   }
   if (size > MAX_REGISTRY_JSON_CHARS) {
-    return { ok: false, error: "The repository index is larger than the allowed size." };
+    return { ok: false, error: "The source list is larger than allowed." };
   }
   const parsed = ExtensionRegistrySchema.safeParse(value);
   if (!parsed.success) {
-    return { ok: false, error: "The Frwilxe Hub index failed ComiHub's validation." };
+    return { ok: false, error: "The official source list failed validation." };
   }
   return { ok: true, registry: parsed.data };
 }
@@ -101,11 +88,10 @@ function readCachedRegistry(): OfficialExtensionRegistry | null {
 let snapshot = readCachedRegistry();
 const listeners = new Set<() => void>();
 
-function publish(registry: OfficialExtensionRegistry | null): boolean {
+function publish(registry: OfficialExtensionRegistry): boolean {
   try {
     if (typeof localStorage === "undefined") return false;
-    if (registry) localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry));
-    else localStorage.removeItem(REGISTRY_STORAGE_KEY);
+    localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry));
   } catch {
     return false;
   }
@@ -135,11 +121,7 @@ export function getOfficialExtensionRegistry(): OfficialExtensionRegistry | null
   return snapshot;
 }
 
-export async function connectOfficialExtensionRepository(input: string): Promise<ConnectRegistryResult> {
-  if (!isApprovedRepositoryUrl(input)) {
-    return { ok: false, error: "Only the official FallenSoul7/Frwilxe-Hub repository is accepted." };
-  }
-
+export async function loadOfficialSourceRegistry(): Promise<LoadOfficialSourceRegistryResult> {
   try {
     const value = await customFetch<unknown>(OFFICIAL_REGISTRY_ENDPOINT, {
       responseType: "json",
@@ -156,10 +138,6 @@ export async function connectOfficialExtensionRepository(input: string): Promise
     }
     return result;
   } catch {
-    return { ok: false, error: "Could not load the official source index. Try again when the content service is online." };
+    return { ok: false, error: "Could not load official sources. Try again when the content service is online." };
   }
-}
-
-export function removeOfficialExtensionRepository(): boolean {
-  return publish(null);
 }

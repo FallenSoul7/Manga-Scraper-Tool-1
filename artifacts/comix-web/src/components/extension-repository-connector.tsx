@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -7,9 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 import { storeActions, useStore } from "@/lib/storage";
 import {
-  APPROVED_EXTENSION_REPOSITORY_URL,
-  connectOfficialExtensionRepository,
-  removeOfficialExtensionRepository,
+  loadOfficialSourceRegistry,
   useOfficialExtensionRegistry,
   type OfficialExtensionEntry,
 } from "@/lib/extension-registry";
@@ -39,7 +37,6 @@ export default function ExtensionRepositoryConnector() {
   const { toast } = useToast();
   const installedMap = useStore(state => state.installedSources);
   const registry = useOfficialExtensionRegistry();
-  const [repositoryUrl, setRepositoryUrl] = useState(APPROVED_EXTENSION_REPOSITORY_URL);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -55,27 +52,24 @@ export default function ExtensionRepositoryConnector() {
     });
   }, [registry, search]);
 
-  const loadRepository = async () => {
+  const browseSources = async () => {
     setLoading(true);
     setError("");
-    const result = await connectOfficialExtensionRepository(repositoryUrl);
+    const result = await loadOfficialSourceRegistry();
     setLoading(false);
     if (!result.ok) {
-      setError(result.error);
+      if (!registry) {
+        setError(result.error);
+        return;
+      }
+      setSearch("");
+      setDialogOpen(true);
+      toast({ title: "Showing saved source list", description: "Go online to refresh it." });
       return;
     }
     setSearch("");
     setDialogOpen(true);
-    toast({ title: `Frwilxe Hub · ${result.registry.extensions.length} sources` });
-  };
-
-  const removeRepository = () => {
-    if (!removeOfficialExtensionRepository()) {
-      setError("Could not remove the saved index from this device.");
-      return;
-    }
-    setError("");
-    toast({ title: "Frwilxe Hub disconnected on this device" });
+    toast({ title: `${result.registry.extensions.length} official sources loaded` });
   };
 
   const install = (extension: OfficialExtensionEntry) => {
@@ -92,39 +86,19 @@ export default function ExtensionRepositoryConnector() {
 
   return (
     <section className="space-y-4">
-      <form
-        className="space-y-3"
-        onSubmit={event => { event.preventDefault(); if (!loading) void loadRepository(); }}
-      >
-        <div className="space-y-1.5">
-          <label htmlFor="extension-repository-url" className="text-sm font-medium">Repository URL</label>
-          <Input
-            id="extension-repository-url"
-            value={repositoryUrl}
-            onChange={event => { setRepositoryUrl(event.target.value); setError(""); }}
-            placeholder="https://github.com/FallenSoul7/Frwilxe-Hub"
-            aria-label="Official extension repository URL"
-            inputMode="url"
-            autoCapitalize="none"
-            autoCorrect="off"
-          />
-          <p className="text-xs text-muted-foreground">Only the official Frwilxe Hub repository is accepted.</p>
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <h2 className="text-sm font-medium">Official sources</h2>
+          <p className="text-xs text-muted-foreground">Install an official source to add it to this device. For simple custom sites, use the Tier 1 JSON option below.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={loading || !repositoryUrl.trim()}>
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {registry ? "Refresh repository" : "Add repository"}
-          </Button>
-          {registry && (
-            <Button type="button" variant="outline" onClick={removeRepository}>
-              <Trash2 className="mr-2 h-4 w-4" /> Remove repository
-            </Button>
-          )}
-        </div>
-      </form>
+        <Button type="button" onClick={() => void browseSources()} disabled={loading}>
+          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {loading ? "Loading sources…" : "Browse sources"}
+        </Button>
+      </div>
       {registry && (
         <p role="status" className="text-sm text-muted-foreground">
-          Connected · {registry.extensions.length} sources available
+          Saved on this device · {registry.extensions.length} sources available
         </p>
       )}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
@@ -132,7 +106,7 @@ export default function ExtensionRepositoryConnector() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[85vh] max-w-xl overflow-hidden p-0">
           <DialogHeader className="px-5 pt-5">
-            <DialogTitle>Frwilxe Hub</DialogTitle>
+            <DialogTitle>Official sources</DialogTitle>
             <DialogDescription>{visibleExtensions.length} sources available to install on this device</DialogDescription>
           </DialogHeader>
           <div className="px-5">
@@ -140,7 +114,7 @@ export default function ExtensionRepositoryConnector() {
               value={search}
               onChange={event => setSearch(event.target.value)}
               placeholder="Search sources"
-              aria-label="Search repository sources"
+              aria-label="Search official sources"
             />
           </div>
           <div className="max-h-[60vh] overflow-y-auto px-5 pb-5">

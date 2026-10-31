@@ -48,23 +48,20 @@ export default function Tier1ExtensionCatalog() {
     toast({ title: `Removed ${name}` });
   };
 
-  if (!registry && localExtensions.length === 0) {
-    return (
-      <div className="px-4 py-16 text-center text-sm text-muted-foreground">
-        <p>No extension repository connected.</p>
-        <Link href="/extension-settings" className="mt-2 inline-block text-primary hover:underline">Add Frwilxe Hub in System → Extensions</Link>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div className="border-b border-border/40 p-4">
         <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search extensions" aria-label="Search extensions" />
       </div>
+      {!registry && (
+        <div className="border-b border-border/40 px-4 py-5 text-center text-sm text-muted-foreground">
+          <p>Official sources are not loaded on this device.</p>
+          <Link href="/extension-settings" className="mt-2 inline-block text-primary hover:underline">Browse official sources</Link>
+        </div>
+      )}
       {registry && (
-        <section aria-label="Frwilxe Hub extensions">
-          <h2 className="px-4 pb-2 pt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Frwilxe Hub</h2>
+        <section aria-label="Official sources">
+          <h2 className="px-4 pb-2 pt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Official sources</h2>
           {officialExtensions.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-muted-foreground">No matching sources.</p>
           ) : (
