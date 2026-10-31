@@ -290,7 +290,10 @@ export default function MangaDetail() {
     queryKey: ["client-details", effectiveSourceForKey, id, settings.posterQuality, settings.showAltNames, settings.scorePosition],
     queryFn: () => clientAdapter?.details
       ? clientAdapter.details(id!, { scorePosition: settings.scorePosition === "hidden" ? "none" : settings.scorePosition })
-          .catch(() => sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}`))
+          .catch(error => {
+            if (clientAdapter.fallbackToServer === false) throw error;
+            return sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}`);
+          })
       : sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}`),
     enabled: !!id && sourceReady && online && !!clientAdapter?.details,
     staleTime: 5 * 60 * 1000,
@@ -298,7 +301,10 @@ export default function MangaDetail() {
   const clientChaptersQuery = useQuery({
     queryKey: ["client-chapters", effectiveSourceForKey, id],
     queryFn: () => clientAdapter?.chapters
-      ? clientAdapter.chapters(id!).catch(() => sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}/chapters?dedupe=false`))
+      ? clientAdapter.chapters(id!).catch(error => {
+          if (clientAdapter.fallbackToServer === false) throw error;
+          return sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}/chapters?dedupe=false`);
+        })
       : Promise.reject(new Error("Client chapters unavailable")),
     enabled: !!id && sourceReady && online && !!clientAdapter?.chapters,
     staleTime: 60 * 1000,
@@ -568,6 +574,7 @@ export default function MangaDetail() {
           src={mediaImage(savedManga!.thumbnail, savedManga!.sourceId)}
           alt={savedManga!.title}
           className="h-36 w-26 rounded-xl object-cover shadow-lg"
+          referrerPolicy="no-referrer"
         />
         <div className="text-center">
           <div className="text-xl font-semibold mb-1">{savedManga!.title}</div>
@@ -596,6 +603,7 @@ export default function MangaDetail() {
               src={mediaImage(manga.thumbnail, effectiveSourceForKey ?? undefined)}
               alt=""
               style={{ filter: "blur(24px)", objectFit: "cover", width: "100%", height: "100%" }}
+              referrerPolicy="no-referrer"
             />
             <div className="absolute inset-0 bg-background/80 dark:bg-background/88" />
           </div>
@@ -625,6 +633,7 @@ export default function MangaDetail() {
                 src={mediaImage(manga.thumbnail, effectiveSourceForKey ?? undefined)}
                 alt={manga.title}
                 className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
               />
             </button>
 
@@ -1106,6 +1115,7 @@ export default function MangaDetail() {
             alt={manga.title}
             className="max-h-[85dvh] max-w-[85vw] rounded-xl shadow-2xl object-contain"
             onClick={e => e.stopPropagation()}
+            referrerPolicy="no-referrer"
           />
         </div>
       )}
@@ -1124,6 +1134,7 @@ export default function MangaDetail() {
                 src={mediaImage(downloadTarget.thumbnail, downloadTarget.sourceId)}
                 alt={downloadTarget.mangaTitle}
                 className="h-14 w-10 rounded-lg object-cover shrink-0"
+                referrerPolicy="no-referrer"
               />
               <div className="min-w-0 pt-0.5">
                 <div className="text-base font-semibold line-clamp-1">{downloadTarget.mangaTitle}</div>

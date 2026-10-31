@@ -140,6 +140,7 @@ function DownloadingTab() {
                   src={mediaImage(item.mangaThumbnail, item.sourceId)}
                   alt={item.mangaTitle}
                   className="h-16 w-12 rounded-xl object-cover shrink-0"
+                  referrerPolicy="no-referrer"
                 />
                 <div className="flex-1 min-w-0 space-y-1.5">
                   <div className="font-semibold text-sm truncate leading-tight">{item.mangaTitle}</div>
@@ -232,6 +233,7 @@ function DownloadingTab() {
                 src={mediaImage(item.mangaThumbnail, item.sourceId)}
                 alt={item.mangaTitle}
                 className="h-12 w-9 rounded-lg object-cover shrink-0"
+                referrerPolicy="no-referrer"
               />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm truncate">{item.mangaTitle}</div>
@@ -333,6 +335,7 @@ function OfflineLibraryTab() {
                   src={mediaImage(first.mangaThumbnail, first.sourceId)}
                   alt={first.mangaTitle}
                   className="h-20 w-15 rounded-xl object-cover shrink-0"
+                  referrerPolicy="no-referrer"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-sm truncate leading-tight">{first.mangaTitle}</div>

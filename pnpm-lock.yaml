@@ -154,7 +154,7 @@ importers:
 
   artifacts/api-server:
     dependencies:
-      '@fallensoul7/manga-scraper-sources':
+      '@fallensoul7/frwilxe-hub-sources':
         specifier: workspace:*
         version: link:../../packages/manga-scraper-sources
       '@supabase/supabase-js':

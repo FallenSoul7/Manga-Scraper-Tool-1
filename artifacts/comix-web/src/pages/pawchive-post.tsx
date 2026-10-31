@@ -273,13 +273,14 @@ export default function PawchivePostPage() {
              onError={() => useVideoFallback(media[0].url)}
              controls playsInline preload="auto" autoPlay muted
              className="max-h-[calc(100vh-5rem)] w-full max-w-5xl rounded-xl"
+           {...({ referrerPolicy: "no-referrer" } as Record<string, string>)}
            >
              <source src={videoSource(media[0].url)} type={videoType(media[0].url)} />
            </video>
         </div>
       ) : media.length === 1 && !isVideo(media[0].url) ? (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center bg-black p-3">
-           <img src={mediaUrl(media[0].url)} alt="Pawchive artwork" className="max-h-[calc(100vh-5rem)] max-w-full rounded-xl object-contain" />
+           <img src={mediaUrl(media[0].url)} alt="Pawchive artwork" className="max-h-[calc(100vh-5rem)] max-w-full rounded-xl object-contain"  {...({ referrerPolicy: "no-referrer" } as Record<string, string>)}/>
         </div>
       ) : (
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-3 p-3 sm:grid-cols-2">
@@ -289,11 +290,12 @@ export default function PawchivePostPage() {
                onError={() => useVideoFallback(page.url)}
                controls playsInline preload="auto" muted
                className="w-full rounded-xl bg-black"
+             {...({ referrerPolicy: "no-referrer" } as Record<string, string>)}
              >
                <source src={videoSource(page.url)} type={videoType(page.url)} />
              </video>
           ) : (
-             <img key={page.index} src={mediaUrl(page.url)} alt={`Attachment ${page.index + 1}`} loading="lazy" className="w-full rounded-xl object-contain" />
+             <img key={page.index} src={mediaUrl(page.url)} alt={`Attachment ${page.index + 1}`} loading="lazy" className="w-full rounded-xl object-contain"  {...({ referrerPolicy: "no-referrer" } as Record<string, string>)}/>
           ))}
         </div>
       )}

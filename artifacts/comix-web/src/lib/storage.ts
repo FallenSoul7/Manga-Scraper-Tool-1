@@ -749,16 +749,18 @@ export const storeActions = {
   },
 
   installSource(source: Omit<InstalledSource, 'installedAt' | 'languages' | 'adapter' | 'manifestVersion'> & Partial<Pick<InstalledSource, 'languages' | 'adapter' | 'manifestVersion'>>) {
-    if (memoryState.installedSources[source.id]) return;
+    const existing = memoryState.installedSources[source.id];
     saveState({
       ...memoryState,
       installedSources: {
         ...memoryState.installedSources,
         [source.id]: {
+          ...existing,
           ...source,
-          languages: source.languages?.length ? source.languages : [source.lang],
-          manifestVersion: source.manifestVersion ?? 1,
-          installedAt: Date.now(),
+          languages: source.languages?.length ? source.languages : existing?.languages?.length ? existing.languages : [source.lang],
+          manifestVersion: source.manifestVersion ?? existing?.manifestVersion ?? 1,
+          installedAt: existing?.installedAt ?? Date.now(),
+          isPinned: existing?.isPinned ?? source.isPinned ?? false,
         },
       },
     });

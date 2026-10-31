@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@fallensoul7/manga-scraper-sources": "workspace:*",
+    "@fallensoul7/frwilxe-hub-sources": "workspace:*",
     "@supabase/supabase-js": "^2.108.2",
     "@types/archiver": "^8.0.0",
     "@types/pg": "^8.20.0",

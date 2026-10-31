@@ -178,6 +178,7 @@ export default function HistoryPage() {
                             src={mediaImage(item.mangaThumbnail)}
                             alt={item.mangaTitle}
                             className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
                           />
                           {/* Video badge */}
                           {isVideo && (

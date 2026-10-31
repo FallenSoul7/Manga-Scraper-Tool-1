@@ -161,7 +161,7 @@ export function WelcomeOverlay() {
           <>
             <div className="relative h-48 bg-gradient-to-br from-primary/30 via-primary/10 to-background flex items-center justify-center">
               <div className="w-24 h-24 rounded-3xl bg-background shadow-lg flex items-center justify-center overflow-hidden border border-border">
-                <img src="/icon-source.jpg" alt="ComiHub" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
+                <img src="/icon-source.jpg" alt="ComiHub" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display='none'; }}  referrerPolicy="no-referrer"/>
               </div>
             </div>
 

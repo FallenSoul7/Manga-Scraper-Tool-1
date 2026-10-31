@@ -291,7 +291,7 @@ async function runDownload(id: string): Promise<void> {
 
         // ── Fetch direct source media ─────────────────────────────────────────────────
         try {
-          const res = await fetch(mediaUrl);
+          const res = await fetch(mediaUrl, { referrerPolicy: "no-referrer" });
           if (res.ok) {
             const buf = await res.arrayBuffer();
             totalBytes += buf.byteLength;

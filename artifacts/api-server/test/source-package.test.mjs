@@ -10,7 +10,7 @@ import {
   isSupported,
   koofrStream,
   koofrThumbnail,
-} from "@fallensoul7/manga-scraper-sources";
+} from "@fallensoul7/frwilxe-hub-sources";
 
 test("source package exposes the existing backend registry and catalog", () => {
   assert.equal(isSupported("en.comix"), true);

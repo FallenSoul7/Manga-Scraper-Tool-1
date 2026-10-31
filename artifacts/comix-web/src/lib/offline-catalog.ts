@@ -157,7 +157,7 @@ export function OfflineCatalogPersistence() {
         .filter((url): url is string => !!url)
         .map(url => url.startsWith("/") ? `${(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "")}${url}` : url);
       void Promise.all([...coverUrls, ...iconUrls].map(url =>
-        fetch(url, { credentials: "omit" }).catch(() => undefined),
+        fetch(url, { credentials: "omit", referrerPolicy: "no-referrer" }).catch(() => undefined),
       ));
     }
   }, [library, categories, progress, history, installedSources]);

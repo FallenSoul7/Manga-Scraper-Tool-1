@@ -64,6 +64,7 @@ export function warmMediaImage(url: string | undefined, source?: string): void {
   if (!src || typeof Image === "undefined") return;
   const image = new Image();
   image.decoding = "async";
+  image.referrerPolicy = "no-referrer";
   image.src = src;
   void image.decode().catch(() => {});
 }

@@ -30,6 +30,8 @@ import { useSettings } from "@/hooks/use-settings";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 import { getCachedSourceCatalog, saveOfflineSourceCatalog, useOfflineCatalog, useOnlineStatus } from "@/lib/offline-catalog";
 import { requestBackendRefresh } from "@/components/backend-warmup";
+import Tier1ExtensionImporter from "@/components/tier1-extension-importer";
+import { getClientSourceAdapter } from "@/lib/client-sources";
 
 interface CatalogExtension {
   id: string; slug: string; name: string; lang: string;
@@ -209,6 +211,7 @@ function SourceAvatar({ src, size = 40 }: { src: { name: string; iconUrl: string
         loading={isAnimeGGIcon ? "eager" : "lazy"}
         fetchPriority={isAnimeGGIcon ? "high" : "auto"}
         decoding="async"
+        referrerPolicy="no-referrer"
         onError={() => setErrored(true)}
         className="shrink-0 object-contain rounded-xl bg-muted/60"
         style={{ width: size, height: size, aspectRatio: "1 / 1" }}
@@ -264,7 +267,7 @@ function GlobalSearchResults({ query, results, isSearching, onClear }: {
           <div key={source.id}>
             <div className="flex items-center gap-2 mb-3">
               {resolveIconUrl(source.iconUrl)
-                ? <img src={resolveIconUrl(source.iconUrl)!} alt="" className="w-5 h-5 rounded bg-muted object-contain p-0.5 shrink-0 aspect-square" />
+                ? <img src={resolveIconUrl(source.iconUrl)!} alt="" className="w-5 h-5 rounded bg-muted object-contain p-0.5 shrink-0 aspect-square" referrerPolicy="no-referrer" />
                 : <div className="w-5 h-5 rounded bg-muted shrink-0" />}
               <span className="font-semibold text-sm">{source.name}</span>
               {source.isNsfw && <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">18+</span>}
@@ -302,6 +305,7 @@ function GlobalSearchResults({ query, results, isSearching, onClear }: {
                           src={mediaImage(manga.thumbnail, source.id)} alt={manga.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           loading="lazy"
+                          referrerPolicy="no-referrer"
                         />
                       </div>
                       <p className="text-xs font-medium line-clamp-2 leading-snug group-hover:text-primary transition-colors px-0.5">
@@ -355,35 +359,52 @@ export default function SourcesPage() {
       return;
     }
     if (!urlQ) { setGlobalResults([]); setSearchedQuery(""); return; }
-    if (!backendReady) {
+    const hasClientOnlySource = installed.some(source => getClientSourceAdapter(source.id)?.fallbackToServer === false);
+    if (!backendReady && !hasClientOnlySource) {
       setGlobalResults([]);
       setSearchedQuery("");
       setIsSearching(true);
       return;
     }
-    if (urlQ === searchedQuery && globalResults.length > 0) return;
+    const resultsMatchInstalledSources = installed.length === globalResults.length &&
+      installed.every(source => globalResults.some(result => result.source.id === source.id));
+    if (urlQ === searchedQuery && globalResults.length > 0 && resultsMatchInstalledSources) return;
     setIsSearching(true);
     setSearchedQuery(urlQ);
 
     // Initialize all sources as loading
-    const initial: SourceResults[] = installed.map(src => ({ source: src, items: [], loading: true }));
+    const initial: SourceResults[] = installed.map(src => ({
+      source: src,
+      items: [],
+      loading: backendReady || getClientSourceAdapter(src.id)?.fallbackToServer === false,
+    }));
     setGlobalResults(initial);
 
     // Fetch each source individually and update as results arrive. A blocked
     // extension must not leave the global search spinner running forever.
     const controllers = new Set<AbortController>();
     installed.forEach(async (src) => {
+      const adapter = getClientSourceAdapter(src.id);
+      if (!backendReady && adapter?.fallbackToServer !== false) {
+        setGlobalResults(prev => prev.map(r => r.source.id === src.id ? { ...r, items: [], loading: false } : r));
+        return;
+      }
       const controller = new AbortController();
       controllers.add(controller);
       const timeout = window.setTimeout(() => controller.abort(), GLOBAL_SEARCH_TIMEOUT_MS);
       try {
-        const res = await fetch(`${API_ORIGIN}/api/search?query=${encodeURIComponent(urlQ)}&page=1`, {
-          headers: { "X-Source": src.id },
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error(`Source returned ${res.status}`);
-        const data = await res.json();
-        const items = (data.items ?? []).slice(0, 12);
+        let items: SourceResults["items"];
+        if (adapter?.fallbackToServer === false) {
+          items = (await adapter.search(urlQ, 1)).items.slice(0, 12);
+        } else {
+          const res = await fetch(`${API_ORIGIN}/api/search?query=${encodeURIComponent(urlQ)}&page=1`, {
+            headers: { "X-Source": src.id },
+            signal: controller.signal,
+          });
+          if (!res.ok) throw new Error(`Source returned ${res.status}`);
+          const data = await res.json();
+          items = (data.items ?? []).slice(0, 12);
+        }
         setGlobalResults(prev => prev.map(r => r.source.id === src.id ? { ...r, items, loading: false } : r));
       } catch {
         setGlobalResults(prev => prev.map(r => r.source.id === src.id ? { ...r, items: [], loading: false } : r));
@@ -396,7 +417,7 @@ export default function SourcesPage() {
     setIsSearching(false);
     return () => controllers.forEach(controller => controller.abort());
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlQ, online, backendReady]);
+  }, [urlQ, online, backendReady, installed]);
 
   const clearSearch = () => { setLocation("/sources"); setGlobalResults([]); setSearchedQuery(""); };
   const showGlobalSearch = !!(urlQ || isSearching || globalResults.length > 0);
@@ -495,6 +516,7 @@ export default function SourcesPage() {
           </TabsContent>
 
           <TabsContent value="extensions" className="mt-0 animate-in fade-in duration-300">
+            <Tier1ExtensionImporter installedMap={installedMap} />
             <BrowseTab
               installedMap={installedMap}
               catalog={catalog ?? null}
@@ -556,7 +578,8 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="font-semibold text-sm text-foreground truncate">{src.name}</p>
-            <SourceStatusTag sourceId={src.id} />
+            <SourceStatusTag sourceId={src.id} supported={!src.id.startsWith("tier1.")} />
+            {src.id.startsWith("tier1.") && <span className="rounded border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Tier 1 · Local</span>}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{langLabel(src.lang)}</p>
         </div>

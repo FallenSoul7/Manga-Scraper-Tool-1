@@ -97,6 +97,7 @@ export const MangaCard = memo(function MangaCard({
             decoding="async"
             draggable={false}
             onError={() => setImageFailed(true)}
+            referrerPolicy="no-referrer"
           />
         ) : isAnimeGGResult ? (
           <img
@@ -106,6 +107,7 @@ export const MangaCard = memo(function MangaCard({
             loading="lazy"
             decoding="async"
             draggable={false}
+            referrerPolicy="no-referrer"
           />
         ) : isPawchiveSource ? (
           <img
@@ -115,6 +117,7 @@ export const MangaCard = memo(function MangaCard({
             loading="lazy"
             decoding="async"
             draggable={false}
+            referrerPolicy="no-referrer"
           />
         ) : (
           <div

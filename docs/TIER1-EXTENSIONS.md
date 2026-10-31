@@ -1,0 +1,74 @@
+# Tier 1 browser-side source manifests
+
+Tier 1 is for simple manga sites whose public HTML can be read with ordinary browser `fetch()` and CSS selectors. A manifest is configuration data only: the app validates it with Zod, parses source pages with `DOMParser`, and extracts text and URL attributes. The app never evaluates, imports, or executes code from a manifest.
+
+## Accepted manifest URL
+
+The Extensions tab accepts only HTTPS raw GitHub JSON URLs under the approved account:
+
+```text
+https://raw.githubusercontent.com/FallenSoul7/<public-repository>/<branch>/<path>.json
+```
+
+The URL must be a public file. The importer sends a read-only GET with credentials omitted, blocks redirects, applies `no-referrer`, and limits the manifest response to 256 KiB. It does not accept arbitrary websites, GitHub HTML pages, gists, or links owned by other accounts.
+
+The scraper package repository `FallenSoul7/Frwilxe-Hub` is private. A browser cannot read its raw files without a user credential, and this feature intentionally does not request or store such credentials. Keep that repository private; publish Tier 1 JSON manifests in a separate public repository owned by `FallenSoul7`.
+
+## Manifest schema (version 1)
+
+```json
+{
+  "schemaVersion": 1,
+  "sourceId": "sample-site",
+  "sourceName": "Sample Manga",
+  "baseUrl": "https://manga.example.com",
+  "lang": "en",
+  "isNsfw": false,
+  "description": "Optional short description",
+  "assetHosts": ["images.example-cdn.com"],
+  "routes": {
+    "popular": "/popular?page={page}",
+    "latest": "/latest?page={page}",
+    "search": "/search?q={query}&page={page}"
+  },
+  "selectors": {
+    "mangaItems": ".manga-card",
+    "mangaTitle": ".title",
+    "mangaLink": "a",
+    "mangaImage": "img",
+    "detailImage": ".manga-cover img",
+    "nextPage": "a.next",
+    "detailTitle": "h1.entry-title",
+    "detailAuthor": ".author",
+    "detailArtist": ".artist",
+    "detailSynopsis": ".summary",
+    "detailStatus": ".status",
+    "detailGenres": ".genres a",
+    "chapterList": ".chapter-list a",
+    "chapterLink": "a",
+    "chapterTitle": ".chapter-name",
+    "chapterNumber": ".chapter-number",
+    "chapterDate": "time",
+    "chapterImages": ".chapter-content img"
+  }
+}
+```
+
+`schemaVersion`, `sourceId`, `sourceName`, `baseUrl`, `routes`, and all required selectors are mandatory. `sourceId` must be a short letter/number/dot/dash/underscore slug. Unknown fields are rejected. The installed source ID is namespaced from the GitHub repository and manifest `sourceId` so it cannot impersonate a built-in source.
+
+All three route templates must stay on the `baseUrl` HTTPS origin. `popular` and `latest` require `{page}`; `search` requires both `{query}` and `{page}`. The query value is URL-encoded by the app. The list selectors (`mangaTitle`, `mangaLink`, `mangaImage`) are evaluated inside each `mangaItems` card. `nextPage` is evaluated on the result page and may be omitted for a one-page source.
+
+On a manga detail document, `detailTitle`, `detailImage`, author/artist/synopsis/status/genres are optional selectors. `chapterList` selects chapter rows or anchors. `chapterLink` defaults to `a`; the selected node may itself be the link. `chapterTitle`, `chapterNumber`, and `chapterDate` are optional. `chapterImages` selects image elements; the app reads only image URL attributes such as `data-src`, `data-original`, `data-lazy-src`, `srcset`, and `src`.
+
+`assetHosts` is an optional list of exact HTTPS hostnames for external CDN images. Without an entry, images and icons must use the `baseUrl` hostname. No wildcard hosts are supported. Use only domains you trust.
+
+## Security and data handling
+
+- The detailed manifest (routes, CSS selectors, and allowed asset hosts) is stored in this browser's local storage and is not sent to the ComiHub API or Supabase by this feature. The existing app may sync installed-source metadata such as the source ID/name/language through its normal settings sync; that metadata does not include the manifest rules.
+- Source page requests are HTTPS, same-origin, read-only, credential-free, redirect-blocked, and sent with `referrerPolicy: "no-referrer"`. HTML responses are capped at 1.5 MiB and 15 seconds. The user sees the source and additional media hostnames before confirming installation.
+- The app extracts strings and URLs from parsed DOM. It does not render remote HTML, inject scripts, load JavaScript extensions, or run `eval()`.
+- Media URLs must be HTTPS and use the base host or an explicitly listed asset host. The reader's image requests also use `no-referrer`.
+
+## Limitations
+
+Browser CORS still applies. A source that blocks cross-origin reads, requires login/cookies, uses Cloudflare challenges, relies on JavaScript rendering, or needs a private API will not work as Tier 1; move that source to the controlled Render adapter package instead. The manifest cannot bypass CORS or bot protection. Direct requests expose the user's IP address to the site and any listed image CDN; review the host preview before adding a source. Tier 1 is for ordinary image-based manga pages, not arbitrary executable or video extensions.

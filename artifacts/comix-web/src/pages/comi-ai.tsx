@@ -685,6 +685,7 @@ export default function ComiAIPage() {
               onClick={() => setZoomedImage(url)}
               loading="lazy"
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              referrerPolicy="no-referrer"
             />
           </span>
         );
@@ -947,6 +948,7 @@ export default function ComiAIPage() {
               alt="Zoomed manga cover"
               className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
               onClick={(e) => e.stopPropagation()}
+              referrerPolicy="no-referrer"
             />
             <button
               onClick={() => setZoomedImage(null)}

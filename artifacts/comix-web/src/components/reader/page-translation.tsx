@@ -71,6 +71,7 @@ async function readPageImage(image: HTMLImageElement, pageUrl: string, sourceId?
         mode: "cors",
         credentials: sameOrigin ? "same-origin" : "omit",
         cache: "force-cache",
+        referrerPolicy: "no-referrer",
       });
       if (!response.ok) {
         lastHttpStatus = response.status;
@@ -102,7 +103,7 @@ async function loadDrawable(blob: Blob): Promise<{ drawable: CanvasImageSource; 
       return { drawable: bitmap, width: bitmap.width, height: bitmap.height, dispose: () => bitmap.close() };
     } catch {
       // Some browsers render formats which their createImageBitmap decoder does not support.
-      // Fall back to the browser's regular <img> decoder using the same fetched bytes.
+      // Fall back to the browser's regular HTML image decoder using the same fetched bytes.
     }
   }
 
@@ -110,6 +111,7 @@ async function loadDrawable(blob: Blob): Promise<{ drawable: CanvasImageSource; 
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
       const element = new Image();
+      element.referrerPolicy = "no-referrer";
       element.onload = () => resolve(element);
       element.onerror = () => reject(new Error("The page image could not be decoded."));
       element.src = objectUrl;

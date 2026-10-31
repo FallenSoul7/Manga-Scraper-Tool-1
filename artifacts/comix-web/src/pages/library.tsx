@@ -603,7 +603,7 @@ export default function LibraryPage() {
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm hover:bg-muted transition-colors text-left"
                 >
                   {src.iconUrl ? (
-                    <img src={src.iconUrl} alt={src.name} className="w-6 h-6 rounded bg-muted object-contain p-0.5 shrink-0 aspect-square" />
+                    <img src={src.iconUrl} alt={src.name} className="w-6 h-6 rounded bg-muted object-contain p-0.5 shrink-0 aspect-square"  referrerPolicy="no-referrer"/>
                   ) : (
                     <div className="w-6 h-6 rounded bg-muted-foreground/20 shrink-0" />
                   )}

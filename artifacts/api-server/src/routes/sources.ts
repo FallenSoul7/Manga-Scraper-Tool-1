@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getCatalog, getSourceManifests, isSupported } from "@fallensoul7/manga-scraper-sources";
+import { getCatalog, getSourceManifests, isSupported } from "@fallensoul7/frwilxe-hub-sources";
 
 const router = Router();
 const manifests = getSourceManifests();

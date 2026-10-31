@@ -309,6 +309,13 @@ export default function SourceBrowsePage() {
   // start the first query before that effect runs, so bind the route source
   // explicitly to every server request.
   const serverFetch = <T,>(path: string) => customFetch<T>(path, { headers: { "X-Source": sourceId } });
+  const clientAdapter = getClientSourceAdapter(sourceId);
+  const clientOnlySource = clientAdapter?.fallbackToServer === false;
+  const sourceQueriesEnabled = online && (backendReady || clientOnlySource) && !!sourceId && !!source;
+  const withServerFallback = <T,>(request: Promise<T>, path: string) => request.catch(error => {
+    if (clientOnlySource) throw error;
+    return serverFetch<T>(path);
+  });
 
   useEffect(() => {
     if (searchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
@@ -319,7 +326,7 @@ export default function SourceBrowsePage() {
     queryFn: () => serverFetch<SourceTag[]>(`/api/tags`),
     // Tag discovery can be much slower than the first browse request for
     // sources with large tag catalogues. Never make it block the main list.
-    enabled: online && backendReady && !!sourceId && !!source && tagsEnabled,
+    enabled: online && backendReady && !!sourceId && !!source && tagsEnabled && !clientOnlySource,
     staleTime: 60 * 60 * 1000,
   });
 
@@ -329,14 +336,12 @@ export default function SourceBrowsePage() {
     ...(isAllManga ? { media: mediaType } : {}),
   };
 
-  const clientAdapter = getClientSourceAdapter(sourceId);
-
   const popularQuery = useQuery<ListResponse>({
     queryKey: ["source-popular", sourceId, mediaType, popularPage, popularSort, settings.hideNsfw, settings.posterQuality],
     queryFn: () => clientAdapter
-      ? clientAdapter.popular(popularPage).catch(() => serverFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
+      ? withServerFallback(clientAdapter.popular(popularPage), `/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`)
       : serverFetch<ListResponse>(`/api/popular${buildQuery({ ...commonOpts, page: String(popularPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
-    enabled: online && backendReady && !!sourceId && !!source && tab === "popular" && !isFiltering,
+    enabled: sourceQueriesEnabled && tab === "popular" && !isFiltering,
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
@@ -344,9 +349,9 @@ export default function SourceBrowsePage() {
   const latestQuery = useQuery<ListResponse>({
     queryKey: ["source-latest", sourceId, mediaType, latestPage, popularSort, settings.hideNsfw, settings.posterQuality],
     queryFn: () => clientAdapter
-      ? clientAdapter.latest(latestPage).catch(() => serverFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`))
+      ? withServerFallback(clientAdapter.latest(latestPage), `/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`)
       : serverFetch<ListResponse>(`/api/latest${buildQuery({ ...commonOpts, page: String(latestPage), ...(popularSort ? { sort: popularSort } : {}) })}`),
-    enabled: online && backendReady && !!sourceId && !!source && tab === "latest" && !isFiltering,
+    enabled: sourceQueriesEnabled && tab === "latest" && !isFiltering,
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
@@ -354,19 +359,21 @@ export default function SourceBrowsePage() {
   const filterQuery = useQuery<ListResponse>({
     queryKey: ["source-filter", sourceId, mediaType, searchQuery, allTagIds.join(","), filterPage, settings.hideNsfw, settings.posterQuality],
     queryFn: () => clientAdapter && isSearching
-      ? clientAdapter.search(searchQuery, filterPage).catch(() => serverFetch<ListResponse>(`/api/search${buildQuery({
+      ? withServerFallback(clientAdapter.search(searchQuery, filterPage), `/api/search${buildQuery({
           ...commonOpts,
           query: searchQuery,
           page: String(filterPage),
           "tagIds[]": allTagIds,
-        })}`))
-      : serverFetch<ListResponse>(`/api/search${buildQuery({
+        })}`)
+      : clientOnlySource
+        ? clientAdapter!.latest(filterPage)
+        : serverFetch<ListResponse>(`/api/search${buildQuery({
           ...commonOpts,
           query: searchQuery || undefined,
           page: String(filterPage),
           "tagIds[]": allTagIds,
         })}`),
-    enabled: online && backendReady && !!sourceId && !!source && isFiltering,
+    enabled: sourceQueriesEnabled && isFiltering,
     staleTime: 30 * 1000,
     retry: 1,
   });
@@ -580,6 +587,7 @@ export default function SourceBrowsePage() {
               src={resolveAssetUrl(catalogEntry?.iconUrl)!}
               alt=""
               className="h-8 w-8 rounded-xl shrink-0 object-contain bg-muted border border-border/30"
+              referrerPolicy="no-referrer"
             />
           ) : (
             <div className="h-8 w-8 rounded-xl shrink-0 bg-primary/10 flex items-center justify-center border border-border/30">

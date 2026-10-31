@@ -53,7 +53,7 @@ export async function saveChapterToFile(opts: SaveToFileOptions): Promise<void> 
       chunk.map(async (rawUrl, offset) => {
         const mediaUrl = buildMediaUrl(rawUrl);
         try {
-          const res = await fetch(mediaUrl);
+          const res = await fetch(mediaUrl, { referrerPolicy: "no-referrer" });
           if (!res.ok) return;
           const blob = await res.blob();
           const ext  = guessExt(rawUrl, res.headers.get('content-type'));

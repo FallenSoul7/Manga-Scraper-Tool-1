@@ -64,6 +64,7 @@ function PawchiveThumbnail({
         onError={() => { setImageLoading(false); setFailed(true); }}
         className="h-full w-full object-cover"
         draggable={false}
+        referrerPolicy="no-referrer"
       />
       {imageLoading && <div className="absolute inset-0 flex items-center justify-center bg-muted/80"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
     </div>

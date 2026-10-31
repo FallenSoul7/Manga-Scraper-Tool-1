@@ -1,3 +1,5 @@
+import { createTier1ClientAdapter, getImportedTier1Extension } from "./imported-extensions";
+
 export interface ClientMangaSummary {
   id: string;
   title: string;
@@ -54,6 +56,8 @@ export type ClientSourceMode = "client" | "server";
 export interface ClientSourceAdapter {
   sourceId: string;
   mode: ClientSourceMode;
+  /** When false, failures stay on the client instead of calling an unsupported backend source. */
+  fallbackToServer?: boolean;
   popular(page: number): Promise<ClientListResponse>;
   latest(page: number): Promise<ClientListResponse>;
   search(query: string, page: number): Promise<ClientListResponse>;
@@ -107,7 +111,7 @@ async function cachedText(key: string, loader: () => Promise<string>): Promise<s
 
 async function clientJson<T>(key: string, url: string, init?: RequestInit): Promise<T> {
   const raw = await cachedText(`client-json:${key}`, async () => {
-    const response = await fetch(url, { credentials: "omit", ...init, headers: { Accept: "application/json", ...(init?.headers ?? {}) } });
+    const response = await fetch(url, { credentials: "omit", ...init, referrerPolicy: "no-referrer", headers: { Accept: "application/json", ...(init?.headers ?? {}) } });
     if (!response.ok) throw new Error(`Client source request failed: ${response.status}`);
     return response.text();
   });
@@ -116,7 +120,7 @@ async function clientJson<T>(key: string, url: string, init?: RequestInit): Prom
 
 async function clientHtml(key: string, url: string, init?: RequestInit): Promise<Document> {
   const raw = await cachedText(`client-html:${key}`, async () => {
-    const response = await fetch(url, { credentials: "omit", ...init, headers: { Accept: "text/html", ...(init?.headers ?? {}) } });
+    const response = await fetch(url, { credentials: "omit", ...init, referrerPolicy: "no-referrer", headers: { Accept: "text/html", ...(init?.headers ?? {}) } });
     if (!response.ok) throw new Error(`Client source request failed: ${response.status}`);
     return response.text();
   });
@@ -182,13 +186,13 @@ async function webtoonDetails(id: string, options?: { scorePosition?: "top" | "b
 async function webtoonChapters(id: string): Promise<ClientChapterResponse> {
   const titleNo = webtoonTitleNo(id);
   if (!titleNo) throw new Error(`Webtoons: cannot parse title_no from ${id}`);
-  const data = await clientJson<any>(`webtoons:chapters:${id}`, `${WEBTOONS_MOBILE}/api/v1/${webtoonType(id)}/${titleNo}/episodes?pageSize=99999`, { headers: { Cookie: "ageGatePass=true; locale=en; needGDPR=false", Referer: `${WEBTOONS_MOBILE}/` } });
+  const data = await clientJson<any>(`webtoons:chapters:${id}`, `${WEBTOONS_MOBILE}/api/v1/${webtoonType(id)}/${titleNo}/episodes?pageSize=99999`, { headers: { Cookie: "ageGatePass=true; locale=en; needGDPR=false" } });
   const episodes = data?.result?.episodeList ?? [];
   return { items: episodes.map((ep: any) => ({ id: ep.viewerLink, number: ep.episodeNo, title: ep.episodeTitle, scanlator: "", date: Math.floor((ep.exposureDateMillis ?? 0) / 1000) })).reverse() };
 }
 
 async function webtoonPages(chapterId: string): Promise<ClientPageResponse> {
-  const document = await clientHtml(`webtoons:pages:${chapterId}`, chapterId.startsWith("http") ? chapterId : `${WEBTOONS_BASE}${chapterId}`, { headers: { Cookie: "ageGatePass=true; locale=en; needGDPR=false", Referer: `${WEBTOONS_BASE}/` } });
+  const document = await clientHtml(`webtoons:pages:${chapterId}`, chapterId.startsWith("http") ? chapterId : `${WEBTOONS_BASE}${chapterId}`, { headers: { Cookie: "ageGatePass=true; locale=en; needGDPR=false" } });
   const urls = Array.from(document.querySelectorAll("#_imageList > img[data-url], img[data-url]")).map(el => el.getAttribute("data-url") || "").filter(url => url && !url.includes("/thumb_")).filter((url, index, all) => all.indexOf(url) === index);
   if (!urls.length) throw new Error(`Webtoons: no pages found for ${chapterId}`);
   return { chapterId, pages: urls.map((url, index) => ({ index, url })) };
@@ -292,7 +296,22 @@ const thunderAdapter: ClientSourceAdapter = { sourceId: "all.thunderscans", mode
 
 const sourceModes: Record<string, ClientSourceMode> = { "all.webtoons": "server", "en.asurascans": "server", "all.mangadex": "client", "all.thunderscans": "server", "en.ninehentai": "server", "en.royalroad": "server", "all.pawchive": "server" };
 const clientAdapters: Record<string, ClientSourceAdapter> = { "all.webtoons": webtoonsAdapter, "en.asurascans": asuraAdapter, "all.mangadex": mangaDexAdapter, "all.thunderscans": thunderAdapter };
-export function getClientSourceAdapter(sourceId: string): ClientSourceAdapter | null { const adapter = clientAdapters[sourceId]; return adapter && sourceModes[sourceId] === "client" ? adapter : null; }
-export function getClientSourceMode(sourceId: string): ClientSourceMode { return sourceModes[sourceId] ?? "server"; }
+const tier1Adapters = new Map<string, { key: string; adapter: ClientSourceAdapter }>();
+function getTier1Adapter(sourceId: string): ClientSourceAdapter | null {
+  const extension = getImportedTier1Extension(sourceId);
+  if (!extension) { tier1Adapters.delete(sourceId); return null; }
+  const key = `${extension.manifestUrl}:${extension.importedAt}:${extension.manifest.sourceName}`;
+  const cached = tier1Adapters.get(sourceId);
+  if (cached?.key === key) return cached.adapter;
+  const adapter = createTier1ClientAdapter(extension);
+  tier1Adapters.set(sourceId, { key, adapter });
+  return adapter;
+}
+export function getClientSourceAdapter(sourceId: string): ClientSourceAdapter | null {
+  const adapter = clientAdapters[sourceId];
+  if (adapter && sourceModes[sourceId] === "client") return adapter;
+  return getTier1Adapter(sourceId);
+}
+export function getClientSourceMode(sourceId: string): ClientSourceMode { return getClientSourceAdapter(sourceId)?.mode ?? sourceModes[sourceId] ?? "server"; }
 export const isClientWebtoons = (sourceId: string) => getClientSourceAdapter(sourceId)?.sourceId === "all.webtoons";
 export const isClientSource = (sourceId: string) => getClientSourceMode(sourceId) === "client";

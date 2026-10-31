@@ -182,6 +182,7 @@ export default function VideoPlayer({ url, title, subtitle, tracks = [], onBack 
           className="absolute inset-0 w-full h-full border-0"
           allow="autoplay; fullscreen; picture-in-picture"
           allowFullScreen
+        {...({ referrerPolicy: "no-referrer" } as Record<string, string>)}
         />
       ) : (
         <video
@@ -191,6 +192,7 @@ export default function VideoPlayer({ url, title, subtitle, tracks = [], onBack 
           playsInline
           preload="metadata"
           crossOrigin="anonymous"
+        {...({ referrerPolicy: "no-referrer" } as Record<string, string>)}
         />
       )}
 

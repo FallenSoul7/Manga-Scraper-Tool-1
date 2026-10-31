@@ -275,7 +275,10 @@ export default function Reader() {
   const clientPagesQuery = useQuery({
     queryKey: ["client-pages", sourceId, chapterId],
     queryFn: () => clientAdapter?.pages
-      ? clientAdapter.pages(chapterId).catch(() => customFetch<any>(`/api/chapter/${encodeURIComponent(chapterId)}/pages`))
+      ? clientAdapter.pages(chapterId).catch(error => {
+          if (clientAdapter.fallbackToServer === false) throw error;
+          return customFetch<any>(`/api/chapter/${encodeURIComponent(chapterId)}/pages`);
+        })
       : Promise.reject(new Error("Client pages unavailable")),
     enabled: !isOfflineMode && !!chapterId && chapterId !== "0" && !!clientAdapter?.pages && !webtoonPagesUseServer,
     staleTime: 5 * 60 * 1000,
@@ -1023,6 +1026,7 @@ export default function Reader() {
                         setLoadedImgs((p) => ({ ...p, [idx]: true }));
                       }}
                       style={{ display: 'block', width: '100%', height: 'auto', margin: 0, padding: 0, verticalAlign: 'top', lineHeight: 0 }}
+                      referrerPolicy="no-referrer"
                     />
                   )}
                   {!isLoaded && !failedImgs[idx] && (
@@ -1073,6 +1077,7 @@ export default function Reader() {
                          height: isPaged ? 'auto' : undefined,
                          objectFit: 'contain',
                        }}
+                       referrerPolicy="no-referrer"
                     />
                   )}
                 </>
@@ -1129,6 +1134,7 @@ export default function Reader() {
                         ? { display: 'block', width: '100%', height: 'auto', margin: 0, padding: 0, verticalAlign: 'top', lineHeight: 0 }
                         : { display: 'block', maxWidth: '100%', objectFit: 'contain' }
                     }
+                    referrerPolicy="no-referrer"
                   />
                   <PageTranslationOverlay pageIndex={globalPageIndex} regions={pageTranslations[globalPageIndex] ?? []} />
                   <ReaderRegionSelector
