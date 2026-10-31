@@ -1,5 +1,6 @@
 {
-  "installCommand": "pnpm install --no-frozen-lockfile",
+  "installCommand": "pnpm install --filter @workspace/comix-web... --no-frozen-lockfile",
+  "buildCommand": "pnpm --dir artifacts/comix-web build",
   "rewrites": [
     {
       "source": "/api/((?!_proxy(?:/|$)).*)",
