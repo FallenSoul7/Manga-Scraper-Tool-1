@@ -137,7 +137,7 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
   try {
     if (name === "list_sources") {
       const installed = Object.values(state.installedSources ?? {}).sort((a, b) => a.name.localeCompare(b.name));
-      if (!installed.length) return { result: "No sources are installed on this device. Connect Frwilxe Hub in System → Extensions, then install a source." };
+      if (!installed.length) return { result: "No sources are installed on this device. Browse official sources in System → Extensions, then install one." };
       const list = installed.map(source => `• ${source.name} (ID: ${source.id}, lang: ${source.lang}${source.isNsfw ? ", 18+" : ""})`).join("\n");
       return { result: `Installed sources (${installed.length}):\n${list}` };
     }
