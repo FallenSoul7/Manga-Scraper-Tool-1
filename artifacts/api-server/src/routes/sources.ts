@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { getSourceManifests, isSupported } from "../sources/registry";
-import catalogRaw from "../sources/catalog.generated.json" assert { type: "json" };
+import { getCatalog, getSourceManifests, isSupported } from "@fallensoul7/manga-scraper-sources";
 
 const router = Router();
 const manifests = getSourceManifests();
+const catalogRaw = getCatalog();
 type CompatibilityState = "ready" | "experimental" | "needs-adapter";
 
 // Keep known incomplete/blocked handlers distinct from both fully usable
@@ -42,7 +42,7 @@ const universal = {
 const enriched = {
   generatedAt: catalogRaw.generatedAt,
   count: catalogRaw.count + 1,
-  extensions: [universal, ...(catalogRaw.extensions as Array<Record<string, unknown>>).map((ext) => ({
+  extensions: [universal, ...catalogRaw.extensions.map((ext) => ({
     id: ext.id,
     slug: ext.slug,
     name: ext.name,

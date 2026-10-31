@@ -11,7 +11,7 @@ import * as fs from "fs";
 import * as nodePath from "path";
 import axios from "axios";
 import * as cheerio from "cheerio";
-import { getKoofrCover, koofrStream, koofrThumbnail, isProxySafe, CACHE_ROOT as KOOFR_CACHE_ROOT } from "./sources/koofr.js";
+import { getKoofrCover, koofrStream, koofrThumbnail, isProxySafe, CACHE_ROOT as KOOFR_CACHE_ROOT } from "@fallensoul7/manga-scraper-sources";
 
 const app: Express = express();
 app.set("trust proxy", 1);

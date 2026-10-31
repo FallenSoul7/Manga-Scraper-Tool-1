@@ -1,7 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { getSource, getSourceOrNull } from "../sources/registry";
-import type { ListOptions, PosterQuality } from "../sources/types";
+import { getSource, getSourceOrNull, type ListOptions, type PosterQuality } from "@fallensoul7/manga-scraper-sources";
 import { logger } from "../lib/logger";
 
 const router = Router();
