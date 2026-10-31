@@ -154,9 +154,6 @@ importers:
 
   artifacts/api-server:
     dependencies:
-      '@fallensoul7/frwilxe-hub-sources':
-        specifier: workspace:*
-        version: link:../../packages/manga-scraper-sources
       '@supabase/supabase-js':
         specifier: ^2.108.2
         version: 2.108.2
@@ -260,6 +257,10 @@ importers:
       thread-stream:
         specifier: 3.1.0
         version: 3.1.0
+    optionalDependencies:
+      '@fallensoul7/frwilxe-hub-sources':
+        specifier: workspace:*
+        version: link:../../packages/manga-scraper-sources
 
   artifacts/comix-web:
     dependencies:
