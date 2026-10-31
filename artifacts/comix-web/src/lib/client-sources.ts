@@ -3,6 +3,22 @@ import { clientFetch } from "./client-fetch";
 import { atsuAdapter } from "./native-adapters/all-atsu";
 import danbooruAdapter from "./native-adapters/all-danbooru";
 import { pawchiveAdapter } from "./native-adapters/all-pawchive";
+import comickfanAdapter from "./native-adapters/en-comickfan";
+import allmangaAdapter from "./native-adapters/en-allmanga";
+import rule34Adapter from "./native-adapters/en-rule34";
+import xkcdAdapter from "./native-adapters/en-xkcd";
+import royalroadAdapter from "./native-adapters/en-royalroad";
+import hentaifoxAdapter from "./native-adapters/all-hentaifox";
+import onlythebesthentaiAdapter from "./native-adapters/en-onlythebesthentai";
+import mangafreakAdapter from "./native-adapters/en-mangafreak";
+import novelfullAdapter from "./native-adapters/en-novelfull";
+import novelhallAdapter from "./native-adapters/en-novelhall";
+import ninehentaiAdapter from "./native-adapters/en-ninehentai";
+import resetscansAdapter from "./native-adapters/en-resetscans";
+import pandachaikaAdapter from "./native-adapters/all-pandachaika";
+import animeggAdapter from "./native-adapters/en-animegg";
+import mihentaiAdapter from "./native-adapters/all-mihentai";
+import ravenscansAdapter from "./native-adapters/en-ravenscans";
 
 export interface ClientMangaSummary {
   id: string;
@@ -513,8 +529,24 @@ const sourceModes: Record<string, ClientSourceMode> = {
   "all.mangadex": "client",
   "all.thunderscans": "client",
   "all.pawchive": "client",
-  "en.ninehentai": "server",
-  "en.royalroad": "server",
+  "en.comickfan": "client",
+  "en.allmanga": "client",
+  "en.rule34": "client",
+  "en.xkcd": "client",
+  "en.royalroad": "client",
+  "all.hentaifox": "client",
+  "en.onlythebesthentai": "client",
+  "en.mangafreak": "client",
+  "en.novelfull": "client",
+  "en.novelhall": "client",
+  "en.ninehentai": "client",
+  "en.resetscans": "client",
+  "all.pandachaika": "client",
+  "en.pandachaika": "client",
+  "en.animegg": "client",
+  "all.mihentai": "client",
+  "en.ravenscans": "client",
+  "en.allanime": "client",
 };
 const clientAdapters: Record<string, ClientSourceAdapter> = {
   "all.atsu": atsuAdapter,
@@ -524,6 +556,24 @@ const clientAdapters: Record<string, ClientSourceAdapter> = {
   "all.mangadex": mangaDexAdapter,
   "all.thunderscans": thunderAdapter,
   "all.pawchive": pawchiveAdapter,
+  "en.comickfan": comickfanAdapter,
+  "en.allmanga": allmangaAdapter,
+  "en.rule34": rule34Adapter,
+  "en.xkcd": xkcdAdapter,
+  "en.royalroad": royalroadAdapter,
+  "all.hentaifox": hentaifoxAdapter,
+  "en.onlythebesthentai": onlythebesthentaiAdapter,
+  "en.mangafreak": mangafreakAdapter,
+  "en.novelfull": novelfullAdapter,
+  "en.novelhall": novelhallAdapter,
+  "en.ninehentai": ninehentaiAdapter,
+  "en.resetscans": resetscansAdapter,
+  "all.pandachaika": pandachaikaAdapter,
+  "en.pandachaika": pandachaikaAdapter,
+  "en.animegg": animeggAdapter,
+  "all.mihentai": mihentaiAdapter,
+  "en.ravenscans": ravenscansAdapter,
+  "en.allanime": allmangaAdapter,
 };
 const tier1Adapters = new Map<string, { key: string; adapter: ClientSourceAdapter }>();
 function getTier1Adapter(sourceId: string): ClientSourceAdapter | null {

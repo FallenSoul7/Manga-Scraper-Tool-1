@@ -34,7 +34,6 @@ function sourceLabel(sourceId: string): string {
     "en.ninehentai": "9Hentai",
     "en.onlythebesthentai": "OnlyTheBestHentai",
     "en.pandachaika": "PandaChaika",
-    "video.hentaiyoga": "HentaiYoga",
   };
   if (known[sourceId]) return known[sourceId];
   const slug = sourceId.split(".").pop() ?? sourceId;
