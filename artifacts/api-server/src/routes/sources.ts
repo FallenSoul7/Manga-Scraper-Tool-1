@@ -1,13 +1,8 @@
 import { Router } from "express";
-import { getCatalog, getSourceManifests, isSupported } from "@fallensoul7/frwilxe-hub-sources";
+import { getCatalog, isSupported } from "@fallensoul7/frwilxe-hub-sources";
 
 const router = Router();
-const manifests = getSourceManifests();
 const catalogRaw = getCatalog();
-type CompatibilityState = "ready" | "experimental" | "needs-adapter";
-
-// Keep known incomplete/blocked handlers distinct from both fully usable
-// sources and catalog entries that do not yet have a web implementation.
 const EXPERIMENTAL_SOURCE_IDS = new Set([
   "en.comix",
   "en.comickfan",
@@ -17,40 +12,46 @@ const EXPERIMENTAL_SOURCE_IDS = new Set([
   "en.onlythebesthentai",
   "en.allmanga",
   "en.allanime",
+  "en.animegg",
   "en.royalroad",
 ]);
 
-function compatibilityFor(id: string): CompatibilityState {
-  if (!isSupported(id)) return "needs-adapter";
-  return EXPERIMENTAL_SOURCE_IDS.has(id) ? "experimental" : "ready";
-}
+const registryExtensions = Array.from(new Map(
+  catalogRaw.extensions
+    .filter((extension) => isSupported(extension.id as string) && extension.id !== "builtin.universal")
+    .map((extension) => [extension.id, {
+      id: extension.id,
+      name: extension.name,
+      lang: extension.lang,
+      isNsfw: extension.isNsfw,
+      versionCode: extension.versionCode,
+      iconUrl: extension.icon
+        ? `/public/source-icons/${extension.icon as string}`
+        : extension.id === "all.atsu" ? "https://atsu.moe/favicon.ico" : null,
+      compatibility: EXPERIMENTAL_SOURCE_IDS.has(extension.id as string) ? "experimental" as const : "ready" as const,
+      kind: "server" as const,
+    }]),
+).values()).sort((a, b) => a.name.localeCompare(b.name) || a.lang.localeCompare(b.lang));
 
-const enriched = {
-  generatedAt: catalogRaw.generatedAt,
-  count: catalogRaw.count,
-  extensions: catalogRaw.extensions.map((ext) => ({
-    id: ext.id,
-    slug: ext.slug,
-    name: ext.name,
-    lang: ext.lang,
-    isNsfw: ext.isNsfw,
-    versionCode: ext.versionCode,
-    iconUrl: ext.icon
-      ? `/public/source-icons/${ext.icon as string}`
-      : ext.id === "all.atsu" ? "https://atsu.moe/favicon.ico" : null,
-    supported: isSupported(ext.id as string),
-    origin: isSupported(ext.id as string) ? "custom" : "repository",
-    compatibility: compatibilityFor(ext.id as string),
-    manifest: manifests.find(manifest => manifest.id === ext.id || (ext.id === "en.allanime" && manifest.id === "en.allmanga")) ?? null,
-  })),
+const officialRegistry = {
+  schemaVersion: 1 as const,
+  repository: {
+    id: "frwilxe-hub",
+    name: "Frwilxe Hub",
+    url: "https://github.com/FallenSoul7/Frwilxe-Hub",
+  },
+  generatedAt: new Date().toISOString(),
+  extensions: registryExtensions,
 };
 
-router.get("/catalog", (_req, res) => {
-  res.json(enriched);
-});
+function sendOfficialRegistry(_req: unknown, res: import("express").Response) {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(officialRegistry);
+}
 
-router.get("/manifests", (_req, res) => {
-  res.json({ manifests });
-});
+router.get("/registry", sendOfficialRegistry);
+// Keep the old URL stable for clients that still request it, but never expose
+// the legacy 1,362-entry server catalog from this route again.
+router.get("/catalog", sendOfficialRegistry);
 
 export default router;

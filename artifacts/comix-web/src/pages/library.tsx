@@ -6,7 +6,7 @@ import { useStore, storeActions, getStoreSnapshot } from "@/lib/storage";
 import { MangaCard } from "@/components/manga-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { getCachedSourceCatalog, useOnlineStatus } from "@/lib/offline-catalog";
+import { useOnlineStatus } from "@/lib/offline-catalog";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -20,6 +20,8 @@ import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 
 const FALLBACK_TAB = "default";
 const PAWCHIVE_ICON = "/public/source-icons/all.pawchive.svg";
+const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const sourceIconUrl = (url: string | null | undefined) => url?.startsWith("/") && API_ORIGIN ? `${API_ORIGIN}${url}` : url;
 
 type PawchivePostSummary = {
   id: string | number;
@@ -113,6 +115,7 @@ export default function LibraryPage() {
   });
   const library   = useStore(s => s.library);
   const categories = useStore(s => s.categories);
+  const installedSources = useStore(s => s.installedSources);
   const searchString = useSearch();
   const [, setLocation] = useLocation();
   const pawchiveThumbnailBackfillAttemptedRef = useRef(new Set<string>());
@@ -355,25 +358,13 @@ export default function LibraryPage() {
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
   const [sourceFilter, setSourceFilter]         = useState("");
 
-  const { data: catalogData } = useQuery({
-    queryKey: ["sources-catalog"],
-    queryFn: async () => {
-      const res = await customFetch("/api/sources/catalog") as Response;
-      return res.json();
-    },
-    enabled: sourcePickerOpen && online,
-    initialData: getCachedSourceCatalog<any>(),
-    staleTime: 5 * 60 * 1000,
-  });
-
   const availableSources = useMemo(() => {
-    const exts: any[] = catalogData?.extensions ?? [];
     const q = sourceFilter.trim().toLowerCase();
-    return exts
-      .filter(e => e.supported)
-      .filter(e => !e.isNsfw || (!settings.hideNsfw && hasAdultAccessConsent()))
-      .filter(e => (q ? (e.name as string).toLowerCase().includes(q) : true));
-  }, [catalogData, sourceFilter, settings.hideNsfw]);
+    return Object.values(installedSources)
+      .filter(source => !source.isNsfw || (!settings.hideNsfw && hasAdultAccessConsent()))
+      .filter(source => !q || `${source.name} ${source.lang}`.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [installedSources, sourceFilter, settings.hideNsfw]);
 
   const assignSource = useCallback((sourceId: string) => {
     storeActions.batchPatchLibrary(
@@ -592,23 +583,23 @@ export default function LibraryPage() {
             <div className="flex flex-col gap-0.5 max-h-56 overflow-y-auto">
               {availableSources.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-6">
-                  {catalogData ? "No sources found." : "Loading sources…"}
+                  {Object.keys(installedSources).length ? "No matching installed sources." : "No sources installed. Add sources from Sources → Extensions."}
                 </p>
               )}
-              {availableSources.map((src: any) => (
+              {availableSources.map(src => (
                 <button
                   key={src.id}
                   type="button"
                   onClick={() => assignSource(src.id)}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm hover:bg-muted transition-colors text-left"
                 >
-                  {src.iconUrl ? (
-                    <img src={src.iconUrl} alt={src.name} className="w-6 h-6 rounded bg-muted object-contain p-0.5 shrink-0 aspect-square"  referrerPolicy="no-referrer"/>
+                  {sourceIconUrl(src.iconUrl) ? (
+                    <img src={sourceIconUrl(src.iconUrl)!} alt={src.name} className="w-6 h-6 rounded bg-muted object-contain p-0.5 shrink-0 aspect-square" referrerPolicy="no-referrer" />
                   ) : (
                     <div className="w-6 h-6 rounded bg-muted-foreground/20 shrink-0" />
                   )}
                   <span className="flex-1 font-medium">{src.name}</span>
-                  <span className="text-xs text-muted-foreground uppercase">{src.language}</span>
+                  <span className="text-xs text-muted-foreground uppercase">{src.lang}</span>
                   {src.isNsfw && (
                     <span className="text-[10px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded">18+</span>
                   )}

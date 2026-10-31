@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { customFetch } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,47 +22,19 @@ import { useStore, storeActions, type InstalledSource } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/hooks/use-settings";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
-import { getCachedSourceCatalog, saveOfflineSourceCatalog, useOfflineCatalog, useOnlineStatus } from "@/lib/offline-catalog";
+import { useOnlineStatus } from "@/lib/offline-catalog";
 import { requestBackendRefresh } from "@/components/backend-warmup";
 import Tier1ExtensionCatalog from "@/components/tier1-extension-catalog";
 import { getClientSourceAdapter } from "@/lib/client-sources";
 import { useImportedTier1Extensions } from "@/lib/imported-extensions";
+import { useOfficialExtensionRegistry } from "@/lib/extension-registry";
 
-interface CatalogExtension {
-  id: string; slug: string; name: string; lang: string;
-  isNsfw: boolean; versionCode: number; iconUrl: string | null; supported: boolean;
-  origin?: "repository" | "custom";
-  compatibility?: "ready" | "experimental" | "needs-adapter";
-  manifest?: {
-    languages: string[];
-    languageAware: boolean;
-    adapter: string;
-    filters: Array<{ id: string; label: string; type: string }>;
-  } | null;
-}
-interface CatalogResponse {
-  generatedAt: number; count: number; supportedIds: string[]; extensions: CatalogExtension[];
-}
-
-async function loadCatalogWithFallback(): Promise<CatalogResponse> {
-  try {
-    return await customFetch<CatalogResponse>("/api/sources/catalog");
-  } catch (backendError) {
-    // Keep installed-source icons available from the bundled catalog when the
-    // Render catalog endpoint is suspended or temporarily unavailable.
-    const fallback = await fetch("/source-catalog.json", { cache: "no-cache" });
-    if (!fallback.ok) throw backendError;
-    return await fallback.json() as CatalogResponse;
-  }
-}
-
-// Prefix relative /api/... paths with the Render backend origin so that
-// <img> tags (which don't go through customFetch) load from the right host.
+// Prefix relative backend icon paths so <img> loads them from Render.
 const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const GLOBAL_SEARCH_TIMEOUT_MS = 15_000;
 function resolveIconUrl(url: string | null): string | null {
   if (!url) return null;
-  if (url.startsWith("/api/") && API_ORIGIN) return `${API_ORIGIN}${url}`;
+  if (url.startsWith("/") && API_ORIGIN) return `${API_ORIGIN}${url}`;
   return url;
 }
 
@@ -86,6 +57,8 @@ const NOT_WORKING_SOURCE_IDS = new Set([
   "en.elftoon",
   "en.onlythebesthentai",
   "en.allmanga",
+  "en.allanime",
+  "en.animegg",
 ]);
 const UPSTREAM_BLOCKED_SOURCE_IDS = new Set(["en.royalroad"]);
 
@@ -259,9 +232,9 @@ export default function SourcesPage() {
     staleTime: Infinity,
     enabled: false,
   });
-  const offlineCatalog = useOfflineCatalog();
   const installedMap = useStore(s => s.installedSources);
   const importedExtensions = useImportedTier1Extensions();
+  const extensionRegistry = useOfficialExtensionRegistry();
   const activeId     = useStore(s => s.activeSourceId);
   const { settings } = useSettings();
   const searchString = useSearch();
@@ -349,29 +322,7 @@ export default function SourcesPage() {
   const clearSearch = () => { setLocation("/sources"); setGlobalResults([]); setSearchedQuery(""); };
   const showGlobalSearch = !!(urlQ || isSearching || globalResults.length > 0);
 
-  // Subscribe to the offline snapshot so a catalog written during startup is
-  // visible without requiring a full browser refresh.
-  const cachedCatalog =
-    (offlineCatalog?.sourceCatalog as CatalogResponse | null) ??
-    getCachedSourceCatalog<CatalogResponse>();
-  const { data: catalog } = useQuery<CatalogResponse>({
-    queryKey: ["sources-catalog"],
-    queryFn: loadCatalogWithFallback,
-    // Catalog loading is safe to attempt even when navigator.onLine is stale
-    // inside a preview iframe. React Query keeps cached data visible if the
-    // request fails, while other source actions still honor the online flag.
-    enabled: true,
-    initialData: cachedCatalog ?? undefined,
-    staleTime: 24 * 60 * 60 * 1000,
-    networkMode: "always",
-    refetchOnMount: "always",
-    retry: 3,
-    retryDelay: attempt => Math.min(1000 * 2 ** attempt, 5000),
-  });
-  useEffect(() => {
-    if (online && catalog) saveOfflineSourceCatalog(catalog);
-  }, [online, catalog]);
-  const extensionCount = importedExtensions.length;
+  const extensionCount = (extensionRegistry?.extensions.length ?? 0) + importedExtensions.length;
 
   return (
     <main className="pb-8 max-w-3xl mx-auto">
@@ -430,11 +381,11 @@ export default function SourcesPage() {
           </div>
 
           <TabsContent value="sources" className="mt-0 animate-in fade-in duration-300">
-            <SourcesTab installed={installed} activeId={activeId} catalog={catalog ?? null} />
+            <SourcesTab installed={installed} activeId={activeId} />
           </TabsContent>
 
           <TabsContent value="anime" className="mt-0 animate-in fade-in duration-300">
-            <AnimeTab installed={installed} catalog={catalog ?? null} />
+            <AnimeTab installed={installed} />
           </TabsContent>
 
           <TabsContent value="extensions" className="mt-0 animate-in fade-in duration-300">
@@ -447,27 +398,19 @@ export default function SourcesPage() {
 }
 
 // ─── Sources tab (Tachiyomi-style) ───────────────────────────────────────────
-function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null }) {
+function SourcesTab({ installed, activeId }: { installed: InstalledSource[]; activeId: string }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { settings, updateSettings } = useSettings();
   const [settingsSource, setSettingsSource] = useState<InstalledSource | null>(null);
 
-  const catalogIconMap = useMemo(() => {
-    const map: Record<string, string | null> = {};
-    for (const ext of catalog?.extensions ?? []) {
-      map[ext.id] = ext.iconUrl;
-    }
-    return map;
-  }, [catalog]);
-
   const withIcon = useMemo(
     () => installed.map(s => ({
       ...s,
-      iconUrl: s.iconUrl ?? catalogIconMap[s.id] ?? null,
+      iconUrl: s.iconUrl ?? null,
       isNsfw: isInherentlyMature(s),
     })),
-    [installed, catalogIconMap],
+    [installed],
   );
 
   const sourceSort = (a: InstalledSource, b: InstalledSource) => {
@@ -585,25 +528,18 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
 }
 
 // ─── Anime tab ────────────────────────────────────────────────────────────────
-function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; catalog: CatalogResponse | null }) {
+function AnimeTab({ installed }: { installed: InstalledSource[] }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { settings } = useSettings();
   const adultAccess = !settings.hideNsfw && hasAdultAccessConsent();
 
-  const catalogIconMap = useMemo(() => {
-    const map: Record<string, string | null> = {};
-    for (const ext of catalog?.extensions ?? []) map[ext.id] = ext.iconUrl;
-    return map;
-  }, [catalog]);
-
   const animeSources = useMemo(
     () => installed
       .filter(s => ANIME_SOURCE_IDS.has(s.id))
       .filter(s => !s.isNsfw || adultAccess)
-      .map(s => ({ ...s, iconUrl: s.iconUrl ?? catalogIconMap[s.id] ?? null }))
       .sort((a, b) => a.name.localeCompare(b.name)),
-    [installed, catalogIconMap, adultAccess],
+    [installed, adultAccess],
   );
 
   function AnimeRow({ src }: { src: InstalledSource }) {

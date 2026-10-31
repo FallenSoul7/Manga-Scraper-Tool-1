@@ -71,14 +71,6 @@ function SourceBrowseNativeAd() {
   );
 }
 
-interface PopularSortOption { value: string; label: string; }
-interface CatalogEntry {
-  id: string; name: string; lang: string; isNsfw: boolean;
-  iconUrl?: string | null; supported?: boolean;
-  compatibility?: "ready" | "experimental" | "needs-adapter";
-  popularSorts?: PopularSortOption[];
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -114,16 +106,6 @@ function resolveAssetUrl(url: string | null | undefined): string | null {
   return url.startsWith("/") && API_ORIGIN ? `${API_ORIGIN}${url}` : url;
 }
 
-async function loadCatalogWithFallback(): Promise<{ extensions: CatalogEntry[] }> {
-  try {
-    return await customFetch<{ extensions: CatalogEntry[] }>("/api/sources/catalog");
-  } catch (backendError) {
-    const fallback = await fetch("/source-catalog.json", { cache: "no-cache" });
-    if (!fallback.ok) throw backendError;
-    return await fallback.json() as { extensions: CatalogEntry[] };
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -151,28 +133,8 @@ export default function SourceBrowsePage() {
   const theme = useStore(s => s.theme);
   const { settings } = useSettings();
 
-  // For non-installed (catalog-only) sources
-  const { data: catalogData } = useQuery<{ extensions: CatalogEntry[] }>({
-    queryKey: ["catalog"],
-    queryFn: loadCatalogWithFallback,
-    enabled: online && !installedSource && !!sourceId,
-    staleTime: Infinity,
-  });
-  const catalogEntry = useMemo(
-    () => catalogData?.extensions?.find(e => e.id === sourceId) ?? null,
-    [catalogData, sourceId],
-  );
-  const compatibility = catalogEntry?.compatibility ??
-    (catalogEntry?.supported ? "ready" : catalogEntry ? "needs-adapter" : null);
-
-  const source = compatibility === "needs-adapter" ? null : installedSource ?? (catalogEntry ? {
-    id: sourceId,
-    name: catalogEntry.name,
-    lang: catalogEntry.lang,
-    isNsfw: catalogEntry.isNsfw,
-  } : null);
-
-  const popularSorts: PopularSortOption[] = catalogEntry?.popularSorts ?? [];
+  const source = installedSource;
+  const popularSorts: Array<{ value: string; label: string }> = [];
 
   // ---- State ----
   const pageStateKey = `source-state:${sourceId}`;
@@ -501,37 +463,14 @@ export default function SourceBrowsePage() {
     );
   }
 
-  if (!source && !catalogEntry && !!sourceId) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (catalogEntry && compatibility === "needs-adapter") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background px-6 text-center">
-        <div className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
-          Needs adapter
-        </div>
-        <div className="max-w-md">
-          <h1 className="text-lg font-semibold">{catalogEntry.name} is not ready to browse</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            This entry is saved as repository metadata, but ComiXHub does not have a web scraper for it yet.
-            Its Android APK/JAR is not downloaded or executed.
-          </p>
-        </div>
-        <Button variant="outline" onClick={() => setLocation("/sources")}>Back to sources</Button>
-      </div>
-    );
-  }
-
   if (!source) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
-        <p className="text-muted-foreground">Source not found.</p>
-        <Button variant="outline" onClick={() => setLocation("/sources")}>Go back</Button>
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background px-6 text-center">
+        <p className="text-muted-foreground">This source is not installed on this device.</p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button variant="outline" onClick={() => setLocation("/sources")}>Back to sources</Button>
+          <Button onClick={() => setLocation("/extension-settings")}>Open Extensions</Button>
+        </div>
       </div>
     );
   }
@@ -582,9 +521,9 @@ export default function SourceBrowsePage() {
 
         {/* Title row */}
         <div className="flex items-center gap-3 px-4 h-14">
-          {resolveAssetUrl(catalogEntry?.iconUrl) ? (
+          {resolveAssetUrl(source.iconUrl) ? (
             <img
-              src={resolveAssetUrl(catalogEntry?.iconUrl)!}
+              src={resolveAssetUrl(source.iconUrl)!}
               alt=""
               className="h-8 w-8 rounded-xl shrink-0 object-contain bg-muted border border-border/30"
               referrerPolicy="no-referrer"

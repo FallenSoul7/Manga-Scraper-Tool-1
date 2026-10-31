@@ -1,6 +1,6 @@
 // Bump this when the app shell changes so installed PWAs discard stale bundles.
-const STATIC_CACHE = 'comihub-static-v23';
-const API_CACHE    = 'comihub-api-v11';
+const STATIC_CACHE = 'comihub-static-v24';
+const API_CACHE    = 'comihub-api-v12';
 const IMAGE_CACHE  = 'comihub-images-v2';
 const CHAPTER_IMAGE_CACHE = 'comihub-chapter-images-v1';
 const OFFLINE_IMAGE_CACHE = 'comihub-offline-v1';
@@ -15,16 +15,16 @@ const OWNED_CACHES = [
   OFFLINE_PAGES_CACHE,
 ];
 
-const API_PATTERNS = ['/api/sources/catalog', '/api/popular', '/api/latest', '/api/search', '/api/tags', '/api/details', '/api/chapters', '/api/pages', '/api/manga', '/api/chapter'];
+const API_PATTERNS = ['/api/sources/registry', '/api/popular', '/api/latest', '/api/search', '/api/tags', '/api/details', '/api/chapters', '/api/pages', '/api/manga', '/api/chapter'];
 const IMAGE_PATTERNS = ['/api/image', '/api/source-media'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     Promise.all([
       caches.open(STATIC_CACHE).then(cache => cache.add('/')).catch(() => {}),
-      // Seed the catalog during installation so the Extensions tab is
-      // available on the first offline/PWA launch as well.
-      caches.open(API_CACHE).then(cache => cache.add('/api/sources/catalog')).catch(() => {}),
+      // Seed the curated repository index during installation so Extensions
+      // is available on the first offline/PWA launch as well.
+      caches.open(API_CACHE).then(cache => cache.add('/api/sources/registry')).catch(() => {}),
     ])
       .then(() => self.skipWaiting())
   );
@@ -48,7 +48,7 @@ function isApiRequest(url) {
   return API_PATTERNS.some((p) => url.pathname.includes(p));
 }
 function isFastCachedApiRequest(url) {
-  return ['/api/sources/catalog', '/api/popular', '/api/latest', '/api/search', '/api/tags']
+  return ['/api/popular', '/api/latest', '/api/search', '/api/tags']
     .some((p) => url.pathname.includes(p));
 }
 function isImageRequest(url) {

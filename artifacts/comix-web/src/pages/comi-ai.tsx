@@ -136,13 +136,10 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Exe
 
   try {
     if (name === "list_sources") {
-      const res = await apiJsonFetch("/api/sources/catalog");
-      if (!res.ok) return { result: "Failed to load sources." };
-      const data = await res.json() as any;
-      const supported = (data.extensions ?? []).filter((e: any) => e.supported);
-      if (!supported.length) return { result: "No supported sources found." };
-      const list = supported.map((e: any) => `• ${e.name} (ID: ${e.id}, lang: ${e.lang}${e.isNsfw ? ", 18+" : ""})`).join("\n");
-      return { result: `Available sources (${supported.length}):\n${list}` };
+      const installed = Object.values(state.installedSources ?? {}).sort((a, b) => a.name.localeCompare(b.name));
+      if (!installed.length) return { result: "No sources are installed on this device. Connect Frwilxe Hub in System → Extensions, then install a source." };
+      const list = installed.map(source => `• ${source.name} (ID: ${source.id}, lang: ${source.lang}${source.isNsfw ? ", 18+" : ""})`).join("\n");
+      return { result: `Installed sources (${installed.length}):\n${list}` };
     }
 
     if (name === "browse_popular") {

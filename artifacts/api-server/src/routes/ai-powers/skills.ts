@@ -7,15 +7,15 @@ import type { SkillFunction, SkillResult } from './types';
 
 export const listSources: SkillFunction = async (args, ctx) => {
   try {
-    const res = await ctx.apiFetch('/api/sources/catalog');
+    const res = await ctx.apiFetch('/api/sources/registry');
     if (!res.ok) return { result: 'Failed to load sources.' };
     const data = await res.json() as any;
-    const supported = (data.extensions ?? []).filter((e: any) => e.supported);
-    if (!supported.length) return { result: 'No supported sources found.' };
+    const supported = data.extensions ?? [];
+    if (!supported.length) return { result: 'No sources found in Frwilxe Hub.' };
     const list = supported.map((e: any) =>
       `• ${e.name} (ID: ${e.id}, lang: ${e.lang}${e.isNsfw ? ', 18+' : ''})`
     ).join('\n');
-    return { result: `Available sources (${supported.length}):\n${list}` };
+    return { result: `Frwilxe Hub sources (${supported.length}):\n${list}` };
   } catch {
     return { result: 'Could not fetch sources.' };
   }
