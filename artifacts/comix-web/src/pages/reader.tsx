@@ -608,6 +608,12 @@ export default function Reader() {
     /animegg\.org\/embed\//i.test(url) || /\/api\/animegg\/embed(?:\?|$)/i.test(url);
 
   const textPage = effectivePages.find((page) => Boolean(page.text));
+  const safeNovelText = useMemo(() => {
+    if (!textPage?.text) return "";
+    const document = new DOMParser().parseFromString(textPage.text, "text/html");
+    document.querySelectorAll("script, style, iframe, object, embed, svg, math, form").forEach(element => element.remove());
+    return (document.body.innerText || document.body.textContent || "").trim();
+  }, [textPage?.text]);
   useEffect(() => {
     novelEndHandledRef.current = false;
     novelScrollRestoredRef.current = false;
@@ -770,10 +776,9 @@ export default function Reader() {
             </Sheet>
           </div>
         </div>
-        <article
-          className={`mx-auto max-w-3xl px-5 pt-24 pb-8 sm:px-8 sm:pt-28 sm:pb-12 prose-p:leading-8 prose-headings:font-semibold ${novelDark ? "prose-invert" : "prose-stone"}`}
-          dangerouslySetInnerHTML={{ __html: textPage.text }}
-        />
+        <article className={`mx-auto max-w-3xl px-5 pt-24 pb-8 sm:px-8 sm:pt-28 sm:pb-12 whitespace-pre-wrap leading-8 ${novelDark ? "text-[#e7e5e4]" : "text-[#27231f]"}`}>
+          {safeNovelText}
+        </article>
       </div>
     );
   }
@@ -960,6 +965,7 @@ export default function Reader() {
           const isLoaded = !!loadedImgs[idx];
           const isWebtoon = effectiveDirection === 'webtoon';
           const isPaged = effectiveDirection === 'ltr' || effectiveDirection === 'rtl';
+          const hasTextPage = typeof page.text === 'string' && page.text.length > 0;
 
           // ── Windowed rendering for vertical/webtoon modes ──────────────
           // Only keep images in the DOM within ±12 pages of where the user is.
@@ -1003,7 +1009,7 @@ export default function Reader() {
                   : 'flex items-center justify-center bg-black w-[100vw] h-[100dvh] snap-center snap-always'
                 : isWebtoon ? 'w-full' : 'flex items-center justify-center bg-black w-full'
               } ${effectiveDirection === 'vertical' ? 'mb-8' : ''}`}
-              style={!isPaged && (!isLoaded || !!failedImgs[idx]) ? {
+              style={!hasTextPage && !isPaged && (!isLoaded || !!failedImgs[idx]) ? {
                 minHeight: pageHeightsRef.current[idx] ?? 'min(145vw, 1100px)',
                 overflowAnchor: 'auto',
               } : undefined}>
@@ -1012,7 +1018,12 @@ export default function Reader() {
               )}
               {/* Webtoon / vertical: keep image in normal flow to avoid layout shift.
                   Loader overlays the image while it loads — no opacity-0+absolute swap. */}
-              {isWebtoon ? (
+              {hasTextPage ? (
+                <article className={`w-full max-w-3xl mx-auto px-6 py-8 text-left text-foreground bg-background ${isPaged ? 'h-[calc(100dvh-3.5rem)] overflow-y-auto' : ''}`}>
+                  {page.title && <h2 className="text-lg font-semibold mb-6">{page.title}</h2>}
+                  <div className="whitespace-pre-wrap leading-8">{page.text}</div>
+                </article>
+              ) : isWebtoon ? (
                 <div
                   className="relative w-full"
                   style={{
@@ -1103,13 +1114,13 @@ export default function Reader() {
                   )}
                 </>
               )}
-              <PageTranslationOverlay pageIndex={idx} regions={pageTranslations[idx] ?? []} />
-              <ReaderRegionSelector
+              {!hasTextPage && <PageTranslationOverlay pageIndex={idx} regions={pageTranslations[idx] ?? []} />}
+              {!hasTextPage && <ReaderRegionSelector
                 pageIndex={idx}
                 active={regionSelecting && idx === regionTargetPage}
                 onSelected={handleRegionSelected}
                 onCancel={cancelRegionSelection}
-              />
+              />}
             </div>
           );
         })}

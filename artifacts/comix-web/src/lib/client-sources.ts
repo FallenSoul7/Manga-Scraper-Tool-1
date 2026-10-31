@@ -1,5 +1,6 @@
 import { createTier1ClientAdapter, getImportedTier1Extension } from "./imported-extensions";
 import { clientFetch } from "./client-fetch";
+import { atsuAdapter } from "./native-adapters/all-atsu";
 
 export interface ClientMangaSummary {
   id: string;
@@ -75,6 +76,19 @@ const CACHE_DB = "comihub-client-cache";
 const CACHE_VERSION = 1;
 const CACHE_STORE = "responses";
 const CACHE_TTL = 5 * 60 * 1000;
+function clientSourceLabel(key: string): string {
+  const id = key.split(":", 1)[0].toLowerCase();
+  const labels: Record<string, string> = {
+    asura: "Asura Scans",
+    mangadex: "MangaDex",
+    thunderscans: "Thunder Scans",
+    webtoons: "Webtoons",
+  };
+  return labels[id] ?? "This source";
+}
+function unavailableSourceError(key: string): Error {
+  return new Error(`${clientSourceLabel(key)} is temporarily unavailable or blocking requests. Please check your connection and try again later.`);
+}
 
 function openCache(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -111,21 +125,29 @@ async function cachedText(key: string, loader: () => Promise<string>): Promise<s
 }
 
 async function clientJson<T>(key: string, url: string, init?: RequestInit): Promise<T> {
-  const raw = await cachedText(`client-json:${key}`, async () => {
-    const response = await clientFetch(url, { ...init, headers: { Accept: "application/json", ...(init?.headers ?? {}) } });
-    if (!response.ok) throw new Error(`Client source request failed: ${response.status}`);
-    return response.text();
-  });
-  return JSON.parse(raw) as T;
+  try {
+    const raw = await cachedText(`client-json:${key}`, async () => {
+      const response = await clientFetch(url, { ...init, headers: { Accept: "application/json", ...(init?.headers ?? {}) } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.text();
+    });
+    return JSON.parse(raw) as T;
+  } catch {
+    throw unavailableSourceError(key);
+  }
 }
 
 async function clientHtml(key: string, url: string, init?: RequestInit): Promise<Document> {
-  const raw = await cachedText(`client-html:${key}`, async () => {
-    const response = await clientFetch(url, { ...init, headers: { Accept: "text/html", ...(init?.headers ?? {}) } });
-    if (!response.ok) throw new Error(`Client source request failed: ${response.status}`);
-    return response.text();
-  });
-  return new DOMParser().parseFromString(raw, "text/html");
+  try {
+    const raw = await cachedText(`client-html:${key}`, async () => {
+      const response = await clientFetch(url, { ...init, headers: { Accept: "text/html", ...(init?.headers ?? {}) } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.text();
+    });
+    return new DOMParser().parseFromString(raw, "text/html");
+  } catch {
+    throw unavailableSourceError(key);
+  }
 }
 
 function parseCards(document: Document): ClientMangaSummary[] {
@@ -292,11 +314,193 @@ function mapMangaDex(data: { data: any[]; total: number }, page: number): Client
 const mangaDexList = (page: number, order: string, query = "") => { const params = new URLSearchParams({ limit: "20", offset: String((page - 1) * 20), "includes[]": "cover_art" }); if (query) { params.set("title", query); params.set("order[relevance]", "desc"); } else params.set(`order[${order}]`, "desc"); return clientJson<{ data: any[]; total: number }>(`mangadex:${order}:${query}:${page}`, `${MANGADEX_API}/manga?${params}`).then(data => mapMangaDex(data, page)); };
 const mangaDexAdapter: ClientSourceAdapter = { sourceId: "all.mangadex", mode: "client", popular: p => mangaDexList(p, "followedCount"), latest: p => mangaDexList(p, "latestUploadedChapter"), search: (q, p) => mangaDexList(p, "relevance", q), details: mangaDexDetails, chapters: mangaDexChapters, pages: mangaDexPages };
 
-async function themesiaList(order: string, page: number, query = ""): Promise<ClientListResponse> { const params = new URLSearchParams({ order, page: String(page) }); if (query) params.set("title", query); const document = await clientHtml(`thunderscans:list:${params}`, `https://en-thunderscans.com/comics/?${params}`); const items: ClientMangaSummary[] = []; document.querySelectorAll(".listupd .bs .bsx, .listo .bs .bsx, .utao .uta .imgu").forEach(root => { const a = root.matches("a") ? root : root.querySelector("a"); const href = a?.getAttribute("href"); const title = a?.getAttribute("title") || root.querySelector(".tt")?.textContent?.trim() || a?.textContent?.trim() || root.textContent?.trim(); if (!href || !title || items.some(item => item.id === href)) return; const image = root.querySelector("img"); const candidates = ["data-src", "data-original", "data-lazy-src", "data-image", "srcset", "src"].map(attr => image?.getAttribute(attr)).filter(Boolean) as string[]; const raw = candidates.find(value => !value.startsWith("data:") && !/transparent|blank|placeholder/i.test(value)) || ""; const thumbnail = raw.split(",")[0].trim().split(/\s+/)[0]; items.push({ id: encodeURIComponent(href.replace("https://en-thunderscans.com", "").replace(/^\/+|\/+$/g, "")), title, thumbnail, type: "Manga", isNsfw: false }); }); return { items, page, hasNextPage: Boolean(document.querySelector(".pagination .next, .hpage .r")) }; }
-const thunderAdapter: ClientSourceAdapter = { sourceId: "all.thunderscans", mode: "client", popular: p => themesiaList("popular", p), latest: p => themesiaList("update", p), search: (q, p) => themesiaList("search", p, q) };
+const THUNDER_BASE = "https://en-thunderscans.com";
+function themesiaText(element: Element | null): string {
+  return element?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+}
+function themesiaUrl(value: string, base: string): string {
+  try {
+    const url = new URL(value, base);
+    return url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+function themesiaImage(element: Element | null, base: string): string {
+  if (!element) return "";
+  const raw = ["data-src", "data-original", "data-lazy-src", "data-image", "srcset", "src"]
+    .map(attribute => element.getAttribute(attribute))
+    .find(value => !!value && !value.startsWith("data:") && !/transparent|blank|placeholder/i.test(value)) ?? "";
+  const candidate = raw.split(",")[0].trim().split(/\s+/)[0];
+  return candidate ? themesiaUrl(candidate, base) : "";
+}
+async function withThunderError<T>(action: string, operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch {
+    throw new Error(`Thunder Scans could not load ${action}. The source may be temporarily unavailable or rejecting requests; try again later.`);
+  }
+}
+function thunderPageUrl(id: string): string {
+  const path = decodeURIComponent(id).replace(/^\/+|\/+$/g, "");
+  const url = new URL(`${path}/`, `${THUNDER_BASE}/`);
+  if (url.origin !== THUNDER_BASE) throw new Error("Invalid Thunder Scans source path.");
+  return url.href;
+}
+async function themesiaList(order: string, page: number, query = ""): Promise<ClientListResponse> {
+  const params = new URLSearchParams({ order, page: String(page) });
+  if (query) params.set("title", query);
+  const document = await clientHtml(`thunderscans:list:${params}`, `${THUNDER_BASE}/comics/?${params}`);
+  const items: ClientMangaSummary[] = [];
+  document.querySelectorAll(".utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx").forEach(root => {
+    const anchor = root.matches("a") ? root : root.querySelector("a");
+    const rawHref = anchor?.getAttribute("href") ?? "";
+    const href = themesiaUrl(rawHref, `${THUNDER_BASE}/`);
+    const title = anchor?.getAttribute("title") || themesiaText(root.querySelector(".tt")) || themesiaText(anchor) || themesiaText(root);
+    if (!href || new URL(href).origin !== THUNDER_BASE || !title) return;
+    const id = encodeURIComponent(new URL(href).pathname.replace(/^\/+|\/+$/g, ""));
+    if (items.some(item => item.id === id)) return;
+    items.push({ id, title, thumbnail: themesiaImage(root.querySelector("img"), href), type: "Manga", isNsfw: false });
+  });
+  return { items, page, hasNextPage: Boolean(document.querySelector(".pagination .next, .hpage .r")) };
+}
+function themesiaStatus(value: string): string {
+  const text = value.toLowerCase();
+  if (text.includes("ongoing") || text.includes("publishing")) return "Ongoing";
+  if (text.includes("completed") || text.includes("finished") || text.includes("end")) return "Completed";
+  if (text.includes("hiatus")) return "Hiatus";
+  if (text.includes("cancel") || text.includes("dropped")) return "Cancelled";
+  return value.trim() || "Unknown";
+}
+function themesiaInfoValue(root: ParentNode, labels: string[]): string {
+  for (const label of labels) {
+    for (const row of Array.from(root.querySelectorAll(".tsinfo .imptdt, .infotable tr, .fmed"))) {
+      if (!themesiaText(row).toLowerCase().includes(label)) continue;
+      const values = Array.from(row.querySelectorAll("i, td:last-child, span"));
+      const value = themesiaText(values[values.length - 1] ?? row);
+      if (value && value.toLowerCase() !== label) return value;
+    }
+  }
+  return "";
+}
+async function thunderDetails(id: string, options?: { scorePosition?: "top" | "bottom" | "none" }): Promise<ClientMangaDetail> {
+  return withThunderError("manga details", async () => {
+    const url = thunderPageUrl(id);
+    const document = await clientHtml(`thunderscans:details:${id}`, url);
+    const root = document.querySelector("div.bigcontent, div.animefull, div.main-info, div.postbody") ?? document;
+    const title = themesiaText(root.querySelector("h1.entry-title")) || "Untitled";
+    const thumb = themesiaImage(root.querySelector(".thumb img, .ts-post-image"), url);
+    const synopsis = themesiaText(root.querySelector(".desc, .entry-content[itemprop='description']"));
+    const altText = themesiaText(root.querySelector(".alternative, .seriestualt"));
+    const genres = Array.from(root.querySelectorAll(".mgen a, .seriestugenre a, .gnr a"))
+      .map(element => themesiaText(element)).filter(Boolean);
+    const author = themesiaInfoValue(root, ["author"]);
+    return {
+      id,
+      title,
+      author,
+      artist: themesiaInfoValue(root, ["artist"]),
+      synopsis,
+      altTitles: altText ? altText.split(/[,;|]/).map(value => value.trim()).filter(Boolean) : [],
+      status: themesiaStatus(themesiaInfoValue(root, ["status"])),
+      type: "Manga",
+      isNsfw: false,
+      rating: 0,
+      thumbnail: thumb,
+      genres,
+      score: "",
+      scorePosition: options?.scorePosition ?? "none",
+    };
+  });
+}
+async function thunderChapters(mangaId: string): Promise<ClientChapterResponse> {
+  return withThunderError("the chapter list", async () => {
+    const mangaUrl = thunderPageUrl(mangaId);
+    const document = await clientHtml(`thunderscans:chapters:${mangaId}`, mangaUrl);
+    const seen = new Set<string>();
+    const items: ClientChapterResponse["items"] = [];
+    document.querySelectorAll("#chapterlist li, div.eplister li, .clstyle li").forEach(row => {
+      const anchor = row.querySelector("a");
+      const href = anchor?.getAttribute("href") ?? "";
+      const chapterUrl = href ? themesiaUrl(href, mangaUrl) : "";
+      if (!chapterUrl || new URL(chapterUrl).origin !== THUNDER_BASE) return;
+      const title = themesiaText(row.querySelector(".chapternum")) || themesiaText(anchor);
+      if (!title) return;
+      const id = encodeURIComponent(new URL(chapterUrl).pathname.replace(/^\/+|\/+$/g, ""));
+      if (seen.has(id)) return;
+      seen.add(id);
+      const number = Number((title.match(/chapter\s*([\d.]+)/i) || title.match(/([\d.]+)/) || [])[1]) || 0;
+      const rawDate = themesiaText(row.querySelector(".chapterdate"));
+      const parsedDate = Date.parse(rawDate);
+      items.push({
+        id,
+        number,
+        title,
+        scanlator: "Thunder Scans",
+        date: Number.isFinite(parsedDate) ? Math.floor(parsedDate / 1000) : 0,
+        mediaType: "image",
+      });
+    });
+    return { items };
+  });
+}
+function themesiaReaderImages(document: Document): string[] {
+  for (const script of Array.from(document.querySelectorAll("script"))) {
+    const text = script.textContent ?? "";
+    const callIndex = text.indexOf("ts_reader.run(");
+    const start = callIndex >= 0 ? text.indexOf("{", callIndex) : -1;
+    if (start < 0) continue;
+    let depth = 0;
+    let quote = "";
+    let escaped = false;
+    for (let index = start; index < text.length; index++) {
+      const character = text[index];
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === quote) quote = "";
+        continue;
+      }
+      if (character === "\"" || character === "'") quote = character;
+      else if (character === "{") depth++;
+      else if (character === "}" && --depth === 0) {
+        try {
+          const payload = JSON.parse(text.slice(start, index + 1)) as { sources?: Array<{ images?: unknown[] }> };
+          const images = payload.sources?.[0]?.images ?? [];
+          if (Array.isArray(images)) return images.filter((value): value is string => typeof value === "string" && !!value.trim());
+        } catch {
+          break;
+        }
+      }
+    }
+  }
+  return [];
+}
+async function thunderPages(chapterId: string): Promise<ClientPageResponse> {
+  return withThunderError("chapter pages", async () => {
+    const url = thunderPageUrl(chapterId);
+    const document = await clientHtml(`thunderscans:pages:${chapterId}`, url);
+    const embedded = themesiaReaderImages(document);
+    const imageValues = embedded.length ? embedded : Array.from(document.querySelectorAll("#readerarea img, div.reader-area img"))
+      .map(image => themesiaImage(image, url)).filter(value => value && !/\/themes\/|404/i.test(value));
+    const pages = imageValues.map((value, index) => ({ index, url: themesiaUrl(value, url) })).filter(page => !!page.url);
+    if (!pages.length) throw new Error("No safe Thunder Scans images were found for this chapter.");
+    return { chapterId, pages };
+  });
+}
+const thunderAdapter: ClientSourceAdapter = {
+  sourceId: "all.thunderscans",
+  mode: "client",
+  popular: page => withThunderError("popular series", () => themesiaList("popular", page)),
+  latest: page => withThunderError("latest series", () => themesiaList("update", page)),
+  search: (query, page) => withThunderError("search results", () => themesiaList("search", page, query)),
+  details: thunderDetails,
+  chapters: thunderChapters,
+  pages: thunderPages,
+};
 
-const sourceModes: Record<string, ClientSourceMode> = { "all.webtoons": "client", "en.asurascans": "client", "all.mangadex": "client", "all.thunderscans": "client", "en.ninehentai": "server", "en.royalroad": "server", "all.pawchive": "server" };
-const clientAdapters: Record<string, ClientSourceAdapter> = { "all.webtoons": webtoonsAdapter, "en.asurascans": asuraAdapter, "all.mangadex": mangaDexAdapter, "all.thunderscans": thunderAdapter };
+const sourceModes: Record<string, ClientSourceMode> = { "all.atsu": "client", "all.webtoons": "client", "en.asurascans": "client", "all.mangadex": "client", "all.thunderscans": "client", "en.ninehentai": "server", "en.royalroad": "server", "all.pawchive": "server" };
+const clientAdapters: Record<string, ClientSourceAdapter> = { "all.atsu": atsuAdapter, "all.webtoons": webtoonsAdapter, "en.asurascans": asuraAdapter, "all.mangadex": mangaDexAdapter, "all.thunderscans": thunderAdapter };
 const tier1Adapters = new Map<string, { key: string; adapter: ClientSourceAdapter }>();
 function getTier1Adapter(sourceId: string): ClientSourceAdapter | null {
   const extension = getImportedTier1Extension(sourceId);

@@ -11,7 +11,7 @@ const PROXIED_MEDIA_SOURCES = new Set([
   "all.webtoons", "all.atsu", "en.novelfull", "all.mangadex", "en.asurascans", "all.thunderscans", "en.animegg", "en.resetscans",
 ]);
 const NATIVE_DIRECT_MEDIA_SOURCES = new Set([
-  "all.webtoons", "all.mangadex", "en.asurascans", "all.thunderscans",
+  "all.atsu", "all.webtoons", "all.mangadex", "en.asurascans", "all.thunderscans",
 ]);
 
 const INFERRED_MEDIA_HOSTS: Array<{ source: string; hosts: string[] }> = [

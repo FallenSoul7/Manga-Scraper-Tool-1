@@ -16,6 +16,7 @@ const EXPERIMENTAL_SOURCE_IDS = new Set([
   "en.royalroad",
 ]);
 const CLIENT_FIRST_SOURCE_IDS = new Set([
+  "all.atsu",
   "all.mangadex",
   "all.webtoons",
   "en.asurascans",
