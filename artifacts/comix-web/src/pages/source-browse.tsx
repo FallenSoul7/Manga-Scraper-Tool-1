@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useRoute, useSearch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
+import { Capacitor } from "@capacitor/core";
 import { useSettings } from "@/hooks/use-settings";
 import { useStore, storeActions } from "@/lib/storage";
 import { applyActiveSource } from "@/lib/source";
@@ -272,10 +273,11 @@ export default function SourceBrowsePage() {
   // explicitly to every server request.
   const serverFetch = <T,>(path: string) => customFetch<T>(path, { headers: { "X-Source": sourceId } });
   const clientAdapter = getClientSourceAdapter(sourceId);
+  const isNativeApp = Capacitor.isNativePlatform();
   const clientOnlySource = clientAdapter?.fallbackToServer === false;
-  const sourceQueriesEnabled = online && (backendReady || !!clientAdapter) && !!sourceId && !!source;
+  const sourceQueriesEnabled = online && (!!clientAdapter || (!isNativeApp && backendReady)) && !!sourceId && !!source;
   const withServerFallback = <T,>(request: Promise<T>, path: string) => request.catch(error => {
-    if (clientOnlySource) throw error;
+    if (isNativeApp || clientOnlySource) throw error;
     return serverFetch<T>(path);
   });
 
@@ -292,7 +294,7 @@ export default function SourceBrowsePage() {
     queryFn: () => serverFetch<SourceTag[]>(`/api/tags`),
     // Tag discovery can be much slower than the first browse request for
     // sources with large tag catalogues. Never make it block the main list.
-    enabled: online && backendReady && !!sourceId && !!source && tagsEnabled && !clientAdapter,
+    enabled: !isNativeApp && online && backendReady && !!sourceId && !!source && tagsEnabled && !clientAdapter,
     staleTime: 60 * 60 * 1000,
   });
 
@@ -478,6 +480,21 @@ export default function SourceBrowsePage() {
     );
   }
 
+  if (isNativeApp && !clientAdapter) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background px-6 text-center">
+        <AlertTriangle className="h-10 w-10 text-muted-foreground/50" />
+        <div>
+          <h1 className="text-lg font-semibold">No device-side adapter for this source</h1>
+          <p className="mt-1 max-w-md text-sm text-muted-foreground">
+            This installed source does not have a local adapter or Tier 1 manifest yet. The mobile app will not send its scraping requests through the server.
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => setLocation("/sources")}>Back to sources</Button>
+      </div>
+    );
+  }
+
   const inSearchMode = isSearching;
   const inFilterMode = isTagFiltering;
 
@@ -489,19 +506,19 @@ export default function SourceBrowsePage() {
 
   if (inSearchMode || inFilterMode) {
     gridItems = filterItems;
-    gridLoading = !backendReady || (filterQuery.isFetching && filterItems.length === 0);
+    gridLoading = (!clientAdapter && !backendReady) || (filterQuery.isFetching && filterItems.length === 0);
     gridFetching = filterQuery.isFetching;
     gridHasNext = !!filterQuery.data?.hasNextPage;
     gridLoadMore = () => setFilterPage(p => p + 1);
   } else if (tab === "latest") {
     gridItems = latestItems;
-    gridLoading = !backendReady || (latestQuery.isFetching && latestItems.length === 0);
+    gridLoading = (!clientAdapter && !backendReady) || (latestQuery.isFetching && latestItems.length === 0);
     gridFetching = latestQuery.isFetching;
     gridHasNext = !!latestQuery.data?.hasNextPage;
     gridLoadMore = () => setLatestPage(p => p + 1);
   } else {
     gridItems = popularItems;
-    gridLoading = !backendReady || (popularQuery.isFetching && popularItems.length === 0);
+    gridLoading = (!clientAdapter && !backendReady) || (popularQuery.isFetching && popularItems.length === 0);
     gridFetching = popularQuery.isFetching;
     gridHasNext = !!popularQuery.data?.hasNextPage;
     gridLoadMore = () => setPopularPage(p => p + 1);

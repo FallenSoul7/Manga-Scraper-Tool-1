@@ -1,5 +1,6 @@
 import { useLocation, useParams, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { Capacitor } from "@capacitor/core";
 import {
   useGetMangaDetails,
   useGetChapters,
@@ -270,6 +271,7 @@ export default function MangaDetail() {
   const chaptersParams = { dedupe: false };
 
   const clientAdapter = getClientSourceAdapter(effectiveSourceForKey ?? "");
+  const isNativeApp = Capacitor.isNativePlatform();
   const sourceFetch = useCallback(<T,>(path: string) =>
     customFetch<T>(path, { headers: effectiveSourceForKey ? { "X-Source": effectiveSourceForKey } : undefined }),
     [effectiveSourceForKey],
@@ -279,7 +281,7 @@ export default function MangaDetail() {
     queryFn: () => clientAdapter?.details
       ? clientAdapter.details(id!, { scorePosition: settings.scorePosition === "hidden" ? "none" : settings.scorePosition })
           .catch(error => {
-            if (clientAdapter.fallbackToServer === false) throw error;
+            if (isNativeApp || clientAdapter.fallbackToServer === false) throw error;
             return sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}`);
           })
       : sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}`),
@@ -290,7 +292,7 @@ export default function MangaDetail() {
     queryKey: ["client-chapters", effectiveSourceForKey, id],
     queryFn: () => clientAdapter?.chapters
       ? clientAdapter.chapters(id!).catch(error => {
-          if (clientAdapter.fallbackToServer === false) throw error;
+          if (isNativeApp || clientAdapter.fallbackToServer === false) throw error;
           return sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}/chapters?dedupe=false`);
         })
       : Promise.reject(new Error("Client chapters unavailable")),
@@ -300,13 +302,13 @@ export default function MangaDetail() {
 
   const { data: serverMangaData, isLoading: serverMangaLoading } = useGetMangaDetails(id || "", mangaParams, {
     query: {
-      enabled: !!id && sourceReady && online && !clientAdapter?.details,
+      enabled: !isNativeApp && !!id && sourceReady && online && !clientAdapter?.details,
       queryKey: [...getGetMangaDetailsQueryKey(id || "", mangaParams), effectiveSourceForKey ?? ""],
     },
   });
   const { data: serverChaptersResponse, isLoading: serverChaptersLoading, isError: serverChaptersError } = useGetChapters(id || "", chaptersParams, {
     query: {
-      enabled: !!id && sourceReady && online && !clientAdapter?.chapters,
+      enabled: !isNativeApp && !!id && sourceReady && online && !clientAdapter?.chapters,
       queryKey: [...getGetChaptersQueryKey(id || "", chaptersParams), effectiveSourceForKey ?? ""],
     },
   });
@@ -565,7 +567,11 @@ export default function MangaDetail() {
         />
         <div className="text-center">
           <div className="text-xl font-semibold mb-1">{savedManga!.title}</div>
-          <div className="text-muted-foreground text-sm">Could not load details from source.</div>
+          <div className="text-muted-foreground text-sm">
+            {isNativeApp && (!clientAdapter?.details || !clientAdapter?.chapters)
+              ? "This source does not have device-side detail and chapter support yet."
+              : "Could not load details from source."}
+          </div>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={goBack}>Go back</Button>
@@ -575,7 +581,14 @@ export default function MangaDetail() {
     );
   }
   if (showNotFound || !manga) {
-    return <div className="py-32 text-center text-muted-foreground">Manga not found.</div>;
+    return (
+      <div className="flex flex-col items-center gap-4 py-32 px-6 text-center text-muted-foreground">
+        <span>{isNativeApp && (!clientAdapter?.details || !clientAdapter?.chapters)
+          ? "This source does not have device-side detail and chapter support yet."
+          : "Manga not found."}</span>
+        <Button variant="outline" onClick={goBack}>Go back</Button>
+      </div>
+    );
   }
 
   return (

@@ -76,6 +76,8 @@ export default function Reader() {
   // the fix), grab it from the library entry for this manga.
   const library = useStore(s => s.library);
   const sourceId = sourceIdFromUrl ?? (mangaId ? (library[mangaId]?.sourceId ?? null) : null);
+  const clientAdapter = getClientSourceAdapter(sourceId ?? "");
+  const isNativeApp = Capacitor.isNativePlatform();
   const activeRouteKey = `${sourceId ?? ""}\n${chapterId}`;
   const activeRouteKeyRef = useRef(activeRouteKey);
   activeRouteKeyRef.current = activeRouteKey;
@@ -267,16 +269,14 @@ export default function Reader() {
     setLoadedImgs(prev => (prev[idx] ? prev : { ...prev, [idx]: true }));
   };
 
-  const clientAdapter = getClientSourceAdapter(sourceId ?? "");
-  // Webtoon viewer pages do not expose browser CORS headers consistently.
-  // Keep lists/details client-side where possible, but use the server adapter
-  // for chapter HTML so the reader does not fail after the episode opens.
-  const webtoonPagesUseServer = sourceId === "all.webtoons";
+  // Webtoon pages can use the native HTTP bridge in the app. The server route
+  // remains a temporary fallback for ordinary browsers, where CORS still applies.
+  const webtoonPagesUseServer = sourceId === "all.webtoons" && !isNativeApp;
   const clientPagesQuery = useQuery({
     queryKey: ["client-pages", sourceId, chapterId],
     queryFn: () => clientAdapter?.pages
       ? clientAdapter.pages(chapterId).catch(error => {
-          if (clientAdapter.fallbackToServer === false) throw error;
+          if (isNativeApp || clientAdapter.fallbackToServer === false) throw error;
           return customFetch<any>(`/api/chapter/${encodeURIComponent(chapterId)}/pages`);
         })
       : Promise.reject(new Error("Client pages unavailable")),
@@ -286,7 +286,7 @@ export default function Reader() {
   const serverPagesQuery = useGetChapterPages(chapterId, {
     query: {
       // Skip API when reading offline or when this source has a client page adapter.
-      enabled: !isOfflineMode && !!chapterId && chapterId !== "0" && (!clientAdapter?.pages || webtoonPagesUseServer),
+      enabled: !isNativeApp && !isOfflineMode && !!chapterId && chapterId !== "0" && (!clientAdapter?.pages || webtoonPagesUseServer),
       queryKey: getGetChapterPagesQueryKey(chapterId),
     },
   });
@@ -347,19 +347,33 @@ export default function Reader() {
   }, [effectivePages, appendedChapters, currentPage, effectiveDirection, aiTranslationEnabled]);
 
   const chapterFetchParams = { dedupe: false };
-  const { data: chaptersData } = useGetChapters(mangaId || "", chapterFetchParams, {
+  const clientChaptersQuery = useQuery({
+    queryKey: ["reader-client-chapters", sourceId, mangaId],
+    queryFn: () => clientAdapter!.chapters!(mangaId!),
+    enabled: isNativeApp && !!mangaId && !isOfflineMode && !!clientAdapter?.chapters,
+    staleTime: 60 * 1000,
+  });
+  const { data: serverChaptersData } = useGetChapters(mangaId || "", chapterFetchParams, {
     query: {
-      enabled: !!mangaId && !isOfflineMode,
+      enabled: !isNativeApp && !!mangaId && !isOfflineMode,
       queryKey: getGetChaptersQueryKey(mangaId || "", chapterFetchParams),
     },
   });
 
-  const { data: mangaData } = useGetMangaDetails(mangaId || "", undefined, {
+  const clientMangaQuery = useQuery({
+    queryKey: ["reader-client-manga", sourceId, mangaId],
+    queryFn: () => clientAdapter!.details!(mangaId!),
+    enabled: isNativeApp && !!mangaId && !isOfflineMode && !!clientAdapter?.details,
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: serverMangaData } = useGetMangaDetails(mangaId || "", undefined, {
     query: {
-      enabled: !!mangaId && !isOfflineMode,
+      enabled: !isNativeApp && !!mangaId && !isOfflineMode,
       queryKey: getGetMangaDetailsQueryKey(mangaId || ""),
     },
   });
+  const chaptersData = clientChaptersQuery.data ?? serverChaptersData;
+  const mangaData = clientMangaQuery.data ?? serverMangaData;
 
   const offlineChapterMetadata = offlineChapter
     ? {
@@ -525,11 +539,19 @@ export default function Reader() {
     const routeKeyAtRequest = activeRouteKey;
     appendedIdsRef.current.add(nc.id);
     setLoadingNextChapter(true);
-    fetch(`/api/chapter/${encodeURIComponent(nc.id)}/pages`, { headers: sourceId ? { "X-Source": sourceId } : {} })
-      .then(r => {
-        if (!r.ok) throw new Error(`Chapter pages request failed (${r.status})`);
-        return r.json();
-      })
+    const loadPages = clientAdapter?.pages
+      ? clientAdapter.pages(String(nc.id)).catch(error => {
+          if (isNativeApp || clientAdapter.fallbackToServer === false) throw error;
+          return customFetch<any>(`/api/chapter/${encodeURIComponent(nc.id)}/pages`, {
+            headers: sourceId ? { "X-Source": sourceId } : undefined,
+          });
+        })
+      : isNativeApp
+        ? Promise.reject(new Error("No device-side page adapter is installed for this source."))
+        : customFetch<any>(`/api/chapter/${encodeURIComponent(nc.id)}/pages`, {
+            headers: sourceId ? { "X-Source": sourceId } : undefined,
+          });
+    loadPages
       .then((data: { pages: { index: number; url: string }[] }) => {
         if (activeRouteKeyRef.current !== routeKeyAtRequest) return;
         setAppendedChapters(prev => [...prev, { id: nc.id, number: nc.number, title: nc.title ?? '', pages: data.pages }]);
@@ -540,7 +562,7 @@ export default function Reader() {
       .finally(() => {
         if (activeRouteKeyRef.current === routeKeyAtRequest) setLoadingNextChapter(false);
       });
-  }, [currentPage, nextChapter, pagesData, loadingNextChapter, effectiveDirection, activeRouteKey, sourceId]);
+  }, [currentPage, nextChapter, pagesData, loadingNextChapter, effectiveDirection, activeRouteKey, sourceId, clientAdapter, isNativeApp]);
 
   const navigateToChapter = (id: string) => {
     setLocation(readerUrl(id, mangaId || "", sourceId));
@@ -670,7 +692,9 @@ export default function Reader() {
         <div className="text-4xl">📭</div>
         <h2 className="text-white text-lg font-bold">Chapter unavailable</h2>
         <p className="text-white/60 text-sm max-w-xs">
-          This chapter's images couldn't be loaded. The site may require JavaScript to display pages, which our reader doesn't support yet.
+          {isNativeApp && !clientAdapter?.pages
+            ? "This source does not have a device-side page adapter yet; the mobile app does not send scraping requests through the server."
+            : "This chapter's images couldn't be loaded. The site may require JavaScript to display pages, which our reader doesn't support yet."}
         </p>
         <Button variant="outline" className="mt-2 text-white border-white/30 hover:bg-white/10" onClick={goBack}>
           Go Back
