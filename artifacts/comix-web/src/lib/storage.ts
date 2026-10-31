@@ -141,19 +141,6 @@ export const DEFAULT_SOURCE: InstalledSource = {
   isPinned: false,
 };
 
-export const UNIVERSAL_SOURCE: InstalledSource = {
-  id: 'builtin.universal',
-  name: 'Universal',
-  lang: 'all',
-  languages: ['all'],
-  adapter: 'builtin',
-  manifestVersion: 1,
-  isNsfw: false,
-  iconUrl: null,
-  installedAt: 0,
-  isPinned: true,
-};
-
 const StoreStateSchema = z.object({
   library: z.record(z.string(), SavedMangaSchema),
   categories: z.array(CategorySchema),
@@ -197,8 +184,8 @@ const DEFAULT_STATE: StoreState = {
   searchHistory: [],
   scanlatorPrefs: {},
   chapterSortAsc: {},
-  installedSources: { [UNIVERSAL_SOURCE.id]: UNIVERSAL_SOURCE },
-  activeSourceId: UNIVERSAL_SOURCE.id,
+  installedSources: {},
+  activeSourceId: "",
   readingTimeMs: 0,
   sourceReaderDirections: {},
 };
@@ -254,7 +241,9 @@ function loadState(): StoreState {
       if (!validated.data.categories.find(c => c.id === 'default')) {
         validated.data.categories = [...DEFAULT_CATEGORIES, ...validated.data.categories];
       }
-      validated.data.installedSources[UNIVERSAL_SOURCE.id] ??= UNIVERSAL_SOURCE;
+      // Universal remains available in the scraper package for backend use,
+      // but it is no longer auto-installed or exposed as a user source.
+      delete validated.data.installedSources["builtin.universal"];
       // Comix is no longer pre-installed. Drop the legacy auto-installed copy
       // (installedAt === 0) so it behaves like any other optional source; a
       // copy the user installed manually (installedAt > 0) is kept.
@@ -264,7 +253,7 @@ function loadState(): StoreState {
       }
       // Make sure activeSourceId points at an installed source (or is empty)
       if (!validated.data.installedSources[validated.data.activeSourceId]) {
-        validated.data.activeSourceId = UNIVERSAL_SOURCE.id;
+        validated.data.activeSourceId = Object.keys(validated.data.installedSources)[0] ?? "";
       }
       // Migration: rename "My Koofr Library" → "K-Cafe" and ensure it is not pinned
       if (validated.data.installedSources["local.koofr"]) {
@@ -479,11 +468,17 @@ export const storeActions = {
     categories?: Category[]; 
     installedSources?: Record<string, InstalledSource> 
   }) {
+    const installedSources = { ...(data.installedSources || memoryState.installedSources) };
+    delete installedSources["builtin.universal"];
+    const activeSourceId = installedSources[memoryState.activeSourceId]
+      ? memoryState.activeSourceId
+      : Object.keys(installedSources)[0] ?? "";
     saveState({
       ...memoryState,
       library: data.library || memoryState.library,
       categories: data.categories || memoryState.categories,
-      installedSources: data.installedSources || memoryState.installedSources,
+      installedSources,
+      activeSourceId,
     });
   },
 
@@ -734,7 +729,15 @@ export const storeActions = {
       const candidate = parsed?.format === 'comihub-backup' ? parsed.state : parsed;
       const validated = StoreStateSchema.safeParse(candidate);
       if (validated.success) {
-        saveState(validated.data);
+        const restored = {
+          ...validated.data,
+          installedSources: { ...validated.data.installedSources },
+        };
+        delete restored.installedSources["builtin.universal"];
+        if (!restored.installedSources[restored.activeSourceId]) {
+          restored.activeSourceId = Object.keys(restored.installedSources)[0] ?? "";
+        }
+        saveState(restored);
         return { ok: true };
       } else {
         return { ok: false, error: "Invalid backup format" };
@@ -767,7 +770,6 @@ export const storeActions = {
   },
 
   uninstallSource(id: string) {
-    if (id === UNIVERSAL_SOURCE.id) return;
     if (!memoryState.installedSources[id]) return;
     const next = { ...memoryState.installedSources };
     delete next[id];

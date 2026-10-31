@@ -3,19 +3,14 @@ import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { mediaImage } from "@/lib/utils";
 import {
-  Search,
-  CheckCircle2,
-  Plus,
   Trash2,
   Loader2,
-  ChevronDown,
   ChevronRight,
   X,
   SearchX,
@@ -30,8 +25,9 @@ import { useSettings } from "@/hooks/use-settings";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 import { getCachedSourceCatalog, saveOfflineSourceCatalog, useOfflineCatalog, useOnlineStatus } from "@/lib/offline-catalog";
 import { requestBackendRefresh } from "@/components/backend-warmup";
-import Tier1ExtensionImporter from "@/components/tier1-extension-importer";
+import Tier1ExtensionCatalog from "@/components/tier1-extension-catalog";
 import { getClientSourceAdapter } from "@/lib/client-sources";
+import { useImportedTier1Extensions } from "@/lib/imported-extensions";
 
 interface CatalogExtension {
   id: string; slug: string; name: string; lang: string;
@@ -53,10 +49,8 @@ async function loadCatalogWithFallback(): Promise<CatalogResponse> {
   try {
     return await customFetch<CatalogResponse>("/api/sources/catalog");
   } catch (backendError) {
-    // The catalog is bundled with Vercel so a new device can still see and
-    // install source metadata when Render is suspended or temporarily down.
-    // Content requests still correctly use the backend and will report its
-    // unavailable state instead of pretending that scraping works offline.
+    // Keep installed-source icons available from the bundled catalog when the
+    // Render catalog endpoint is suspended or temporarily unavailable.
     const fallback = await fetch("/source-catalog.json", { cache: "no-cache" });
     if (!fallback.ok) throw backendError;
     return await fallback.json() as CatalogResponse;
@@ -81,15 +75,9 @@ const LANG_LABELS: Record<string, string> = {
   tr: "Türkçe", uk: "Українська", vi: "Tiếng Việt", zh: "中文",
 };
 const langLabel = (code: string) => LANG_LABELS[code] ?? code.toUpperCase();
-// The catalog uses the upstream extension id, while the API registry uses
-// the implemented source id. Keep the alias in one place so AllManga is not
-// accidentally shown as an unsupported "Coming soon" extension.
-const ALLMANGA_SOURCE_ID = "en.allmanga";
-const ALLMANGA_CATALOG_ID = "en.allanime";
 const ANIME_SOURCE_IDS = new Set(["en.animegg"]);
 
-// Keep extension availability labels in one place so installed-source rows and
-// the extension browser always show the same status.
+// Keep availability labels for previously installed server sources.
 const NOT_WORKING_SOURCE_IDS = new Set([
   "en.comix",
   "en.comickfan",
@@ -100,35 +88,6 @@ const NOT_WORKING_SOURCE_IDS = new Set([
   "en.allmanga",
 ]);
 const UPSTREAM_BLOCKED_SOURCE_IDS = new Set(["en.royalroad"]);
-
-type CompatibilityState = "ready" | "experimental" | "needs-adapter";
-
-function getCompatibility(extension: CatalogExtension): CompatibilityState {
-  if (extension.compatibility) return extension.compatibility;
-  const sourceId = canonicalSourceId(extension.id);
-  if (NOT_WORKING_SOURCE_IDS.has(sourceId) || UPSTREAM_BLOCKED_SOURCE_IDS.has(sourceId)) {
-    return "experimental";
-  }
-  return extension.supported ? "ready" : "needs-adapter";
-}
-
-function CompatibilityBadge({ state }: { state: CompatibilityState }) {
-  const styles: Record<CompatibilityState, string> = {
-    ready: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-    experimental: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
-    "needs-adapter": "bg-muted text-muted-foreground border-border",
-  };
-  const labels: Record<CompatibilityState, string> = {
-    ready: "Ready",
-    experimental: "Experimental",
-    "needs-adapter": "Needs adapter",
-  };
-  return (
-    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 ${styles[state]}`}>
-      {labels[state]}
-    </span>
-  );
-}
 
 function SourceStatusTag({ sourceId, supported = true }: { sourceId: string; supported?: boolean }) {
   if (!supported) return null;
@@ -147,15 +106,6 @@ function SourceStatusTag({ sourceId, supported = true }: { sourceId: string; sup
   );
 }
 
-// Implemented (supported) sources that are intentionally hidden from the
-// default Extensions list. They are still installable — but only when found
-// through the search box, so they don't sit at the top of the browse list.
-const HIDDEN_FROM_DEFAULT_BROWSE = new Set([
-  "en.ninehentai",        // NineHentai
-  "all.pandachaika",      // PandaChaika
-  "all.pawchive",         // Pawchive
-  "local.koofr",          // K-Cafe
-]);
 const INHERENTLY_MATURE_SOURCE_IDS = new Set([
   "en.ninehentai",
   "all.pawchive",
@@ -173,30 +123,6 @@ const GENERAL_SOURCE_IDS = new Set([
 const isInherentlyMature = (source: { id: string; isNsfw?: boolean }) =>
   !GENERAL_SOURCE_IDS.has(source.id) &&
   (Boolean(source.isNsfw) || INHERENTLY_MATURE_SOURCE_IDS.has(source.id));
-
-// AnimeGG is the only anime extension currently exposed in the Anime tab and
-// in the default extension browser. Other anime entries remain searchable.
-const HIDDEN_ANIME_BROWSE_IDS = new Set([
-  "video.hentaiyoga",
-  ALLMANGA_CATALOG_ID,
-  ALLMANGA_SOURCE_ID,
-]);
-
-function canonicalSourceId(id: string): string {
-  return id === ALLMANGA_CATALOG_ID ? ALLMANGA_SOURCE_ID : id;
-}
-
-function sourceAvailabilityRank(extension: CatalogExtension): number {
-  const origin = extension.origin ??
-    (extension.supported ? "custom" : "repository");
-  if (origin === "custom") return 0;
-
-  switch (getCompatibility(extension)) {
-    case "ready": return 1;
-    case "experimental": return 2;
-    case "needs-adapter": return 3;
-  }
-}
 
 // Mirrors Mihon's BrowseIcons defaultModifier: a fixed square icon slot with
 // proportional fitting so wide/tall source icons remain fully visible.
@@ -335,6 +261,7 @@ export default function SourcesPage() {
   });
   const offlineCatalog = useOfflineCatalog();
   const installedMap = useStore(s => s.installedSources);
+  const importedExtensions = useImportedTier1Extensions();
   const activeId     = useStore(s => s.activeSourceId);
   const { settings } = useSettings();
   const searchString = useSearch();
@@ -427,12 +354,7 @@ export default function SourcesPage() {
   const cachedCatalog =
     (offlineCatalog?.sourceCatalog as CatalogResponse | null) ??
     getCachedSourceCatalog<CatalogResponse>();
-  const {
-    data: catalog,
-    isLoading: catalogLoading,
-    isError: catalogError,
-    refetch: refetchCatalog,
-  } = useQuery<CatalogResponse>({
+  const { data: catalog } = useQuery<CatalogResponse>({
     queryKey: ["sources-catalog"],
     queryFn: loadCatalogWithFallback,
     // Catalog loading is safe to attempt even when navigator.onLine is stale
@@ -449,7 +371,7 @@ export default function SourcesPage() {
   useEffect(() => {
     if (online && catalog) saveOfflineSourceCatalog(catalog);
   }, [online, catalog]);
-  const extensionCount = catalog?.count ?? 0;
+  const extensionCount = importedExtensions.length;
 
   return (
     <main className="pb-8 max-w-3xl mx-auto">
@@ -466,7 +388,7 @@ export default function SourcesPage() {
         <div className="px-4 py-20 text-center">
           <WifiOff className="mx-auto h-10 w-10 text-muted-foreground/40" />
           <p className="mt-4 text-sm font-medium">Global source search is unavailable offline</p>
-          <p className="mt-1 text-xs text-muted-foreground">Your installed sources and cached extension catalog are still available.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Your installed sources remain available.</p>
           <Button variant="outline" size="sm" className="mt-5" onClick={() => setLocation("/sources")}>View installed sources</Button>
         </div>
       ) : showGlobalSearch ? (
@@ -512,19 +434,11 @@ export default function SourcesPage() {
           </TabsContent>
 
           <TabsContent value="anime" className="mt-0 animate-in fade-in duration-300">
-            <AnimeTab installed={installed} activeId={activeId} catalog={catalog ?? null} online={online} />
+            <AnimeTab installed={installed} catalog={catalog ?? null} />
           </TabsContent>
 
           <TabsContent value="extensions" className="mt-0 animate-in fade-in duration-300">
-            <Tier1ExtensionImporter installedMap={installedMap} />
-            <BrowseTab
-              installedMap={installedMap}
-              catalog={catalog ?? null}
-              online={online}
-              loading={catalogLoading}
-              error={catalogError}
-              onRetry={() => void refetchCatalog()}
-            />
+            <Tier1ExtensionCatalog />
           </TabsContent>
         </Tabs>
       )}
@@ -579,7 +493,6 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
           <div className="flex items-center gap-2">
             <p className="font-semibold text-sm text-foreground truncate">{src.name}</p>
             <SourceStatusTag sourceId={src.id} supported={!src.id.startsWith("tier1.")} />
-            {src.id.startsWith("tier1.") && <span className="rounded border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Tier 1 · Local</span>}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{langLabel(src.lang)}</p>
         </div>
@@ -652,7 +565,7 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{settingsSource?.name} settings</DialogTitle>
-            <DialogDescription>Settings for this installed extension.</DialogDescription>
+            <DialogDescription>Settings for this source.</DialogDescription>
           </DialogHeader>
           <div className="flex items-center justify-between gap-4 rounded-xl border p-4">
             <div className="space-y-1">
@@ -672,7 +585,7 @@ function SourcesTab({ installed, activeId, catalog }: { installed: InstalledSour
 }
 
 // ─── Anime tab ────────────────────────────────────────────────────────────────
-function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]; activeId: string; catalog: CatalogResponse | null; online: boolean }) {
+function AnimeTab({ installed, catalog }: { installed: InstalledSource[]; catalog: CatalogResponse | null }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { settings } = useSettings();
@@ -699,8 +612,8 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
       <div
         role="button"
         tabIndex={0}
-        onClick={() => { storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}${src.id === ALLMANGA_SOURCE_ID ? "?media=anime" : ""}`); }}
-        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}${src.id === ALLMANGA_SOURCE_ID ? "?media=anime" : ""}`); } }}
+        onClick={() => { storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}`); }}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); storeActions.setActiveSource(src.id); setLocation(`/sources/${src.id}`); } }}
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/40 active:bg-muted/60 transition-colors"
       >
         <SourceAvatar src={src} />
@@ -733,21 +646,6 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
     );
   }
 
-  const animeGGCatalogEntry = catalog?.extensions.find(e => e.id === "en.animegg");
-
-  // AnimeGG is the only anime extension currently exposed in this tab.
-  const ANIME_EXTENSIONS = [
-    {
-      id: "en.animegg",
-      name: animeGGCatalogEntry?.name ?? "AnimeGG",
-      lang: animeGGCatalogEntry?.lang ?? "en",
-      isNsfw: false,
-      description: "Anime episodes from AnimeGG",
-      iconUrl: animeGGCatalogEntry?.iconUrl ?? null,
-      supported: true,
-    },
-  ];
-
   return (
     <div>
       {/* Installed anime sources */}
@@ -760,229 +658,8 @@ function AnimeTab({ installed, catalog, online }: { installed: InstalledSource[]
         </>
       )}
 
-      {/* Discoverable anime extensions */}
-      <div className="px-4 pt-5 pb-2">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Available Extensions</p>
-      </div>
-      {ANIME_EXTENSIONS.filter(ext => !ext.isNsfw || adultAccess).map(ext => {
-        const isInstalled = animeSources.some(s => s.id === ext.id);
-        return (
-          <div key={ext.id} className="flex items-center gap-3 px-4 py-3">
-            <SourceAvatar src={{ name: ext.name, iconUrl: ext.iconUrl }} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="font-semibold text-sm text-foreground truncate">{ext.name}</p>
-                {ext.isNsfw && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-500 border border-red-500/25 shrink-0">18+</span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">{langLabel(ext.lang)} · Anime · Video</p>
-            </div>
-            <div className="shrink-0">
-              {isInstalled ? (
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Installed
-                </span>
-              ) : !ext.supported ? (
-                <span className="text-xs text-muted-foreground">Coming soon</span>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 text-xs px-3 gap-1.5"
-                  disabled={!online}
-                  onClick={() => {
-                    storeActions.installSource({ id: ext.id, name: ext.name, lang: ext.lang, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl, isPinned: false });
-                    toast({ title: `Installed ${ext.name}` });
-                  }}
-                >
-                  <Plus className="h-3.5 w-3.5" /> {online ? "Install" : "Online only"}
-                </Button>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Extensions tab ───────────────────────────────────────────────────────────
-const PAGE_SIZE = 60;
-
-function BrowseTab({
-  installedMap,
-  catalog,
-  online,
-  loading,
-  error,
-  onRetry,
-}: {
-  installedMap: Record<string, InstalledSource>;
-  catalog: CatalogResponse | null;
-  online: boolean;
-  loading: boolean;
-  error: boolean;
-  onRetry: () => void;
-}) {
-  const { toast } = useToast();
-  const { settings } = useSettings();
-  const adultAccess = !settings.hideNsfw && hasAdultAccessConsent();
-
-  const [search, setSearch]               = useState("");
-  const [lang, setLang]                   = useState<string>("all-langs");
-  const [showNsfw, setShowNsfw]           = useState(false);
-  const [supportedOnly, setSupportedOnly] = useState(false);
-  const [visibleCount, setVisibleCount]   = useState(PAGE_SIZE);
-
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [search, lang, showNsfw, supportedOnly]);
-
-  const allLangs = useMemo(() => {
-    if (!catalog) return [] as string[];
-    const set = new Set<string>();
-    for (const e of catalog.extensions ?? []) {
-      for (const language of e.manifest?.languages ?? [e.lang]) {
-        if (language !== "all") set.add(language);
-      }
-    }
-    return Array.from(set).sort();
-  }, [catalog]);
-
-  const filtered = useMemo(() => {
-    if (!catalog) return [];
-    const q = search.trim().toLowerCase();
-    return (catalog.extensions ?? [])
-      .filter(e => lang === "all-langs" ? true : (e.manifest?.languages ?? [e.lang]).includes(lang))
-      // Only genuinely adult-only extensions are gated. Mixed catalogues such
-      // as MangaDex and Comix remain visible; individual titles are filtered
-      // by their own isNsfw metadata.
-      .filter(e => !showNsfw || isInherentlyMature(e))
-      .filter(e => !isInherentlyMature(e) || adultAccess)
-      .filter(e => supportedOnly ? getCompatibility(e) !== "needs-adapter" : true)
-      // Keep the four curated sources and the other anime integrations out of
-      // the default list; they remain discoverable through explicit search.
-      .filter(e => q ? true : !HIDDEN_FROM_DEFAULT_BROWSE.has(e.id))
-      .filter(e => q || !HIDDEN_ANIME_BROWSE_IDS.has(e.id))
-      .filter(e => q ? e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) || e.slug.toLowerCase().includes(q) : true);
-  }, [catalog, search, lang, showNsfw, supportedOnly, adultAccess]);
-
-  const sortedFiltered = useMemo(
-    () => [...filtered].sort((a, b) =>
-      sourceAvailabilityRank(a) - sourceAvailabilityRank(b) || a.name.localeCompare(b.name),
-    ),
-    [filtered],
-  );
-
-  const visible = sortedFiltered.slice(0, visibleCount);
-
-  if (!catalog) {
-    if (online && loading) {
-      return (
-        <div className="py-20 flex flex-col items-center gap-3 text-sm text-muted-foreground px-6">
-          <Loader2 className="h-7 w-7 animate-spin text-primary" />
-          <p>Loading extension catalog…</p>
-        </div>
-      );
-    }
-
-    if (online && error) {
-      return (
-        <div className="py-20 flex flex-col items-center gap-3 text-center text-sm text-muted-foreground px-6">
-          <p>Couldn’t load the extension catalog.</p>
-          <Button variant="outline" size="sm" onClick={onRetry}>Try again</Button>
-        </div>
-      );
-    }
-
-    return (
-      <div className="py-20 text-center text-sm text-muted-foreground px-6">
-        <p>Extension catalog is not cached on this device yet.</p>
-        <p className="text-xs mt-1">Connect once to load available extensions.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div className="px-4 pt-4 pb-3 space-y-2">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search extensions…" className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <select value={lang} onChange={e => setLang(e.target.value)}
-            className="h-8 px-2 rounded-md border border-input bg-background text-xs flex-1 min-w-[120px]">
-            <option value="all-langs">All languages</option>
-            {allLangs.map(l => <option key={l} value={l}>{langLabel(l)}</option>)}
-          </select>
-          <label className="inline-flex items-center gap-1.5 text-xs px-3 h-8 rounded-md border border-input bg-background cursor-pointer shrink-0">
-            <input type="checkbox" checked={supportedOnly} onChange={e => setSupportedOnly(e.target.checked)} className="rounded" />
-            Available
-          </label>
-          <label className="inline-flex items-center gap-1.5 text-xs px-3 h-8 rounded-md border border-input bg-background cursor-pointer shrink-0">
-            <input type="checkbox" checked={showNsfw} onChange={e => setShowNsfw(e.target.checked)} className="rounded" />
-            18+ only
-          </label>
-        </div>
-        <p className="text-xs text-muted-foreground">Showing {visible.length.toLocaleString()} of {filtered.length.toLocaleString()}</p>
-      </div>
-
-      <div className="divide-y divide-border/40">
-        {visible.map(ext => {
-          const canonicalId = ext.id === ALLMANGA_CATALOG_ID ? ALLMANGA_SOURCE_ID : ext.id;
-          const isSupported = ext.supported || ext.id === ALLMANGA_CATALOG_ID;
-          const compatibility = getCompatibility({ ...ext, supported: isSupported });
-          const isCustom = ext.origin === "custom" || (ext.origin === undefined && isSupported);
-          const isInstalled = !!installedMap[canonicalId];
-          return (
-            <div key={ext.id} className="flex items-center gap-3 px-4 py-3">
-              <SourceAvatar src={ext} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="font-semibold text-sm truncate">{ext.name}</span>
-                  {ext.isNsfw && <span className="text-[10px] px-1.5 py-0 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">18+</span>}
-                  {isCustom && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-primary/20 bg-primary/10 text-primary shrink-0">Custom</span>}
-                  <CompatibilityBadge state={compatibility} />
-                </div>
-                  <p className="text-xs text-muted-foreground">
-                    {(ext.manifest?.languages?.length && ext.manifest.languages[0] !== "all")
-                      ? ext.manifest.languages.map(langLabel).join(" · ")
-                      : langLabel(ext.lang)}
-                    {ext.manifest?.languageAware && " · language-aware"}
-                  </p>
-              </div>
-              {isInstalled ? (
-                <span className="inline-flex items-center gap-1 text-xs text-primary px-1">
-                  <CheckCircle2 className="h-4 w-4" />
-                </span>
-              ) : (
-                <Button
-                  size="sm" variant={isSupported ? "default" : "outline"}
-                  className="h-8 text-xs px-3 shrink-0"
-                  onClick={() => {
-                    storeActions.installSource({ id: canonicalId, name: ext.name, lang: ext.lang, languages: ext.manifest?.languages ?? [ext.lang], adapter: ext.manifest?.adapter, manifestVersion: ext.versionCode, isNsfw: ext.isNsfw, iconUrl: ext.iconUrl, isPinned: false });
-                    toast({
-                      title: `Added ${ext.name}`,
-                      description: compatibility === "needs-adapter"
-                        ? "Saved on this device. This adds source metadata only; ComiXHub will not download or run its APK/JAR."
-                        : "Open the Sources tab to browse it.",
-                    });
-                  }}
-                >
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Add
-                </Button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {visible.length < filtered.length && (
-        <div className="flex justify-center py-4">
-          <Button variant="outline" onClick={() => setVisibleCount(c => c + PAGE_SIZE)}>
-            <ChevronDown className="h-4 w-4 mr-1" /> Load more
-          </Button>
-        </div>
+      {animeSources.length === 0 && (
+        <div className="px-4 py-12 text-center text-sm text-muted-foreground">No anime sources installed.</div>
       )}
     </div>
   );

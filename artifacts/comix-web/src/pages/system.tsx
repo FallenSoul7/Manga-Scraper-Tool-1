@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import {
-  Settings, Download, BarChart3, Info, FolderOpen, Sparkles,
+  Settings, Download, BarChart3, Info, FolderOpen, Sparkles, Puzzle,
   Trash2, AppWindow, LogIn, Lock, Crown, Smartphone,
 } from "lucide-react";
 
@@ -68,6 +68,12 @@ const blocks: SystemBlock[] = [
     label: "Settings",
     description: "Theme, library defaults, reader, backup & restore.",
     icon: Settings,
+  },
+  {
+    href: "/extension-settings",
+    label: "Extensions",
+    description: "Add and manage source extensions on this device.",
+    icon: Puzzle,
   },
   {
     href: "/subscription",

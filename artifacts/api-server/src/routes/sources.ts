@@ -25,24 +25,10 @@ function compatibilityFor(id: string): CompatibilityState {
   return EXPERIMENTAL_SOURCE_IDS.has(id) ? "experimental" : "ready";
 }
 
-const universal = {
-  id: "builtin.universal",
-  slug: "builtin-universal",
-  name: "Universal",
-  lang: "all",
-  isNsfw: false,
-  versionCode: 1,
-  iconUrl: "/public/source-icons/universal.svg",
-  supported: true,
-  origin: "custom" as const,
-  compatibility: "ready" as const,
-  manifest: manifests.find(manifest => manifest.id === "builtin.universal") ?? null,
-};
-
 const enriched = {
   generatedAt: catalogRaw.generatedAt,
-  count: catalogRaw.count + 1,
-  extensions: [universal, ...catalogRaw.extensions.map((ext) => ({
+  count: catalogRaw.count,
+  extensions: catalogRaw.extensions.map((ext) => ({
     id: ext.id,
     slug: ext.slug,
     name: ext.name,
@@ -56,7 +42,7 @@ const enriched = {
     origin: isSupported(ext.id as string) ? "custom" : "repository",
     compatibility: compatibilityFor(ext.id as string),
     manifest: manifests.find(manifest => manifest.id === ext.id || (ext.id === "en.allanime" && manifest.id === "en.allmanga")) ?? null,
-  }))],
+  })),
 };
 
 router.get("/catalog", (_req, res) => {
