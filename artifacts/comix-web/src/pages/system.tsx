@@ -17,7 +17,7 @@ function Block({ block }: { block: SystemBlock }) {
   const Icon = block.icon;
   const inner = (
     <div
-      className={`relative h-full rounded-2xl border p-5 sm:p-6 transition-all flex flex-col gap-3 ${
+      className={`relative h-full rounded-2xl border px-5 py-3 sm:px-6 sm:py-4 transition-all flex flex-col gap-2 ${
         block.comingSoon
           ? "bg-card/50 border-dashed text-muted-foreground"
           : block.highlight
@@ -32,7 +32,7 @@ function Block({ block }: { block: SystemBlock }) {
           ? "bg-primary/20 text-primary"
           : "bg-primary/10 text-primary"
       }`}>
-        <Icon className="h-5 w-5" />
+        <Icon className="h-4 w-4" />
       </div>
       <div className="space-y-1 flex-1">
         <h3 className="font-serif font-bold text-lg text-foreground flex items-center gap-2">
