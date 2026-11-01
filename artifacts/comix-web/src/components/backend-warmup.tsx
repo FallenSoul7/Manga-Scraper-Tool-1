@@ -148,7 +148,9 @@ export function BackendWarmup() {
     return () => window.clearInterval(timer);
   }, [state, visible]);
 
-  if (state === "ready" || !visible) return null;
+  // Backend warmup is intentionally background-only. The app shell, cached
+  // library, and offline pages must remain usable while Render wakes up.
+  return null;
 
   const retry = () => {
     queryClient.setQueryData(["backend-ready"], false);
