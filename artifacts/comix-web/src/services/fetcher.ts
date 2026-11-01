@@ -27,6 +27,7 @@ declare global {
 const HELPER_ENABLED_KEY = "comihub-helper-enabled";
 const HELPER_STATUS_EVENT = "comihub-helper-status";
 const PING_TIMEOUT_MS = 800;
+const DIRECT_FETCH_TIMEOUT_MS = 5_000;
 const FETCH_TIMEOUT_MS = 15_000;
 
 let helperStatus: HelperStatus = "unknown";
@@ -195,8 +196,17 @@ export async function fetcher(input: RequestInfo | URL, init: RequestInit = {}):
     }
   }
 
-  const fallbackUrl = sameOrigin ? url.href : renderProxyUrl(url);
-  return fetchWithTimeout(fallbackUrl, { ...init, credentials: "omit", referrerPolicy: "no-referrer", headers });
+  const requestInit = { ...init, credentials: "omit" as RequestCredentials, referrerPolicy: "no-referrer" as ReferrerPolicy, headers };
+  if (sameOrigin) return fetchWithTimeout(url.href, requestInit);
+
+  // Standard Web Mode keeps the original browser-first behavior. Sources that
+  // reject CORS then fall through to the passive Render proxy instead of
+  // failing every client adapter immediately after the onboarding choice.
+  try {
+    return await fetchWithTimeout(url.href, requestInit, DIRECT_FETCH_TIMEOUT_MS);
+  } catch {
+    return fetchWithTimeout(renderProxyUrl(url), requestInit);
+  }
 }
 
 export async function probeHelperOnLoad(): Promise<HelperStatus> {
