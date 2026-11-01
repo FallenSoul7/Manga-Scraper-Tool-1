@@ -53,6 +53,7 @@ const browserCopy: Record<BrowserKind, { name: string; steps: string[] }> = {
 export default function PrivacyModePage() {
   const browser = detectBrowser();
   const copy = browserCopy[browser];
+  const iosSafari = browser === "ios-safari";
 
   return (
     <main className="container mx-auto max-w-2xl px-4 py-8 animate-in fade-in duration-300">
@@ -88,16 +89,23 @@ export default function PrivacyModePage() {
           </ol>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Button asChild className="gap-2">
-            <a href={EXTENSION_ARCHIVE_URL} download="comihub-web-helper.zip">
-              <Download className="h-4 w-4" /> Download Helper Extension
-            </a>
-          </Button>
-          <Button asChild variant="outline" className="gap-2">
-            <Link href="/extension-settings"><CheckCircle2 className="h-4 w-4" /> Extension Settings</Link>
-          </Button>
-        </div>
+        {iosSafari ? (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
+            <p className="font-semibold">Safari on iOS requires a signed extension app</p>
+            <p className="mt-1 text-xs leading-relaxed">The ZIP download is not installable directly in iOS Safari. ComiHub must ship a signed Safari Web Extension app through the App Store or TestFlight before it can appear in Settings → Safari → Extensions.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button asChild className="gap-2">
+              <a href={EXTENSION_ARCHIVE_URL} download="comihub-web-helper.zip">
+                <Download className="h-4 w-4" /> Download Helper Extension
+              </a>
+            </Button>
+          </div>
+        )}
+        <Button asChild variant="outline" className="gap-2">
+          <Link href="/extension-settings"><CheckCircle2 className="h-4 w-4" /> Extension Settings</Link>
+        </Button>
 
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <ExternalLink className="h-3.5 w-3.5" /> The helper is optional; Standard Web Mode remains available without installation.

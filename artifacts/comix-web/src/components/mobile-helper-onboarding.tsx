@@ -74,11 +74,13 @@ export function MobileHelperOnboarding() {
             <div className="rounded-xl border border-border/70 bg-muted/30 p-2.5 text-xs">
               <p className="font-semibold">{ios ? "Mobile Safari" : "Android browser"}</p>
               <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-muted-foreground">
-                <li><a className="font-medium text-primary underline" href={EXTENSION_ARCHIVE_URL} download="comihub-web-helper.zip">Download the helper extension file</a>.</li>
                 {ios ? (
-                  <li>Install the Safari Web Extension module, then open <strong className="text-foreground">iOS Settings → Safari → Extensions</strong> and switch <strong className="text-foreground">ComiHub Helper</strong> on.</li>
+                  <li>iOS Safari cannot install a raw ZIP. A signed ComiHub Safari Web Extension app from the App Store or TestFlight is required before it can appear in <strong className="text-foreground">Settings → Safari → Extensions</strong>.</li>
                 ) : (
-                  <li>Open the file in an extension-supported browser such as Firefox Mobile, Kiwi, or Edge.</li>
+                  <>
+                    <li><a className="font-medium text-primary underline" href={EXTENSION_ARCHIVE_URL} download="comihub-web-helper.zip">Download the helper extension file</a>.</li>
+                    <li>Open the file in an extension-supported browser such as Firefox Mobile, Kiwi, or Edge.</li>
+                  </>
                 )}
               </ol>
             </div>
@@ -106,7 +108,7 @@ export function MobileHelperOnboarding() {
           <p className="font-semibold">{ios ? "Mobile Safari setup" : "Mobile Chrome / Android setup"}</p>
           {ios ? (
             <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-muted-foreground">
-              <li>Download and install the Safari Web Extension module.</li>
+              <li>Wait for a signed ComiHub Safari Web Extension app to be distributed through the App Store or TestFlight.</li>
               <li>Open <strong className="text-foreground">iOS Settings → Safari → Extensions</strong> and switch <strong className="text-foreground">ComiHub Helper</strong> on.</li>
             </ol>
           ) : (
