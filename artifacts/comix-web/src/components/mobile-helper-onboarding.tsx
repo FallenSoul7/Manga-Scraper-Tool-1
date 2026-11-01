@@ -15,6 +15,11 @@ const HIDE_KEY = "hide_extension_modal";
 const EXTENSION_ARCHIVE_URL = "https://github.com/FallenSoul7/Manga-Scraper-Tool-1/raw/main/extension/comihub-web-helper.zip";
 
 type MobileTarget = "ios-safari" | "android-chrome" | null;
+const MOBILE_BROWSER_RE = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+
+export function isMobileWebBrowser(userAgent: string, viewportWidth?: number): boolean {
+  return MOBILE_BROWSER_RE.test(userAgent) || (viewportWidth ?? Infinity) <= 768;
+}
 
 export function detectMobileTarget(userAgent: string, platform = "", maxTouchPoints = 0): MobileTarget {
   const isIOS = /iPhone|iPad|iPod/i.test(userAgent) ||
@@ -38,9 +43,8 @@ export function MobileHelperOnboarding() {
 
   useEffect(() => {
     if (localStorage.getItem(HIDE_KEY) === "true") return;
+    if (isMobileWebBrowser(navigator.userAgent, window.innerWidth)) return;
     const detected = mobileTarget();
-    // iOS Safari cannot install the raw helper ZIP. Keep the guidance on the
-    // Privacy Mode page, but do not interrupt iOS Safari with this popup.
     if (!detected || detected === "ios-safari") return;
     setTarget(detected);
     setOpen(true);
