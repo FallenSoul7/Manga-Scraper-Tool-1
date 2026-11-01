@@ -17,6 +17,7 @@ import { isUnlockedThisSession, setUnlocked, shouldLockCurrentMode, refreshServe
 import NotFound from "@/pages/not-found";
 import { OfflineCatalogPersistence, useOnlineStatus } from "@/lib/offline-catalog";
 import { BackendWarmup } from "@/components/backend-warmup";
+import { MobileHelperOnboarding } from "@/components/mobile-helper-onboarding";
 
 const SearchPage           = lazy(() => import("@/pages/search"));
 const MangaDetail          = lazy(() => import("@/pages/manga-detail"));
@@ -213,6 +214,7 @@ function AppContent() {
     <div className="min-h-[100dvh] flex flex-col">
       <OfflineCatalogPersistence />
       <BackendWarmup />
+      <MobileHelperOnboarding />
       <Switch>
         {/* Reader: no header, no nav */}
         <Route path="/reader/:chapterId">
