@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "ComiHub Web Helper",
+  "version": "1.0.0",
+  "description": "Optional ComiHub helper for direct browser-side source requests.",
+  "permissions": ["declarativeNetRequest"],
+  "host_permissions": ["<all_urls>"],
+  "externally_connectable": {
+    "matches": [
+      "https://www.comihub.top/*",
+      "https://comihub.top/*",
+      "http://localhost:*/*"
+    ]
+  },
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "helper@comihub.top",
+      "strict_min_version": "109.0"
+    }
+  },
+  "action": {
+    "default_title": "ComiHub Web Helper"
+  }
+}

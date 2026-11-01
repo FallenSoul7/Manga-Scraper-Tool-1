@@ -12,7 +12,8 @@ import { Download, Upload, AlertTriangle, ArrowLeft, Check } from "lucide-react"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { useRef, useState } from "react";
+import { detectHelper, getHelperStatus, isHelperEnabled, setHelperEnabled, subscribeHelperStatus, type HelperStatus } from "@/services/fetcher";
+import { useEffect, useRef, useState } from "react";
 import { acceptAdultAccessConsent, hasAdultAccessConsent } from "@/lib/compliance-consent";
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
@@ -48,6 +49,18 @@ export default function SettingsPage() {
 
   const [adultDialogOpen, setAdultDialogOpen] = useState(false);
   const [adultConfirmed, setAdultConfirmed] = useState(false);
+  const [helperEnabled, setHelperEnabledState] = useState(() => isHelperEnabled());
+  const [helperStatus, setHelperStatus] = useState<HelperStatus>(() => getHelperStatus());
+
+  useEffect(() => {
+    void detectHelper().then(setHelperStatus);
+    return subscribeHelperStatus(setHelperStatus);
+  }, []);
+
+  const toggleHelper = (enabled: boolean) => {
+    setHelperEnabledState(enabled);
+    setHelperEnabled(enabled);
+  };
   const handleMatureContentChange = (showMature: boolean) => {
     if (showMature && !hasAdultAccessConsent()) {
       setAdultConfirmed(false);
@@ -180,6 +193,34 @@ export default function SettingsPage() {
                   </div>
                 ))}
               </RadioGroup>
+            </div>
+          </Section>
+        </div>
+
+        {/* ── Web Helper ──────────────────────────────────────────────── */}
+        <div className="p-5 space-y-4 bg-card">
+          <Section title="Web Helper" description="Optional browser bridge for direct source requests from your device.">
+            <div className={`rounded-xl border p-3 text-sm ${helperStatus === "active" ? "border-emerald-500/30 bg-emerald-500/5" : "border-border bg-muted/30"}`}>
+              <p className="font-medium">
+                {helperStatus === "active" ? "⚡ Engine: 100% Direct Client Mode" : "🌐 Engine: Proxy Fallback Mode"}
+              </p>
+              {helperStatus !== "active" && (
+                <p className="mt-1 text-xs text-muted-foreground">Install Helper Extension for 100% Direct Mode.</p>
+              )}
+            </div>
+            <SettingRow label="Use ComiHub Web Helper" description="Automatically use the helper when it is installed.">
+              <Switch checked={helperEnabled} onCheckedChange={toggleHelper} />
+            </SettingRow>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Button asChild variant="outline" size="sm" className="text-xs">
+                <a href="https://github.com/FallenSoul7/Manga-Scraper-Tool-1/tree/main/extension" target="_blank" rel="noreferrer">Chrome / Edge</a>
+              </Button>
+              <Button asChild variant="outline" size="sm" className="text-xs">
+                <a href="https://github.com/FallenSoul7/Manga-Scraper-Tool-1/tree/main/extension" target="_blank" rel="noreferrer">Firefox</a>
+              </Button>
+              <Button asChild variant="outline" size="sm" className="text-xs">
+                <a href="https://github.com/FallenSoul7/Manga-Scraper-Tool-1/blob/main/extension/README.md#ios-safari" target="_blank" rel="noreferrer">iOS Safari Guide</a>
+              </Button>
             </div>
           </Section>
         </div>

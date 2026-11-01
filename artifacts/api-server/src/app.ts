@@ -9,6 +9,8 @@ import http from "http";
 import path from "path";
 import axios from "axios";
 import * as cheerio from "cheerio";
+import dns from "node:dns/promises";
+import net from "node:net";
 
 const app: Express = express();
 app.set("trust proxy", 1);
@@ -110,6 +112,7 @@ function isPublicReadRequest(req: Request): boolean {
     path === "/api/tags" ||
     path === "/api/popular-sorts" ||
     path === "/api/source-media"
+    || path === "/api/direct-fetch"
   ) return true;
 
   return /^\/api\/manga\/[^/]+(?:\/chapters)?$/.test(path) ||
@@ -442,6 +445,60 @@ app.get("/api/source-media", async (req, res) => {
     logger.error({ sourceId }, "Source media proxy failed");
     if (!res.headersSent) return res.status(502).json({ error: "Failed to fetch source media" });
     return;
+  }
+});
+
+// Optional Web Helper fallback. The browser helper performs the same request
+// directly; this route keeps ordinary browsers functional without requiring a
+// source-site CORS policy. Only public HTTPS hosts are accepted.
+function blockedAddress(address: string): boolean {
+  if (net.isIPv4(address)) {
+    const [a, b] = address.split(".").map(Number);
+    return a === 10 || a === 127 || (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  }
+  if (net.isIPv6(address)) {
+    const normalized = address.toLowerCase();
+    return normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:");
+  }
+  return true;
+}
+
+app.all("/api/direct-fetch", async (req, res) => {
+  const rawTarget = typeof req.query.url === "string" ? req.query.url : "";
+  let target: URL;
+  try {
+    target = new URL(rawTarget);
+    if (target.protocol !== "https:" || target.hostname === "localhost" || target.hostname.endsWith(".local")) {
+      return res.status(400).json({ error: "Only public HTTPS targets are allowed" });
+    }
+    const addresses = await dns.lookup(target.hostname, { all: true, verbatim: true });
+    if (!addresses.length || addresses.some(entry => blockedAddress(entry.address))) {
+      return res.status(400).json({ error: "Target host is not publicly routable" });
+    }
+  } catch {
+    return res.status(400).json({ error: "Invalid target URL" });
+  }
+
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    const lower = name.toLowerCase();
+    if (["host", "origin", "referer", "content-length", "connection"].includes(lower)) continue;
+    if (typeof value === "string") headers.set(name, value);
+  }
+  let body: string | undefined;
+  if (req.method !== "GET" && req.method !== "HEAD" && req.body != null) {
+    body = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+  }
+  try {
+    const upstream = await fetch(target.href, { method: req.method, headers, body, redirect: "follow" });
+    for (const [name, value] of upstream.headers.entries()) {
+      if (!["content-length", "content-encoding", "transfer-encoding", "set-cookie"].includes(name.toLowerCase())) res.setHeader(name, value);
+    }
+    return res.status(upstream.status).send(Buffer.from(await upstream.arrayBuffer()));
+  } catch (error) {
+    logger.warn({ target: target.hostname, error }, "Direct fetch fallback failed");
+    return res.status(502).json({ error: "Upstream fetch failed" });
   }
 });
 
