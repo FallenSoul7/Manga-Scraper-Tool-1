@@ -27,13 +27,15 @@ declare global {
 const HELPER_ENABLED_KEY = "comihub-helper-enabled";
 const HELPER_STATUS_EVENT = "comihub-helper-status";
 const PING_TIMEOUT_MS = 800;
+const FETCH_TIMEOUT_MS = 15_000;
 
 let helperStatus: HelperStatus = "unknown";
 let pingPromise: Promise<HelperStatus> | null = null;
 
 function runtime(): ExtensionRuntime | null {
   if (typeof window === "undefined") return null;
-  return window.chrome?.runtime ?? window.browser?.runtime ?? null;
+  const candidate = window.chrome?.runtime ?? window.browser?.runtime;
+  return candidate && typeof candidate.sendMessage === "function" ? candidate : null;
 }
 
 export function isHelperEnabled(): boolean {
@@ -145,6 +147,21 @@ function renderProxyUrl(url: URL): string {
   return appApiUrl(`/api/direct-fetch?url=${encodeURIComponent(url.href)}`);
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const originalSignal = init.signal;
+  const abort = () => controller.abort();
+  if (originalSignal?.aborted) abort();
+  originalSignal?.addEventListener("abort", abort, { once: true });
+  const timer = window.setTimeout(abort, timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+    originalSignal?.removeEventListener("abort", abort);
+  }
+}
+
 export async function fetcher(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const requestUrl = input instanceof Request ? input.url : String(input);
   const baseUrl = typeof location !== "undefined" ? location.href : "https://www.comihub.top/";
@@ -179,7 +196,7 @@ export async function fetcher(input: RequestInfo | URL, init: RequestInit = {}):
   }
 
   const fallbackUrl = sameOrigin ? url.href : renderProxyUrl(url);
-  return fetch(fallbackUrl, { ...init, credentials: "omit", referrerPolicy: "no-referrer", headers });
+  return fetchWithTimeout(fallbackUrl, { ...init, credentials: "omit", referrerPolicy: "no-referrer", headers });
 }
 
 export async function probeHelperOnLoad(): Promise<HelperStatus> {
