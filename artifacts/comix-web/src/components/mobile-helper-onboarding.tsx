@@ -39,7 +39,9 @@ export function MobileHelperOnboarding() {
   useEffect(() => {
     if (localStorage.getItem(HIDE_KEY) === "true") return;
     const detected = mobileTarget();
-    if (!detected) return;
+    // iOS Safari cannot install the raw helper ZIP. Keep the guidance on the
+    // Privacy Mode page, but do not interrupt iOS Safari with this popup.
+    if (!detected || detected === "ios-safari") return;
     setTarget(detected);
     setOpen(true);
     void detectHelper().then(status => {
