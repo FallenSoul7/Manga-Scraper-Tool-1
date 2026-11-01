@@ -24,6 +24,7 @@ const MangaDetail          = lazy(() => import("@/pages/manga-detail"));
 const Reader               = lazy(() => import("@/pages/reader"));
 const SettingsPage         = lazy(() => import("@/pages/settings"));
 const ExtensionSettingsPage = lazy(() => import("@/pages/extension-settings"));
+const PrivacyModePage      = lazy(() => import("@/pages/privacy-mode"));
 function lazyWithChunkRecovery<T extends { default: React.ComponentType<any> }>(loader: () => Promise<T>, key: string) {
   return lazy(async () => {
     try {
@@ -269,6 +270,9 @@ function AppContent() {
               </Route>
               <Route path="/extension-settings">
                 <Lazy><ExtensionSettingsPage /></Lazy>
+              </Route>
+              <Route path="/privacy-mode">
+                <Lazy><PrivacyModePage /></Lazy>
               </Route>
               <Route path="/subscription">
                 <Lazy><SubscriptionPage /></Lazy>

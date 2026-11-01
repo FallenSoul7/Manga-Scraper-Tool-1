@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import {
-  Settings, Download, BarChart3, Info, FolderOpen, Sparkles, Puzzle,
+  Settings, Download, BarChart3, Info, FolderOpen, Sparkles, Puzzle, ShieldCheck,
   Trash2, AppWindow, LogIn, Lock, Crown, Smartphone,
 } from "lucide-react";
 
@@ -74,6 +74,13 @@ const blocks: SystemBlock[] = [
     label: "Extensions",
     description: "Add and manage source extensions on this device.",
     icon: Puzzle,
+  },
+  {
+    href: "/privacy-mode",
+    label: "Privacy Mode",
+    description: "Download and enable the browser helper for direct device requests.",
+    icon: ShieldCheck,
+    highlight: true,
   },
   {
     href: "/subscription",
