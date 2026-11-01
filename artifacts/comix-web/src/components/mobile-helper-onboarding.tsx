@@ -13,7 +13,6 @@ import { detectHelper } from "@/services/fetcher";
 
 const HIDE_KEY = "hide_extension_modal";
 const EXTENSION_ARCHIVE_URL = "https://github.com/FallenSoul7/Manga-Scraper-Tool-1/raw/main/extension/comihub-web-helper.zip";
-const EXTENSION_GUIDE_URL = "https://github.com/FallenSoul7/Manga-Scraper-Tool-1/tree/main/extension";
 
 type MobileTarget = "ios-safari" | "android-chrome" | null;
 
@@ -35,6 +34,7 @@ function mobileTarget(): MobileTarget {
 export function MobileHelperOnboarding() {
   const [target, setTarget] = useState<MobileTarget>(null);
   const [open, setOpen] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
 
   useEffect(() => {
     if (localStorage.getItem(HIDE_KEY) === "true") return;
@@ -57,25 +57,51 @@ export function MobileHelperOnboarding() {
     setOpen(false);
   };
 
+  const openInstallGuide = () => setShowInstallGuide(true);
+
   if (!target) return null;
   const ios = target === "ios-safari";
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) dismiss(); }}>
       <DialogContent className="w-[70vw] max-w-[20rem] max-h-[70dvh] gap-3 overflow-y-auto p-4">
-        <DialogHeader>
-          <DialogTitle className="text-lg">Unlock 100% On-Device Mode</DialogTitle>
-          <DialogDescription className="text-xs">
-            Add the optional ComiHub Helper to connect to source sites from your own device.
-          </DialogDescription>
-        </DialogHeader>
+        {showInstallGuide ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="text-lg">Install ComiHub Helper</DialogTitle>
+              <DialogDescription className="text-xs">The download stays in this popup; no GitHub page is opened.</DialogDescription>
+            </DialogHeader>
+            <div className="rounded-xl border border-border/70 bg-muted/30 p-2.5 text-xs">
+              <p className="font-semibold">{ios ? "Mobile Safari" : "Android browser"}</p>
+              <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-muted-foreground">
+                <li><a className="font-medium text-primary underline" href={EXTENSION_ARCHIVE_URL} download="comihub-web-helper.zip">Download the helper extension file</a>.</li>
+                {ios ? (
+                  <li>Install the Safari Web Extension module, then open <strong className="text-foreground">iOS Settings → Safari → Extensions</strong> and switch <strong className="text-foreground">ComiHub Helper</strong> on.</li>
+                ) : (
+                  <li>Open the file in an extension-supported browser such as Firefox Mobile, Kiwi, or Edge.</li>
+                )}
+              </ol>
+            </div>
+            <DialogFooter className="gap-1.5 sm:flex-col sm:space-x-0">
+              <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => setShowInstallGuide(false)}>Back</Button>
+              <Button variant="ghost" size="sm" className="w-full text-xs" onClick={chooseStandardMode}>Continue with Standard Web Mode</Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle className="text-lg">Unlock 100% On-Device Mode</DialogTitle>
+              <DialogDescription className="text-xs">
+                Add the optional ComiHub Helper to connect to source sites from your own device.
+              </DialogDescription>
+            </DialogHeader>
 
-        <ul className="space-y-2 text-xs">
+            <ul className="space-y-2 text-xs">
           <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" /><span><strong>100% Privacy &amp; Security</strong><br /><span className="text-muted-foreground">All scraping runs directly on your device, with zero server tracking.</span></span></li>
           <li className="flex gap-2"><Rocket className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" /><span><strong>Faster Loading</strong><br /><span className="text-muted-foreground">Connect directly using your own device IP.</span></span></li>
           <li className="flex gap-2"><LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" /><span><strong>Zero Third-Party Middlemen</strong><br /><span className="text-muted-foreground">Keep source requests between your device and the source.</span></span></li>
-        </ul>
+            </ul>
 
-        <div className="rounded-xl border border-border/70 bg-muted/30 p-2.5 text-xs">
+            <div className="rounded-xl border border-border/70 bg-muted/30 p-2.5 text-xs">
           <p className="font-semibold">{ios ? "Mobile Safari setup" : "Mobile Chrome / Android setup"}</p>
           {ios ? (
             <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-muted-foreground">
@@ -88,18 +114,14 @@ export function MobileHelperOnboarding() {
               <li>Install it in an extension-supported Android browser such as Firefox Mobile, Kiwi, or Edge.</li>
             </ol>
           )}
-        </div>
+            </div>
 
-        <DialogFooter className="gap-1.5 sm:flex-col sm:space-x-0">
-          <Button asChild size="sm" className="w-full text-xs">
-            <a href={ios ? EXTENSION_GUIDE_URL : EXTENSION_ARCHIVE_URL} target="_blank" rel="noreferrer">
-              Install Helper Extension
-            </a>
-          </Button>
-          <Button variant="ghost" size="sm" className="w-full text-xs" onClick={chooseStandardMode}>
-            Continue with Standard Web Mode
-          </Button>
-        </DialogFooter>
+            <DialogFooter className="gap-1.5 sm:flex-col sm:space-x-0">
+              <Button size="sm" className="w-full text-xs" onClick={openInstallGuide}>Install Helper Extension</Button>
+              <Button variant="ghost" size="sm" className="w-full text-xs" onClick={chooseStandardMode}>Continue with Standard Web Mode</Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
