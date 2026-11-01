@@ -41,8 +41,9 @@ export function MobileHelperOnboarding() {
     const detected = mobileTarget();
     if (!detected) return;
     setTarget(detected);
+    setOpen(true);
     void detectHelper().then(status => {
-      if (status !== "active" && localStorage.getItem(HIDE_KEY) !== "true") setOpen(true);
+      if (status === "active" || localStorage.getItem(HIDE_KEY) === "true") setOpen(false);
     });
   }, []);
 

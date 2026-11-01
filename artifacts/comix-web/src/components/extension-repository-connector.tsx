@@ -91,7 +91,6 @@ export default function ExtensionRepositoryConnector() {
       <div className="space-y-3">
         <div className="space-y-1">
           <h2 className="text-sm font-medium">Official sources</h2>
-          <p className="text-xs text-muted-foreground">The source list and installed metadata stay on this device. “Device-first” sources try local fetching with a temporary service fallback; other sources still use server adapters. Tier 1 JSON sources use local declarative rules.</p>
         </div>
         <Button type="button" onClick={() => void browseSources()} disabled={loading}>
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
