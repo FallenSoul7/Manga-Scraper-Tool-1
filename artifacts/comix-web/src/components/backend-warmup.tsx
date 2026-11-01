@@ -6,7 +6,8 @@ import { apiUrl } from "@/lib/api-url";
 // Give an already-awake Render service time to answer before showing the
 // cold-start screen. Once shown, it stays visible until /healthz succeeds.
 const SHOW_AFTER_MS = 1_200;
-const GIVE_UP_AFTER_MS = 45_000;
+const GIVE_UP_AFTER_MS = 12_000;
+const HEALTH_REQUEST_TIMEOUT_MS = 8_000;
 const BACKEND_REFRESH_EVENT = "comihub:refresh-backend";
 
 export function requestBackendRefresh() {
@@ -26,12 +27,22 @@ export function BackendWarmup() {
     let retryDelayMs = 2_000;
     while (!signal?.aborted) {
       try {
-        const response = await fetch(`${apiUrl("/api/healthz")}?warmup=${Date.now()}`, {
-          method: "GET",
-          cache: "no-store",
-          credentials: "omit",
-          signal,
-        });
+        const requestController = new AbortController();
+        const abortRequest = () => requestController.abort();
+        const requestTimer = window.setTimeout(abortRequest, HEALTH_REQUEST_TIMEOUT_MS);
+        signal?.addEventListener("abort", abortRequest, { once: true });
+        let response: Response;
+        try {
+          response = await fetch(`${apiUrl("/api/healthz")}?warmup=${Date.now()}`, {
+            method: "GET",
+            cache: "no-store",
+            credentials: "omit",
+            signal: requestController.signal,
+          });
+        } finally {
+          window.clearTimeout(requestTimer);
+          signal?.removeEventListener("abort", abortRequest);
+        }
         if (response.ok) {
           lastBackendReadyAt.current = Date.now();
           // Some page queries may have started during Render's cold start and
