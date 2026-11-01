@@ -12,7 +12,6 @@ const EXPERIMENTAL_SOURCE_IDS = new Set([
   "en.onlythebesthentai",
   "en.allmanga",
   "en.allanime",
-  "en.animegg",
   "en.royalroad",
 ]);
 const CLIENT_FIRST_SOURCE_IDS = new Set([
