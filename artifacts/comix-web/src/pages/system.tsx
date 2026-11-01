@@ -17,7 +17,7 @@ function Block({ block }: { block: SystemBlock }) {
   const Icon = block.icon;
   const inner = (
     <div
-      className={`relative h-full rounded-2xl border px-5 py-3 sm:px-6 sm:py-4 transition-all flex flex-col gap-2 ${
+      className={`relative h-full rounded-2xl border px-4 py-2 sm:px-5 sm:py-3 transition-all flex flex-col gap-1 ${
         block.comingSoon
           ? "bg-card/50 border-dashed text-muted-foreground"
           : block.highlight
@@ -25,17 +25,17 @@ function Block({ block }: { block: SystemBlock }) {
           : "bg-card hover:bg-muted hover:border-primary/40 hover:shadow-md cursor-pointer"
       }`}
     >
-      <div className={`h-11 w-11 rounded-xl flex items-center justify-center ${
+      <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${
         block.comingSoon
           ? "bg-muted"
           : block.highlight
           ? "bg-primary/20 text-primary"
           : "bg-primary/10 text-primary"
       }`}>
-        <Icon className="h-4 w-4" />
+        <Icon className="h-3.5 w-3.5" />
       </div>
       <div className="space-y-1 flex-1">
-        <h3 className="font-serif font-bold text-lg text-foreground flex items-center gap-2">
+        <h3 className="font-serif font-bold text-base text-foreground flex items-center gap-2">
           {block.label}
           {block.highlight && (
             <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">New</span>
@@ -44,7 +44,7 @@ function Block({ block }: { block: SystemBlock }) {
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Soon</span>
           )}
         </h3>
-        <p className="text-sm text-muted-foreground leading-relaxed">{block.description}</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">{block.description}</p>
       </div>
     </div>
   );
