@@ -33,16 +33,21 @@ public class ImmersiveModePlugin extends Plugin {
                     int systemBars = WindowInsets.Type.statusBars()
                             | WindowInsets.Type.navigationBars();
                     if (enabled) {
+                        // The transient-bars behavior triggers Android's large
+                        // "tap/swipe to exit fullscreen" education overlay.
+                        // Default behavior still hides both bars without that
+                        // persistent panel consuming reader space.
                         controller.setSystemBarsBehavior(
-                                WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                                WindowInsetsController.BEHAVIOR_DEFAULT);
                         controller.hide(systemBars);
                     } else {
                         controller.show(systemBars);
                     }
                 }
             } else if (enabled) {
-                int flags = View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                // Avoid IMMERSIVE/IMMERSIVE_STICKY on older Android versions;
+                // those flags invoke the fullscreen education overlay.
+                int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_FULLSCREEN
