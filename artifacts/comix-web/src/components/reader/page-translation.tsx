@@ -620,7 +620,7 @@ export function ReaderTranslationControl({
 
   useEffect(() => {
     if (!status) return;
-    const timer = window.setTimeout(() => setStatus(""), 6500);
+    const timer = window.setTimeout(() => setStatus(""), 3500);
     return () => window.clearTimeout(timer);
   }, [status]);
 

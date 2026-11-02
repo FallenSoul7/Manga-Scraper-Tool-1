@@ -106,6 +106,12 @@ export default function PawchivePostPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!downloadError) return;
+    const timer = window.setTimeout(() => setDownloadError(""), 3500);
+    return () => window.clearTimeout(timer);
+  }, [downloadError]);
+
   function toggleFavorite() {
     if (savedPost) {
       storeActions.removeFromLibrary(postId);
