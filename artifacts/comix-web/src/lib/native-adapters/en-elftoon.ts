@@ -157,6 +157,7 @@ const adapter: ClientSourceAdapter = {
       seen.add(match[1]);
       tags.push({ id: decodeURIComponent(match[1]), name, group: "Genre" });
     });
+    if (tags.length === 0) tags.push({ id: "manhwa", name: "Manhwa", group: "Type" });
     return tags;
   },
 

@@ -129,7 +129,7 @@ async function mangafreakTags(): Promise<NonNullable<ClientMangaDetail["sourceTa
   const seen = new Set<string>();
   document.querySelectorAll("a[href]").forEach(anchor => {
     const href = anchor.getAttribute("href") || "";
-    const match = href.match(/\/Genre\/([^/?#]+)\//i);
+    const match = href.match(/\/Genre\/([^/?#]+)(?:\/|$)/i);
     const name = anchor.textContent?.replace(/\s+/g, " ").trim() || "";
     if (!match || !name || /^all$/i.test(match[1]) || seen.has(match[1])) return;
     seen.add(match[1]);

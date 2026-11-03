@@ -146,9 +146,10 @@ async function animeGgTags(): Promise<NonNullable<ClientMangaDetail["sourceTags"
   const { document } = await fetchDocument("/popular-series");
   const seen = new Set<string>();
   const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
-  document.querySelectorAll("a[href^='/genre/']").forEach(anchor => {
+  document.querySelectorAll("a[href*='/genre/']").forEach(anchor => {
     const href = anchor.getAttribute("href") || "";
-    const id = decodeURIComponent(href.slice("/genre/".length)).trim().toLowerCase();
+    const match = href.match(/\/genre\/([^/?#]+)/i);
+    const id = match ? decodeURIComponent(match[1]).trim().toLowerCase() : "";
     const name = anchor.textContent?.replace(/\s+/g, " ").trim() || "";
     if (!id || !name || seen.has(id)) return;
     seen.add(id);

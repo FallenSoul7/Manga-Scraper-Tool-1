@@ -206,7 +206,7 @@ const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", 
 async function clientWebtoonsList(kind: "popular" | "latest" | "search", page: number, query = "", tagIds: string[] = []): Promise<ClientListResponse> {
   let path: string;
   const tag = tagIds.find(value => !value.startsWith("-"));
-  if (tag) path = `/en/genre/${encodeURIComponent(tag)}`;
+  if (tag) path = `/en/genres/${encodeURIComponent(tag)}?sortOrder=MANA`;
   else if (kind === "search") path = `/en/search/webtoon?keyword=${encodeURIComponent(query)}&page=${page}`;
   else if (kind === "latest") path = `/en/originals/${days[new Date().getDay()]}?sortOrder=UPDATE`;
   else path = `/en/ranking/${["trending", "popular", "originals", "canvas"][Math.max(0, Math.min(3, page - 1))]}`;
@@ -338,9 +338,9 @@ const webtoonTags = async (): Promise<NonNullable<ClientMangaDetail["sourceTags"
   const document = await clientHtml("webtoons:genres", `${WEBTOONS_BASE}/en/genres`);
   const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
   const seen = new Set<string>();
-  document.querySelectorAll("a[href*='/genre/']").forEach(anchor => {
-    const href = anchor.getAttribute("href") || "";
-    const match = href.match(/\/genre\/([^/?#]+)/i);
+    document.querySelectorAll("a[href*='/genres/']").forEach(anchor => {
+      const href = anchor.getAttribute("href") || "";
+      const match = href.match(/\/genres\/([^/?#]+)/i);
     const name = anchor.textContent?.replace(/\s+/g, " ").trim() || "";
     if (!match || !name || seen.has(match[1])) return;
     seen.add(match[1]);
@@ -387,8 +387,18 @@ const mangaDexList = (page: number, order: string, query = "", tagIds: string[] 
   return clientJson<{ data: any[]; total: number }>(`mangadex:${order}:${query}:${page}:${tagIds.join(",")}`, `${MANGADEX_API}/manga?${params}`).then(data => mapMangaDex(data, page));
 };
 const mangaDexTags = async () => {
-  const data = await clientJson<{ data?: Array<{ id: string; attributes?: { name?: { en?: string } } }> }>("mangadex:tags", `${MANGADEX_API}/manga/tag`);
-  return (data.data ?? []).map(tag => ({ id: tag.id, name: tag.attributes?.name?.en ?? tag.id, group: "Genre" }));
+  const data = await clientJson<{ data?: Array<{ attributes?: { tags?: Array<{ id: string; attributes?: { name?: { en?: string } } }> } }> }>("mangadex:tag-discovery", `${MANGADEX_API}/manga?limit=100&offset=0&order[followedCount]=desc&contentRating[]=safe&contentRating[]=suggestive`);
+  const tags: Array<{ id: string; name: string; group: string }> = [];
+  const seen = new Set<string>();
+  for (const manga of data.data ?? []) {
+    for (const tag of manga.attributes?.tags ?? []) {
+      const name = tag.attributes?.name?.en?.trim() || "";
+      if (!tag.id || !name || seen.has(tag.id)) continue;
+      seen.add(tag.id);
+      tags.push({ id: tag.id, name, group: "Genre" });
+    }
+  }
+  return tags;
 };
 const mangaDexAdapter: ClientSourceAdapter = {
   sourceId: "all.mangadex",
@@ -584,14 +594,14 @@ const thunderAdapter: ClientSourceAdapter = {
   latest: (page, tags) => withThunderError("latest series", () => themesiaList("update", page, "", tags)),
   search: (query, page, tags) => withThunderError("search results", () => themesiaList("search", page, query, tags)),
   tags: async () => {
-    const document = await clientHtml("thunderscans:tags", `${THUNDER_BASE}/comics/`);
+    const document = await clientHtml("thunderscans:tags", `${THUNDER_BASE}/genres/manga/`);
     const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
     const seen = new Set<string>();
     document.querySelectorAll("a[href]").forEach(anchor => {
       const href = anchor.getAttribute("href") || "";
-      const match = href.match(/[?&]genre(?:\[\])?=([^&]+)/i);
+      const match = href.match(/[?&]genre(?:\[\])?=([^&]+)/i) || href.match(/\/genres?\/([^/?#]+)/i);
       const name = themesiaText(anchor);
-      if (!match || !name || seen.has(match[1])) return;
+      if (!match || !name || /^manga$/i.test(match[1]) || seen.has(match[1])) return;
       seen.add(match[1]);
       tags.push({ id: decodeURIComponent(match[1]), name, group: "Genre" });
     });
