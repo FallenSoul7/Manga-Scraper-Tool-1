@@ -19,6 +19,7 @@ import pandachaikaAdapter from "./native-adapters/all-pandachaika";
 import animeggAdapter from "./native-adapters/en-animegg";
 import mihentaiAdapter from "./native-adapters/all-mihentai";
 import ravenscansAdapter from "./native-adapters/en-ravenscans";
+import elftoonAdapter from "./native-adapters/en-elftoon";
 
 export interface ClientMangaSummary {
   id: string;
@@ -557,6 +558,7 @@ const sourceModes: Record<string, ClientSourceMode> = {
   "en.animegg": "client",
   "all.mihentai": "client",
   "en.ravenscans": "client",
+  "en.elftoon": "client",
   "en.allanime": "client",
 };
 const clientAdapters: Record<string, ClientSourceAdapter> = {
@@ -584,6 +586,7 @@ const clientAdapters: Record<string, ClientSourceAdapter> = {
   "en.animegg": animeggAdapter,
   "all.mihentai": mihentaiAdapter,
   "en.ravenscans": ravenscansAdapter,
+  "en.elftoon": elftoonAdapter,
   "en.allanime": allmangaAdapter,
 };
 const tier1Adapters = new Map<string, { key: string; adapter: ClientSourceAdapter }>();

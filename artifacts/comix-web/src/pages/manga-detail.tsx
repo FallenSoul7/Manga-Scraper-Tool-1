@@ -66,7 +66,7 @@ function getSourceWebUrl(sourceId: string, mangaId: string): string | null {
   const id = decodeURIComponent(mangaId);
   if (sourceId.includes("comix"))        return `https://comix.to/title/${mangaId}`;
   if (sourceId.includes("mangadex"))     return `https://mangadex.org/title/${mangaId}`;
-  if (sourceId.includes("elftoon"))      return `https://elftoon.com/${id}/`;
+  if (sourceId.includes("elftoon"))      return `https://elftoon.net/${id.replace(/^\/+/, "")}`;
   if (sourceId.includes("resetscans"))   return `https://www.resetscans.net${id.startsWith("/") ? id : `/en/manga/${id}.html`}`;
   if (sourceId.includes("manhuaplus"))   return `https://manhuaplus.com/manga/${id}/`;
   if (sourceId.includes("thunderscans")) return `https://en-thunderscans.com/comics/${id}/`;
