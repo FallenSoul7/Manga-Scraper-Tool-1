@@ -106,7 +106,7 @@ async function fetchDocument(path: string): Promise<{ document: Document; url: s
 function parseListing(document: Document, page: number): ClientListResponse {
   const items: ClientListResponse["items"] = [];
   const seen = new Set<string>();
-  const selector = ".novel-item, .list-novel .row, .list-truyen .row, .archive .row, .row[itemtype*='Book'], .book-item, .novel-list .row, .top-item, #main .section1 li, table tr, article";
+  const selector = ".novel-item, .list-novel .row, .list-truyen .row, .archive .row, .row[itemtype*='Book'], .book-item, .novel-list .row, #main .section1 li, table tr, article";
   document.querySelectorAll(selector).forEach(root => {
     const href = firstHref(root);
     const titleElement = root.querySelector("h3, h2, .truyen-title, .novel-title, .title, .book-title, .s-title, .book-info h2");
