@@ -293,10 +293,12 @@ export default function SourceBrowsePage() {
 
   const { data: availableTags = [] } = useQuery<SourceTag[]>({
     queryKey: ["source-tags", sourceId],
-    queryFn: () => serverFetch<SourceTag[]>(`/api/tags`),
+    queryFn: () => clientAdapter?.tags
+      ? clientAdapter.tags()
+      : serverFetch<SourceTag[]>(`/api/tags`),
     // Tag discovery can be much slower than the first browse request for
     // sources with large tag catalogues. Never make it block the main list.
-    enabled: !isNativeApp && online && backendReady && !!sourceId && !!source && tagsEnabled && !clientAdapter,
+    enabled: online && !!sourceId && !!source && tagsEnabled && Boolean(clientAdapter?.tags || (!isNativeApp && backendReady && !clientAdapter)),
     staleTime: 60 * 60 * 1000,
   });
 
@@ -330,12 +332,12 @@ export default function SourceBrowsePage() {
     queryKey: ["source-filter", sourceId, mediaType, searchQuery, allTagIds.join(","), filterPage, settings.hideNsfw, settings.posterQuality],
     queryFn: () => clientAdapter
       ? isSearching
-        ? withServerFallback(clientAdapter.search(searchQuery, filterPage), `/api/search${buildQuery({
+        ? withServerFallback(clientAdapter.search(searchQuery, filterPage, allTagIds), `/api/search${buildQuery({
             ...commonOpts,
             query: searchQuery,
             page: String(filterPage),
           })}`)
-        : clientAdapter.latest(filterPage)
+        : clientAdapter.latest(filterPage, allTagIds)
       : serverFetch<ListResponse>(`/api/search${buildQuery({
           ...commonOpts,
           query: searchQuery || undefined,
@@ -713,7 +715,7 @@ export default function SourceBrowsePage() {
               </>
             )}
 
-            {!clientAdapter && availableTags.length > 0 && (
+            {(availableTags.length > 0 || Boolean(clientAdapter?.tags)) && (
               <Popover open={filterPopoverOpen} onOpenChange={setFilterPopoverOpen}>
                 <PopoverTrigger asChild>
                   <button

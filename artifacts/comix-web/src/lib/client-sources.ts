@@ -82,9 +82,10 @@ export interface ClientSourceAdapter {
   mode: ClientSourceMode;
   /** When false, failures stay on the client instead of calling an unsupported backend source. */
   fallbackToServer?: boolean;
-  popular(page: number): Promise<ClientListResponse>;
-  latest(page: number): Promise<ClientListResponse>;
-  search(query: string, page: number): Promise<ClientListResponse>;
+  popular(page: number, tagIds?: string[]): Promise<ClientListResponse>;
+  latest(page: number, tagIds?: string[]): Promise<ClientListResponse>;
+  search(query: string, page: number, tagIds?: string[]): Promise<ClientListResponse>;
+  tags?(): Promise<Array<{ id: string; name: string; group?: string }>>;
   details?(id: string, options?: { scorePosition?: "top" | "bottom" | "none" }): Promise<ClientMangaDetail>;
   chapters?(id: string): Promise<ClientChapterResponse>;
   pages?(chapterId: string): Promise<ClientPageResponse>;
@@ -345,8 +346,38 @@ function mangaDexCover(id: string, relationship: any): string {
   return fileName ? `https://uploads.mangadex.org/covers/${encodeURIComponent(id)}/${encodeURIComponent(String(fileName))}.256.jpg` : MANGADEX_COVER_FALLBACK;
 }
 function mapMangaDex(data: { data: any[]; total: number }, page: number): ClientListResponse { return { page, hasNextPage: page * 20 < data.total, items: (data.data ?? []).map(m => { const title = m.attributes?.title?.en || Object.values(m.attributes?.title ?? {})[0] || m.id; const cover = m.relationships?.find((r: any) => r?.type === "cover_art"); return { id: m.id, title: String(title), thumbnail: mangaDexCover(String(m.id), cover), type: "manga", isNsfw: false }; }) }; }
-const mangaDexList = (page: number, order: string, query = "") => { const params = new URLSearchParams(); params.set("limit", "20"); params.set("offset", String((page - 1) * 20)); params.append("includes[]", "cover_art"); params.append("contentRating[]", "safe"); params.append("contentRating[]", "suggestive"); if (query) { params.set("title", query); params.set("order[relevance]", "desc"); } else params.set(`order[${order}]`, "desc"); return clientJson<{ data: any[]; total: number }>(`mangadex:${order}:${query}:${page}`, `${MANGADEX_API}/manga?${params}`).then(data => mapMangaDex(data, page)); };
-const mangaDexAdapter: ClientSourceAdapter = { sourceId: "all.mangadex", mode: "client", popular: p => mangaDexList(p, "followedCount"), latest: p => mangaDexList(p, "latestUploadedChapter"), search: (q, p) => mangaDexList(p, "relevance", q), details: mangaDexDetails, chapters: mangaDexChapters, pages: mangaDexPages };
+const mangaDexList = (page: number, order: string, query = "", tagIds: string[] = []) => {
+  const params = new URLSearchParams();
+  params.set("limit", "20");
+  params.set("offset", String((page - 1) * 20));
+  params.append("includes[]", "cover_art");
+  params.append("contentRating[]", "safe");
+  params.append("contentRating[]", "suggestive");
+  const included = tagIds.filter(tag => !tag.startsWith("-"));
+  const excluded = tagIds.filter(tag => tag.startsWith("-")).map(tag => tag.slice(1));
+  for (const tag of included) params.append("includedTags[]", tag);
+  for (const tag of excluded) params.append("excludedTags[]", tag);
+  if (included.length > 0) params.set("includedTagsMode", "AND");
+  if (excluded.length > 0) params.set("excludedTagsMode", "OR");
+  if (query) { params.set("title", query); params.set("order[relevance]", "desc"); }
+  else params.set(`order[${order}]`, "desc");
+  return clientJson<{ data: any[]; total: number }>(`mangadex:${order}:${query}:${page}:${tagIds.join(",")}`, `${MANGADEX_API}/manga?${params}`).then(data => mapMangaDex(data, page));
+};
+const mangaDexTags = async () => {
+  const data = await clientJson<{ data?: Array<{ id: string; attributes?: { name?: { en?: string } } }> }>("mangadex:tags", `${MANGADEX_API}/manga/tag`);
+  return (data.data ?? []).map(tag => ({ id: tag.id, name: tag.attributes?.name?.en ?? tag.id, group: "Genre" }));
+};
+const mangaDexAdapter: ClientSourceAdapter = {
+  sourceId: "all.mangadex",
+  mode: "client",
+  popular: (p, tags) => mangaDexList(p, "followedCount", "", tags),
+  latest: (p, tags) => mangaDexList(p, "latestUploadedChapter", "", tags),
+  search: (q, p, tags) => mangaDexList(p, "relevance", q, tags),
+  tags: mangaDexTags,
+  details: mangaDexDetails,
+  chapters: mangaDexChapters,
+  pages: mangaDexPages,
+};
 
 const THUNDER_BASE = "https://en-thunderscans.com";
 function themesiaText(element: Element | null): string {
