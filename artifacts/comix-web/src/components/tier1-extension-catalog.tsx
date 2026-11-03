@@ -15,6 +15,7 @@ import {
 } from "@/lib/imported-extensions";
 
 const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const REMOVED_SOURCE_IDS = new Set(["en.utoon", "local.koofr", "en.comix", "en.comickfan"]);
 
 function resolveIconUrl(url: string | null): string | null {
   if (!url) return null;
@@ -36,6 +37,7 @@ export default function Tier1ExtensionCatalog() {
     return !query || `${extension.name} ${extension.lang} ${extension.id}`.toLowerCase().includes(query);
   }), [registry, adultAllowed, query]);
   const visibleLocalExtensions = useMemo(() => localExtensions.filter(extension => {
+    if (REMOVED_SOURCE_IDS.has(extension.sourceId)) return false;
     if (extension.manifest.isNsfw && !adultAllowed) return false;
     return !query || `${extension.manifest.sourceName} ${extension.manifest.lang} ${extension.sourceId}`.toLowerCase().includes(query);
   }), [localExtensions, adultAllowed, query]);

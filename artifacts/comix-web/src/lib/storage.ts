@@ -244,16 +244,12 @@ function loadState(): StoreState {
       // Universal remains available in the scraper package for backend use,
       // but it is no longer auto-installed or exposed as a user source.
       delete validated.data.installedSources["builtin.universal"];
-      // K-Cafe has been removed. Drop only its source registration; preserve
-      // any saved library metadata that users already own.
+      // Retired sources are no longer installable or displayed. Drop only
+      // their source registrations; preserve any saved library metadata.
       delete validated.data.installedSources["local.koofr"];
-      // Comix is no longer pre-installed. Drop the legacy auto-installed copy
-      // (installedAt === 0) so it behaves like any other optional source; a
-      // copy the user installed manually (installedAt > 0) is kept.
-      const legacyComix = validated.data.installedSources["en.comix"];
-      if (legacyComix && legacyComix.installedAt === 0) {
-        delete validated.data.installedSources["en.comix"];
-      }
+      delete validated.data.installedSources["en.utoon"];
+      delete validated.data.installedSources["en.comix"];
+      delete validated.data.installedSources["en.comickfan"];
       // Make sure activeSourceId points at an installed source (or is empty)
       if (!validated.data.installedSources[validated.data.activeSourceId]) {
         validated.data.activeSourceId = Object.keys(validated.data.installedSources)[0] ?? "";

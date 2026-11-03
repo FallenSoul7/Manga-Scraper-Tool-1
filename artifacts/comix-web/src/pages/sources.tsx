@@ -47,12 +47,10 @@ const LANG_LABELS: Record<string, string> = {
 };
 const langLabel = (code: string) => LANG_LABELS[code] ?? code.toUpperCase();
 const ANIME_SOURCE_IDS = new Set(["en.animegg"]);
+const REMOVED_SOURCE_IDS = new Set(["en.utoon", "local.koofr", "en.comix", "en.comickfan"]);
 
 // Keep availability labels for previously installed server sources.
 const NOT_WORKING_SOURCE_IDS = new Set([
-  "en.comix",
-  "en.comickfan",
-  "en.utoon",
   "en.manhuaplus",
   "en.onlythebesthentai",
   "en.allmanga",
@@ -87,7 +85,7 @@ const INHERENTLY_MATURE_SOURCE_IDS = new Set([
 // adult-only. These IDs must stay visible even if an installed device still
 // has one of those stale flags persisted locally.
 const GENERAL_SOURCE_IDS = new Set([
-  "all.mangadex", "en.comix", "en.mangafreak", "en.comickfan",
+  "all.mangadex", "en.mangafreak",
   "en.ravenscans", "en.allmanga", "en.allanime", "all.comicklive",
   "ar.empirewebtoon", "vi.kamicomic", "en.comickiba", "en.nineanime",
   "en.webtoontr", "en.webtoonscan", "en.webtoonxyz",
@@ -241,6 +239,7 @@ export default function SourcesPage() {
 
   const installed = useMemo(
     () => Object.values(installedMap)
+      .filter(source => !REMOVED_SOURCE_IDS.has(source.id))
       .filter(source => !isInherentlyMature(source) || (!settings.hideNsfw && hasAdultAccessConsent()))
       .sort((a, b) => a.name.localeCompare(b.name)),
     [installedMap, settings.hideNsfw],

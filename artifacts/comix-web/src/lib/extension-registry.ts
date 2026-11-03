@@ -7,6 +7,7 @@ export const APPROVED_EXTENSION_REPOSITORY_URL = "https://github.com/FallenSoul7
 const OFFICIAL_REGISTRY_ENDPOINT = "/api/sources/registry";
 const REGISTRY_STORAGE_KEY = "comihub:extension-registry:v1";
 const MAX_REGISTRY_JSON_CHARS = 1024 * 1024;
+const REMOVED_SOURCE_IDS = new Set(["en.utoon", "local.koofr", "en.comix", "en.comickfan"]);
 
 const SafeIconUrlSchema = z.string().max(2048).nullable().refine(value => {
   if (value === null) return true;
@@ -72,7 +73,13 @@ function validateRegistry(value: unknown): LoadOfficialSourceRegistryResult {
   if (!parsed.success) {
     return { ok: false, error: "The official source list failed validation." };
   }
-  return { ok: true, registry: parsed.data };
+  return {
+    ok: true,
+    registry: {
+      ...parsed.data,
+      extensions: parsed.data.extensions.filter(extension => !REMOVED_SOURCE_IDS.has(extension.id)),
+    },
+  };
 }
 
 function readCachedRegistry(): OfficialExtensionRegistry | null {

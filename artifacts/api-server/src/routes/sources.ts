@@ -3,10 +3,8 @@ import { getCatalog, isSupported } from "@fallensoul7/frwilxe-hub-sources";
 
 const router = Router();
 const catalogRaw = getCatalog();
+const REMOVED_SOURCE_IDS = new Set(["en.utoon", "local.koofr", "en.comix", "en.comickfan"]);
 const EXPERIMENTAL_SOURCE_IDS = new Set([
-  "en.comix",
-  "en.comickfan",
-  "en.utoon",
   "en.manhuaplus",
   "en.elftoon",
   "en.onlythebesthentai",
@@ -22,7 +20,6 @@ const CLIENT_FIRST_SOURCE_IDS = new Set([
   "all.webtoons",
   "en.asurascans",
   "all.thunderscans",
-  "en.comickfan",
   "en.allmanga",
   "en.rule34",
   "en.xkcd",
@@ -44,6 +41,7 @@ const CLIENT_FIRST_SOURCE_IDS = new Set([
 
 const registryExtensions = Array.from(new Map(
   catalogRaw.extensions
+    .filter((extension) => !REMOVED_SOURCE_IDS.has(extension.id as string))
     .filter((extension) => isSupported(extension.id as string) && extension.id !== "builtin.universal")
     .map((extension) => [extension.id, {
       id: extension.id,
