@@ -73,8 +73,23 @@ async function fetchPosts(tags: string, page: number): Promise<ClientListRespons
   return { items, page, hasNextPage: (page - 1) * PAGE_SIZE + items.length < total };
 }
 
-function buildTags(query = ""): string {
-  return query.trim().split(/\s+/).filter(Boolean).join(" ");
+function buildTags(query = "", tagIds: string[] = []): string {
+  return [query.trim(), ...tagIds].flatMap(value => value.split(/\s+/)).filter(Boolean).join(" ");
+}
+
+async function rule34Tags(): Promise<NonNullable<ClientMangaDetail["sourceTags"]>> {
+  const document = await fetchXml("/tags/map?mincount=1");
+  const seen = new Set<string>();
+  const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
+  document.querySelectorAll("a[href^='/post/list/']").forEach(anchor => {
+    const href = anchor.getAttribute("href") || "";
+    const match = href.match(/^\/post\/list\/([^/]+)\/\d+/);
+    const name = anchor.textContent?.replace(/\s+/g, " ").trim() || "";
+    if (!match || !name || seen.has(match[1])) return;
+    seen.add(match[1]);
+    tags.push({ id: match[1], name, group: "Tag" });
+  });
+  return tags;
 }
 
 async function fetchPost(id: string): Promise<Element> {
@@ -93,17 +108,19 @@ const adapter: ClientSourceAdapter = {
   sourceId: SOURCE_ID,
   mode: "client",
 
-  popular(page): Promise<ClientListResponse> {
-    return fetchPosts("", page);
+  popular(page, tagIds): Promise<ClientListResponse> {
+    return fetchPosts(buildTags("", tagIds), page);
   },
 
-  latest(page): Promise<ClientListResponse> {
-    return fetchPosts("", page);
+  latest(page, tagIds): Promise<ClientListResponse> {
+    return fetchPosts(buildTags("", tagIds), page);
   },
 
-  search(query, page): Promise<ClientListResponse> {
-    return fetchPosts(buildTags(query), page);
+  search(query, page, tagIds): Promise<ClientListResponse> {
+    return fetchPosts(buildTags(query, tagIds), page);
   },
+
+  tags: rule34Tags,
 
   async details(id, options): Promise<ClientMangaDetail> {
     const element = await fetchPost(id);

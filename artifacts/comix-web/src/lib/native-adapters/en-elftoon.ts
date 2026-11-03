@@ -93,7 +93,7 @@ function findCover(document: Document, slug: string): string {
     const value = imageValue(image);
     return value.includes(`/uploads/series/${slug}/`) && /\/cover[^/]*\.(?:webp|jpg|jpeg|png)$/i.test(value);
   });
-  return imageValue(matching) || COVER_FALLBACK;
+  return imageValue(matching ?? null) || COVER_FALLBACK;
 }
 
 function parseList(document: Document, page: number): ClientListResponse {

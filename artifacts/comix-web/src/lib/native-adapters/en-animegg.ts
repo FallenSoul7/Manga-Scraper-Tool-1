@@ -142,17 +142,35 @@ function genrePath(query: string): string | null {
   return query ? `/genre/${encodeURIComponent(query.toLowerCase())}` : null;
 }
 
+async function animeGgTags(): Promise<NonNullable<ClientMangaDetail["sourceTags"]>> {
+  const { document } = await fetchDocument("/popular-series");
+  const seen = new Set<string>();
+  const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
+  document.querySelectorAll("a[href^='/genre/']").forEach(anchor => {
+    const href = anchor.getAttribute("href") || "";
+    const id = decodeURIComponent(href.slice("/genre/".length)).trim().toLowerCase();
+    const name = anchor.textContent?.replace(/\s+/g, " ").trim() || "";
+    if (!id || !name || seen.has(id)) return;
+    seen.add(id);
+    tags.push({ id, name, group: "Genre" });
+  });
+  return tags;
+}
+
 const adapter: ClientSourceAdapter = {
   sourceId: SOURCE_ID,
   mode: "client",
   fallbackToServer: false,
+  tags: animeGgTags,
 
-  popular(page) {
-    return listing("/popular-series", page).catch(() => fallbackListing(page));
+  popular(page, tagIds) {
+    const tag = tagIds?.find(value => !value.startsWith("-"));
+    return listing(tag ? genrePath(tag) || "/popular-series" : "/popular-series", page).catch(() => fallbackListing(page));
   },
 
-  latest(page) {
-    return listing("/releases", page).catch(() => fallbackListing(page));
+  latest(page, tagIds) {
+    const tag = tagIds?.find(value => !value.startsWith("-"));
+    return listing(tag ? genrePath(tag) || "/releases" : "/releases", page).catch(() => fallbackListing(page));
   },
 
   async search(query, page) {

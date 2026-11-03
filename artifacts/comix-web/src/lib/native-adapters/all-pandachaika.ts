@@ -128,17 +128,19 @@ const adapter: ClientSourceAdapter = {
   sourceId: SOURCE_ID,
   mode: "client",
 
-  popular(page) {
-    return list(searchUrl({ sort: "rating", page: String(page) }), page);
+  popular(page, tagIds) {
+    return list(searchUrl({ sort: "rating", page: String(page), ...tagParams(tagIds) }), page);
   },
 
-  latest(page) {
-    return list(searchUrl({ sort: "public_date", page: String(page) }), page);
+  latest(page, tagIds) {
+    return list(searchUrl({ sort: "public_date", page: String(page), ...tagParams(tagIds) }), page);
   },
 
-  search(query, page) {
-    return list(searchUrl({ title: query.trim(), sort: "rating", page: String(page) }), page);
+  search(query, page, tagIds) {
+    return list(searchUrl({ title: query.trim(), sort: "rating", page: String(page), ...tagParams(tagIds) }), page);
   },
+
+  tags: pandaChaikaTags,
 
   async details(id, options): Promise<ClientMangaDetail> {
     const d = await clientJson<ArchiveDetail>(`/api?archive=${encodeURIComponent(id)}`);

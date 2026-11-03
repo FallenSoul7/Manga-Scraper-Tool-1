@@ -77,6 +77,23 @@ function genreParams(tagIds?: string[]): string {
   return params.toString();
 }
 
+async function mihentaiTags(): Promise<NonNullable<ClientMangaDetail["sourceTags"]>> {
+  const { document } = await fetchDocument(`${MANGA_DIR}/`);
+  const seen = new Set<string>();
+  const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
+  document.querySelectorAll("a[href*='/genres/']").forEach(anchor => {
+    const href = anchor.getAttribute("href") || "";
+    const match = href.match(/\/genres\/([^/?#]+)\/?$/i);
+    const name = anchor.textContent?.replace(/\s+/g, " ").trim() || "";
+    if (!match || !name) return;
+    const id = decodeURIComponent(match[1]);
+    if (seen.has(id)) return;
+    seen.add(id);
+    tags.push({ id, name, group: "Genre" });
+  });
+  return tags;
+}
+
 function listSelector(document: Document): Element[] {
   return Array.from(document.querySelectorAll(".utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx"));
 }
@@ -120,20 +137,28 @@ const adapter: ClientSourceAdapter = {
   sourceId: SOURCE_ID,
   mode: "client",
 
-  popular(page): Promise<ClientListResponse> {
-    return fetchList(page, { order: "popular" });
-  },
-
-  latest(page): Promise<ClientListResponse> {
-    return fetchList(page, { order: "update" });
-  },
-
-  search(query, page): Promise<ClientListResponse> {
-    const params: Record<string, string | string[]> = { title: query };
-    const genres = genreParams();
+  popular(page, tagIds): Promise<ClientListResponse> {
+    const params: Record<string, string | string[]> = { order: "popular" };
+    const genres = genreParams(tagIds);
     if (genres) params.genre = genres;
     return fetchList(page, params);
   },
+
+  latest(page, tagIds): Promise<ClientListResponse> {
+    const params: Record<string, string | string[]> = { order: "update" };
+    const genres = genreParams(tagIds);
+    if (genres) params.genre = genres;
+    return fetchList(page, params);
+  },
+
+  search(query, page, tagIds): Promise<ClientListResponse> {
+    const params: Record<string, string | string[]> = { title: query };
+    const genres = genreParams(tagIds);
+    if (genres) params.genre = genres;
+    return fetchList(page, params);
+  },
+
+  tags: mihentaiTags,
 
   async details(id, options): Promise<ClientMangaDetail> {
     const { root, url } = await loadDetail(id);
@@ -168,6 +193,7 @@ const adapter: ClientSourceAdapter = {
       genres,
       score: "",
       scorePosition: options?.scorePosition ?? "none",
+      sourceTags: genres.map(name => ({ id: name.toLowerCase().replace(/\s+/g, "-"), name, group: "Genre" })),
     };
   },
 
