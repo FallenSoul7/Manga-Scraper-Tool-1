@@ -64,7 +64,7 @@ function parseFlexibleDate(text: string): number {
 async function fetchDocument(path: string): Promise<{ document: Document; html: string; url: string }> {
   const url = new URL(path, BASE).toString();
   try {
-    const response = await clientFetch(url, {
+    const request = {
       method: "GET",
       credentials: "omit",
       cache: "no-store",
@@ -72,7 +72,17 @@ async function fetchDocument(path: string): Promise<{ document: Document; html: 
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
       },
-    });
+    } satisfies RequestInit;
+    const response = await clientFetch(url, request);
+    if (response.ok) {
+      const html = await response.text();
+      return { document: new DOMParser().parseFromString(html, "text/html"), html, url };
+    }
+  } catch { /* Try the reader fallback below. */ }
+
+  try {
+    const readerUrl = `https://r.jina.ai/http://${url.replace(/^https?:\/\//i, "")}`;
+    const response = await clientFetch(readerUrl, { headers: { Accept: "text/html" }, cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const html = await response.text();
     return { document: new DOMParser().parseFromString(html, "text/html"), html, url };

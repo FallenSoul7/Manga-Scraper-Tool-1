@@ -55,6 +55,14 @@ function imageValue(image: Element | null): string {
   return raw.split(",").map(value => value.trim().split(/\s+/)[0]).filter(value => value && !value.startsWith("data:") && !/transparent|blank|placeholder/i.test(value))[0] ?? "";
 }
 
+function cardImageValue(root: Element): string {
+  for (const image of Array.from(root.querySelectorAll("img, picture source"))) {
+    const value = imageValue(image);
+    if (value) return value;
+  }
+  return "";
+}
+
 function isNovelHref(value: string): boolean {
   if (!value || value === "#" || value.startsWith("javascript:") || value.includes("/chapter/")) return false;
   try {
@@ -111,7 +119,7 @@ function parseListing(document: Document, page: number): ClientListResponse {
     const id = sourcePath(href);
     if (!id || seen.has(id)) return;
     seen.add(id);
-    const thumbnail = imageValue(root.querySelector(".cover img, .book-img img, img"));
+    const thumbnail = cardImageValue(root);
     items.push({
       id: encodeURIComponent(id),
       title,

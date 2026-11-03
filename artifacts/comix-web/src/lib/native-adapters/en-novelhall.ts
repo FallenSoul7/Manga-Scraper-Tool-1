@@ -57,6 +57,14 @@ function imageValue(image: Element | null): string {
   return raw.split(",").map(value => value.trim().split(/\s+/)[0]).filter(value => value && !value.startsWith("data:") && !/transparent|blank|placeholder/i.test(value))[0] ?? "";
 }
 
+function cardImageValue(root: Element): string {
+  for (const image of Array.from(root.querySelectorAll("img, picture source"))) {
+    const value = imageValue(image);
+    if (value) return value;
+  }
+  return "";
+}
+
 async function fetchDocument(path: string): Promise<{ document: Document; url: string }> {
   const url = new URL(path, BASE).toString();
   const response = await clientFetch(url, {
@@ -116,7 +124,7 @@ function parseListing(document: Document): ClientListResponse["items"] {
     const id = encodedId(href);
     if (!id || seen.has(id)) return;
     seen.add(id);
-    const thumbnail = absoluteUrl(imageValue(root.querySelector(".cover img, .book-img img, img"))) || COVER_FALLBACK;
+    const thumbnail = absoluteUrl(cardImageValue(root)) || COVER_FALLBACK;
     items.push({ id, title, thumbnail, type: "Novel", isNsfw: false, mediaType: "novel" });
   });
   return items.slice(0, 50);

@@ -8,7 +8,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 const PROXIED_MEDIA_SOURCES = new Set([
-  "all.webtoons", "all.atsu", "en.novelfull", "all.mangadex", "en.asurascans", "all.thunderscans", "en.animegg", "en.resetscans",
+  "all.webtoons", "all.atsu", "en.asurascans", "all.thunderscans", "en.animegg", "en.resetscans",
 ]);
 const NATIVE_DIRECT_MEDIA_SOURCES = new Set([
   "all.atsu", "all.danbooru", "all.pawchive", "all.webtoons", "all.mangadex", "en.asurascans", "all.thunderscans",
