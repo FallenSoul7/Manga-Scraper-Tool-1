@@ -47,7 +47,10 @@ const LANG_LABELS: Record<string, string> = {
 };
 const langLabel = (code: string) => LANG_LABELS[code] ?? code.toUpperCase();
 const ANIME_SOURCE_IDS = new Set(["en.animegg"]);
-const REMOVED_SOURCE_IDS = new Set(["en.utoon", "local.koofr", "en.comix", "en.comickfan"]);
+const REMOVED_SOURCE_IDS = new Set([
+  "en.utoon", "local.koofr", "en.comix", "en.comickfan",
+  "all.atsu", "en.ravenscans", "en.resetscans",
+]);
 
 // Keep availability labels for previously installed server sources.
 const NOT_WORKING_SOURCE_IDS = new Set([
@@ -55,8 +58,6 @@ const NOT_WORKING_SOURCE_IDS = new Set([
   "en.onlythebesthentai",
   "en.allmanga",
   "en.allanime",
-  "en.animegg",
-  "en.ravenscans",
 ]);
 const UPSTREAM_BLOCKED_SOURCE_IDS = new Set(["en.royalroad"]);
 
@@ -86,7 +87,7 @@ const INHERENTLY_MATURE_SOURCE_IDS = new Set([
 // has one of those stale flags persisted locally.
 const GENERAL_SOURCE_IDS = new Set([
   "all.mangadex", "en.mangafreak",
-  "en.ravenscans", "en.allmanga", "en.allanime", "all.comicklive",
+  "en.allmanga", "en.allanime", "all.comicklive",
   "ar.empirewebtoon", "vi.kamicomic", "en.comickiba", "en.nineanime",
   "en.webtoontr", "en.webtoonscan", "en.webtoonxyz",
 ]);

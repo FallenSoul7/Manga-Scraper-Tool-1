@@ -250,6 +250,9 @@ function loadState(): StoreState {
       delete validated.data.installedSources["en.utoon"];
       delete validated.data.installedSources["en.comix"];
       delete validated.data.installedSources["en.comickfan"];
+      delete validated.data.installedSources["all.atsu"];
+      delete validated.data.installedSources["en.ravenscans"];
+      delete validated.data.installedSources["en.resetscans"];
       // Make sure activeSourceId points at an installed source (or is empty)
       if (!validated.data.installedSources[validated.data.activeSourceId]) {
         validated.data.activeSourceId = Object.keys(validated.data.installedSources)[0] ?? "";

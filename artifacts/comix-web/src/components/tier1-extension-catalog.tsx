@@ -15,7 +15,10 @@ import {
 } from "@/lib/imported-extensions";
 
 const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-const REMOVED_SOURCE_IDS = new Set(["en.utoon", "local.koofr", "en.comix", "en.comickfan"]);
+const REMOVED_SOURCE_IDS = new Set([
+  "en.utoon", "local.koofr", "en.comix", "en.comickfan",
+  "all.atsu", "en.ravenscans", "en.resetscans",
+]);
 
 function resolveIconUrl(url: string | null): string | null {
   if (!url) return null;

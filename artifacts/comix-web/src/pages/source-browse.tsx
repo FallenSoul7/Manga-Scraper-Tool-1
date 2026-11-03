@@ -90,7 +90,7 @@ const DEBOUNCE_MS = 220;
 const API_ORIGIN = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 const GENERAL_SOURCE_IDS = new Set([
   "all.mangadex", "en.mangafreak",
-  "en.ravenscans", "en.allmanga", "en.allanime", "all.comicklive",
+  "en.allmanga", "en.allanime", "all.comicklive",
   "ar.empirewebtoon", "vi.kamicomic", "en.comickiba", "en.nineanime",
   "en.webtoontr", "en.webtoonscan", "en.webtoonxyz",
 ]);

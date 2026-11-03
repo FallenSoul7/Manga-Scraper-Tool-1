@@ -3,7 +3,10 @@ import { getCatalog, isSupported } from "@fallensoul7/frwilxe-hub-sources";
 
 const router = Router();
 const catalogRaw = getCatalog();
-const REMOVED_SOURCE_IDS = new Set(["en.utoon", "local.koofr", "en.comix", "en.comickfan"]);
+const REMOVED_SOURCE_IDS = new Set([
+  "en.utoon", "local.koofr", "en.comix", "en.comickfan",
+  "all.atsu", "en.ravenscans", "en.resetscans",
+]);
 const EXPERIMENTAL_SOURCE_IDS = new Set([
   "en.manhuaplus",
   "en.elftoon",
@@ -13,7 +16,6 @@ const EXPERIMENTAL_SOURCE_IDS = new Set([
   "en.royalroad",
 ]);
 const CLIENT_FIRST_SOURCE_IDS = new Set([
-  "all.atsu",
   "all.danbooru",
   "all.mangadex",
   "all.pawchive",
@@ -30,12 +32,10 @@ const CLIENT_FIRST_SOURCE_IDS = new Set([
   "en.novelfull",
   "en.novelhall",
   "en.ninehentai",
-  "en.resetscans",
   "all.pandachaika",
   "en.pandachaika",
   "en.animegg",
   "all.mihentai",
-  "en.ravenscans",
   "en.allanime",
 ]);
 

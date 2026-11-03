@@ -7,7 +7,10 @@ export const APPROVED_EXTENSION_REPOSITORY_URL = "https://github.com/FallenSoul7
 const OFFICIAL_REGISTRY_ENDPOINT = "/api/sources/registry";
 const REGISTRY_STORAGE_KEY = "comihub:extension-registry:v1";
 const MAX_REGISTRY_JSON_CHARS = 1024 * 1024;
-const REMOVED_SOURCE_IDS = new Set(["en.utoon", "local.koofr", "en.comix", "en.comickfan"]);
+const REMOVED_SOURCE_IDS = new Set([
+  "en.utoon", "local.koofr", "en.comix", "en.comickfan",
+  "all.atsu", "en.ravenscans", "en.resetscans",
+]);
 
 const SafeIconUrlSchema = z.string().max(2048).nullable().refine(value => {
   if (value === null) return true;
