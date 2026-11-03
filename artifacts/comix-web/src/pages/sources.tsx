@@ -59,6 +59,7 @@ const NOT_WORKING_SOURCE_IDS = new Set([
   "en.allmanga",
   "en.allanime",
   "en.animegg",
+  "en.ravenscans",
 ]);
 const UPSTREAM_BLOCKED_SOURCE_IDS = new Set(["en.royalroad"]);
 
