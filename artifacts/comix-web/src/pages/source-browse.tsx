@@ -138,7 +138,9 @@ export default function SourceBrowsePage() {
   const popularSorts: Array<{ value: string; label: string }> = [];
 
   // ---- State ----
-  const pageStateKey = `source-state:${sourceId}`;
+  const pageStateKey = sourceId === "en.novelfull"
+    ? `source-state-v2:${sourceId}`
+    : `source-state:${sourceId}`;
   const pageScrollKey = `source-scroll:${sourceId}`;
 
   const storedSnapshot = useMemo<PageSnapshot | null>(() => {
