@@ -10,6 +10,7 @@ import { clientFetch } from "../client-fetch";
 const BASE = "https://www.novelhall.com";
 const SOURCE_ID = "en.novelhall";
 const SOURCE_NAME = "NovelHall";
+const COVER_FALLBACK = "/public/source-icons/en.novelhall.svg";
 
 function clean(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -45,12 +46,15 @@ function decodedPath(id: string): string {
 
 function imageValue(image: Element | null): string {
   if (!image) return "";
-  return image.getAttribute("data-url")
+  const raw = image.getAttribute("data-url")
     || image.getAttribute("data-src")
     || image.getAttribute("data-original")
     || image.getAttribute("data-lazy-src")
+    || image.getAttribute("data-srcset")
+    || image.getAttribute("srcset")
     || image.getAttribute("src")
     || "";
+  return raw.split(",").map(value => value.trim().split(/\s+/)[0]).filter(value => value && !value.startsWith("data:") && !/transparent|blank|placeholder/i.test(value))[0] ?? "";
 }
 
 async function fetchDocument(path: string): Promise<{ document: Document; url: string }> {
@@ -76,13 +80,23 @@ function firstNovelHref(root: Element): string {
   ];
   for (const selector of selectors) {
     const href = root.querySelector(selector)?.getAttribute("href") ?? "";
-    if (href) return href;
+    if (isNovelHref(href)) return href;
   }
   for (const anchor of Array.from(root.querySelectorAll("a[href]"))) {
     const href = anchor.getAttribute("href") ?? "";
-    if (href && !href.startsWith("/genre/") && !href.startsWith("javascript:") && href !== "#" && !href.includes("/chapter/")) return href;
+    if (isNovelHref(href)) return href;
   }
   return "";
+}
+
+function isNovelHref(value: string): boolean {
+  if (!value || value === "#" || value.startsWith("javascript:") || value.includes("/chapter/")) return false;
+  try {
+    const path = new URL(value, BASE).pathname.toLowerCase();
+    return !/(?:^|\/)(?:genre|genres|category|categories|tag|tags|author|authors|search|popular|latest|top|ranking)(?:\/|$)/.test(path);
+  } catch {
+    return false;
+  }
 }
 
 function parseListing(document: Document): ClientListResponse["items"] {
@@ -96,13 +110,13 @@ function parseListing(document: Document): ClientListResponse["items"] {
     const title = clean(titleRoot?.textContent ?? Array.from(root.querySelectorAll("a[href]"))
       .find(anchor => {
         const value = anchor.getAttribute("href") ?? "";
-        return !value.startsWith("/genre/") && !value.startsWith("javascript:") && value !== "#" && !value.includes("/chapter/");
+        return isNovelHref(value);
       })?.textContent ?? "");
     if (!href || title.length < 2) return;
     const id = encodedId(href);
     if (!id || seen.has(id)) return;
     seen.add(id);
-    const thumbnail = absoluteUrl(imageValue(root.querySelector(".cover img, .book-img img, img")));
+    const thumbnail = absoluteUrl(imageValue(root.querySelector(".cover img, .book-img img, img"))) || COVER_FALLBACK;
     items.push({ id, title, thumbnail, type: "Novel", isNsfw: false, mediaType: "novel" });
   });
   return items.slice(0, 50);
@@ -146,7 +160,7 @@ const adapter: ClientSourceAdapter = {
       || "";
     const author = clean(document.querySelector("#author, .info a[href*='/author/'], .author, [itemprop='author']")?.textContent ?? "");
     const thumbnail = absoluteUrl(imageValue(document.querySelector(".books img, .novel-cover img, .book-cover img, .book-img img, img[itemprop='image'], .cover img"))
-      || document.querySelector("meta[property='og:image'], meta[name='image']")?.getAttribute("content") || "", url);
+      || document.querySelector("meta[property='og:image'], meta[name='image']")?.getAttribute("content") || COVER_FALLBACK, url);
     const genres = Array.from(document.querySelectorAll(".genres a, .genre a, .categories a, a[href*='genre']"))
       .map(element => clean(element.textContent ?? "")).filter(Boolean);
     return {

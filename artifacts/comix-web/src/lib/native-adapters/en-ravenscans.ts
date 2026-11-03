@@ -10,6 +10,7 @@ import { clientFetch } from "../client-fetch";
 const BASE = "https://ravenscans.org";
 const SOURCE_ID = "en.ravenscans";
 const SOURCE_NAME = "Raven Scans";
+const COVER_FALLBACK = "/public/source-icons/en.ravenscans.png";
 
 function absoluteUrl(value: string, reference = BASE): string {
   if (!value) return "";
@@ -33,13 +34,12 @@ function imageAttribute(image: Element | null): string {
   ].filter(Boolean) as string[];
   const raw = values.find(value => !value.startsWith("data:") && !/transparent|blank|placeholder/i.test(value)) ?? "";
   const candidates = raw.split(",").map(value => value.trim().split(/\s+/)[0]).filter(Boolean);
-  return candidates.at(-1) ?? "";
+  return candidates[0] ?? "";
 }
 
 function sourcePath(value: string): string {
   try {
     const url = new URL(value, BASE);
-    if (url.origin !== BASE) return "";
     return url.pathname.replace(/^\/+|\/+$/g, "");
   } catch {
     return value.replace(BASE, "").replace(/^\/+|\/+$/g, "");
@@ -90,32 +90,30 @@ function listUrl(page: number, order?: string, query?: string): string {
 }
 
 async function scrapeList(page: number, order?: string, query?: string): Promise<ClientListResponse> {
-  const { document } = await fetchDocument(listUrl(page, order, query));
-  const items: ClientListResponse["items"] = [];
-  document.querySelectorAll(".utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx, article, .manga-item, .bsx").forEach(element => {
-    const anchor = element.matches("a") ? element : element.querySelector("a");
-    const href = anchor?.getAttribute("href") ?? "";
-    if (!href) return;
-    const title = anchor?.getAttribute("title")?.trim()
-      || element.querySelector(".tt")?.textContent?.trim()
-      || anchor?.textContent?.trim()
-      || "Untitled";
-    const path = sourcePath(href);
-    if (!path || /^(manga|comics)\/?$/i.test(path)) return;
-    const id = encodeURIComponent(path);
-    items.push({
-      id,
-      title: title.trim(),
-    thumbnail: absoluteUrl(imageAttribute(element.querySelector("img, picture source"))),
-      type: "Manga",
-      isNsfw: false,
+  try {
+    const { document } = await fetchDocument(listUrl(page, order, query));
+    const items: ClientListResponse["items"] = [];
+    const seen = new Set<string>();
+    document.querySelectorAll(".utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx, article, .manga-item, .bsx").forEach(element => {
+      const anchor = element.matches("a") ? element : element.querySelector("a[href]");
+      const href = anchor?.getAttribute("href") ?? "";
+      const path = sourcePath(href);
+      if (!path || /^(manga|comics)\/?$/i.test(path)) return;
+      const id = encodeURIComponent(path);
+      if (seen.has(id)) return;
+      const title = anchor?.getAttribute("title")?.trim()
+        || element.querySelector(".tt, .title, h2, h3")?.textContent?.trim()
+        || anchor?.textContent?.trim();
+      if (!title) return;
+      seen.add(id);
+      const thumbnail = absoluteUrl(imageAttribute(element.querySelector("img, picture source"))) || COVER_FALLBACK;
+      items.push({ id, title: title.replace(/\s+/g, " ").trim(), thumbnail, type: "Manga", isNsfw: false });
     });
-  });
-  return {
-    items,
-    page,
-    hasNextPage: Boolean(document.querySelector("div.pagination .next, div.hpage .r")),
-  };
+    return { items, page, hasNextPage: Boolean(document.querySelector("div.pagination .next, div.hpage .r")) };
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Raven Scans is temporarily")) throw error;
+    throw new Error("Raven Scans could not parse this page. Please try again later.");
+  }
 }
 
 async function detailDocument(id: string): Promise<{ document: Document; url: string }> {
@@ -182,7 +180,7 @@ const adapter: ClientSourceAdapter = {
       type: "Manga",
       isNsfw: false,
       rating: 0,
-      thumbnail: absoluteUrl(thumb, url),
+      thumbnail: absoluteUrl(thumb, url) || COVER_FALLBACK,
       genres,
       score: "",
       scorePosition: options?.scorePosition ?? "none",

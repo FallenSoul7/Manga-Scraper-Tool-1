@@ -10,6 +10,7 @@ import { clientFetch } from "../client-fetch";
 const BASE = "https://novelfull.com";
 const SOURCE_ID = "en.novelfull";
 const SOURCE_NAME = "NovelFull";
+const COVER_FALLBACK = "/public/source-icons/en.novelfull.svg";
 
 function clean(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -51,14 +52,14 @@ function imageValue(image: Element | null): string {
     || image.getAttribute("srcset")
     || image.getAttribute("src")
     || "";
-  return raw.split(",").map(value => value.trim().split(/\s+/)[0]).filter(Boolean).at(-1) ?? "";
+  return raw.split(",").map(value => value.trim().split(/\s+/)[0]).filter(value => value && !value.startsWith("data:") && !/transparent|blank|placeholder/i.test(value))[0] ?? "";
 }
 
 function isNovelHref(value: string): boolean {
   if (!value || value === "#" || value.startsWith("javascript:") || value.includes("/chapter/")) return false;
   try {
     const path = new URL(value, BASE).pathname.toLowerCase();
-    return !/(?:^|\/)(?:genre|genres|category|categories|tag|tags|author|authors|search|popular|latest)(?:\/|$)/.test(path);
+    return !/(?:^|\/)(?:genre|genres|category|categories|tag|tags|author|authors|search|popular|latest|top|ranking)(?:\/|$)/.test(path);
   } catch { return false; }
 }
 
@@ -69,7 +70,7 @@ function firstHref(root: Element): string {
   ];
   for (const selector of selectors) {
     const href = root.querySelector(selector)?.getAttribute("href");
-    if (href) return href;
+    if (href && isNovelHref(href)) return href;
   }
   for (const anchor of Array.from(root.querySelectorAll("a[href]"))) {
     const href = anchor.getAttribute("href") || "";
@@ -114,7 +115,7 @@ function parseListing(document: Document, page: number): ClientListResponse {
     items.push({
       id: encodeURIComponent(id),
       title,
-      thumbnail: absoluteUrl(thumbnail, BASE),
+      thumbnail: absoluteUrl(thumbnail, BASE) || COVER_FALLBACK,
       type: "Novel",
       isNsfw: false,
       mediaType: "novel",
