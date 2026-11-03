@@ -203,9 +203,11 @@ function parseCards(document: Document): ClientMangaSummary[] {
 
 const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
-async function clientWebtoonsList(kind: "popular" | "latest" | "search", page: number, query = ""): Promise<ClientListResponse> {
+async function clientWebtoonsList(kind: "popular" | "latest" | "search", page: number, query = "", tagIds: string[] = []): Promise<ClientListResponse> {
   let path: string;
-  if (kind === "search") path = `/en/search/webtoon?keyword=${encodeURIComponent(query)}&page=${page}`;
+  const tag = tagIds.find(value => !value.startsWith("-"));
+  if (tag) path = `/en/genre/${encodeURIComponent(tag)}`;
+  else if (kind === "search") path = `/en/search/webtoon?keyword=${encodeURIComponent(query)}&page=${page}`;
   else if (kind === "latest") path = `/en/originals/${days[new Date().getDay()]}?sortOrder=UPDATE`;
   else path = `/en/ranking/${["trending", "popular", "originals", "canvas"][Math.max(0, Math.min(3, page - 1))]}`;
   const document = await clientHtml(`webtoons:list:${path}`, `${WEBTOONS_BASE}${path}`);
@@ -332,11 +334,35 @@ async function mangaDexPages(chapterId: string): Promise<ClientPageResponse> {
   return { chapterId, pages: (data.chapter.data ?? []).map((file: string, index: number) => ({ index, url: `${base}/${file}` })) };
 }
 
-const webtoonsAdapter: ClientSourceAdapter = { sourceId: "all.webtoons", mode: "client", popular: p => clientWebtoonsList("popular", p), latest: p => clientWebtoonsList("latest", p), search: (q, p) => clientWebtoonsList("search", p, q), details: webtoonDetails, chapters: webtoonChapters, pages: webtoonPages };
+const webtoonTags = async (): Promise<NonNullable<ClientMangaDetail["sourceTags"]>> => {
+  const document = await clientHtml("webtoons:genres", `${WEBTOONS_BASE}/en/genres`);
+  const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
+  const seen = new Set<string>();
+  document.querySelectorAll("a[href*='/genre/']").forEach(anchor => {
+    const href = anchor.getAttribute("href") || "";
+    const match = href.match(/\/genre\/([^/?#]+)/i);
+    const name = anchor.textContent?.replace(/\s+/g, " ").trim() || "";
+    if (!match || !name || seen.has(match[1])) return;
+    seen.add(match[1]);
+    tags.push({ id: decodeURIComponent(match[1]), name, group: "Genre" });
+  });
+  return tags;
+};
+const webtoonsAdapter: ClientSourceAdapter = { sourceId: "all.webtoons", mode: "client", popular: (p, tags) => clientWebtoonsList("popular", p, "", tags), latest: (p, tags) => clientWebtoonsList("latest", p, "", tags), search: (q, p, tags) => clientWebtoonsList("search", p, q, tags), tags: webtoonTags, details: webtoonDetails, chapters: webtoonChapters, pages: webtoonPages };
 
 type AsuraList = { data: Array<{ slug: string; title: string; cover?: string; type?: string }>; meta: { has_more: boolean } };
-const asuraList = (sort: string, page: number, query = "") => clientJson<AsuraList>(`asura:${sort}:${query}:${page}`, `${ASURA_API}/series?offset=${(page - 1) * 20}&limit=20&sort=${sort}${query ? `&search=${encodeURIComponent(query)}` : ""}`).then(data => ({ page, hasNextPage: data.meta?.has_more === true, items: data.data.map(s => ({ id: s.slug, title: s.title, thumbnail: s.cover ?? "", type: s.type ?? "manga", isNsfw: false })) }));
-const asuraAdapter: ClientSourceAdapter = { sourceId: "en.asurascans", mode: "client", popular: p => asuraList("popular", p), latest: p => asuraList("latest", p), search: (q, p) => asuraList("latest", p, q), details: asuraDetails, chapters: asuraChapters, pages: asuraPages };
+const asuraList = (sort: string, page: number, query = "", tagIds: string[] = []) => {
+  const params = new URLSearchParams({ offset: String((page - 1) * 20), limit: "20", sort });
+  if (query) params.set("search", query);
+  const included = tagIds.filter(tag => !tag.startsWith("-"));
+  if (included.length) params.set("genres", included.join(","));
+  return clientJson<AsuraList>(`asura:${sort}:${query}:${page}:${tagIds.join(",")}`, `${ASURA_API}/series?${params}`).then(data => ({ page, hasNextPage: data.meta?.has_more === true, items: data.data.map(s => ({ id: s.slug, title: s.title, thumbnail: s.cover ?? "", type: s.type ?? "manga", isNsfw: false })) }));
+};
+const asuraTags = async (): Promise<NonNullable<ClientMangaDetail["sourceTags"]>> => {
+  const data = await clientJson<{ data?: Array<{ slug: string; name: string }> }>("asura:genres", `${ASURA_API}/genres`);
+  return (data.data ?? []).map(tag => ({ id: tag.slug, name: tag.name, group: "Genre" }));
+};
+const asuraAdapter: ClientSourceAdapter = { sourceId: "en.asurascans", mode: "client", popular: (p, tags) => asuraList("popular", p, "", tags), latest: (p, tags) => asuraList("latest", p, "", tags), search: (q, p, tags) => asuraList("latest", p, q, tags), tags: asuraTags, details: asuraDetails, chapters: asuraChapters, pages: asuraPages };
 
 function mangaDexCover(id: string, relationship: any): string {
   const fileName = relationship?.attributes?.fileName;
@@ -409,9 +435,10 @@ function thunderPageUrl(id: string): string {
   if (url.origin !== THUNDER_BASE) throw new Error("Invalid Thunder Scans source path.");
   return url.href;
 }
-async function themesiaList(order: string, page: number, query = ""): Promise<ClientListResponse> {
+async function themesiaList(order: string, page: number, query = "", tagIds: string[] = []): Promise<ClientListResponse> {
   const params = new URLSearchParams({ order, page: String(page) });
   if (query) params.set("title", query);
+  for (const tag of tagIds.filter(value => !value.startsWith("-"))) params.append("genre[]", tag);
   const document = await clientHtml(`thunderscans:list:${params}`, `${THUNDER_BASE}/comics/?${params}`);
   const items: ClientMangaSummary[] = [];
   document.querySelectorAll(".utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx").forEach(root => {
@@ -553,9 +580,23 @@ async function thunderPages(chapterId: string): Promise<ClientPageResponse> {
 const thunderAdapter: ClientSourceAdapter = {
   sourceId: "all.thunderscans",
   mode: "client",
-  popular: page => withThunderError("popular series", () => themesiaList("popular", page)),
-  latest: page => withThunderError("latest series", () => themesiaList("update", page)),
-  search: (query, page) => withThunderError("search results", () => themesiaList("search", page, query)),
+  popular: (page, tags) => withThunderError("popular series", () => themesiaList("popular", page, "", tags)),
+  latest: (page, tags) => withThunderError("latest series", () => themesiaList("update", page, "", tags)),
+  search: (query, page, tags) => withThunderError("search results", () => themesiaList("search", page, query, tags)),
+  tags: async () => {
+    const document = await clientHtml("thunderscans:tags", `${THUNDER_BASE}/comics/`);
+    const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
+    const seen = new Set<string>();
+    document.querySelectorAll("a[href]").forEach(anchor => {
+      const href = anchor.getAttribute("href") || "";
+      const match = href.match(/[?&]genre(?:\[\])?=([^&]+)/i);
+      const name = themesiaText(anchor);
+      if (!match || !name || seen.has(match[1])) return;
+      seen.add(match[1]);
+      tags.push({ id: decodeURIComponent(match[1]), name, group: "Genre" });
+    });
+    return tags;
+  },
   details: thunderDetails,
   chapters: thunderChapters,
   pages: thunderPages,

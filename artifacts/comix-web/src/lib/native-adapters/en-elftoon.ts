@@ -74,6 +74,11 @@ function chapterNumber(text: string, href: string): number {
   return Number(match?.[1] || 0);
 }
 
+function genreQuery(tagIds: string[] = []): string {
+  const tag = tagIds.find(value => !value.startsWith("-"));
+  return tag ? `&genre=${encodeURIComponent(tag)}` : "";
+}
+
 async function fetchDocument(path: string): Promise<{ document: Document; html: string; url: string }> {
   const url = new URL(path, BASE).toString();
   const response = await clientFetch(url, {
@@ -125,19 +130,34 @@ const adapter: ClientSourceAdapter = {
   sourceId: SOURCE_ID,
   mode: "client",
 
-  async popular(page) {
-    const suffix = page > 1 ? `&page=${page}` : "";
+  async popular(page, tagIds) {
+    const suffix = `${page > 1 ? `&page=${page}` : ""}${genreQuery(tagIds)}`;
     return parseList((await fetchDocument(`/series?sort=popular${suffix}`)).document, page);
   },
 
-  async latest(page) {
-    const suffix = page > 1 ? `&page=${page}` : "";
+  async latest(page, tagIds) {
+    const suffix = `${page > 1 ? `&page=${page}` : ""}${genreQuery(tagIds)}`;
     return parseList((await fetchDocument(`/series?sort=latest${suffix}`)).document, page);
   },
 
-  async search(query, page) {
-    const suffix = page > 1 ? `&page=${page}` : "";
+  async search(query, page, tagIds) {
+    const suffix = `${page > 1 ? `&page=${page}` : ""}${genreQuery(tagIds)}`;
     return parseList((await fetchDocument(`/search?q=${encodeURIComponent(query)}${suffix}`)).document, page);
+  },
+
+  async tags() {
+    const { document } = await fetchDocument("/series");
+    const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
+    const seen = new Set<string>();
+    document.querySelectorAll("a[href*='/genre/'], a[href*='/genres/']").forEach(anchor => {
+      const href = anchor.getAttribute("href") || "";
+      const match = href.match(/\/(?:genres?|genre)\/([^/?#]+)/i);
+      const name = clean(anchor.textContent || "");
+      if (!match || !name || seen.has(match[1])) return;
+      seen.add(match[1]);
+      tags.push({ id: decodeURIComponent(match[1]), name, group: "Genre" });
+    });
+    return tags;
   },
 
   async details(id, options): Promise<ClientMangaDetail> {
@@ -165,6 +185,7 @@ const adapter: ClientSourceAdapter = {
       genres,
       score: "",
       scorePosition: options?.scorePosition ?? "none",
+      sourceTags: genres.map(name => ({ id: name.toLowerCase().replace(/\s+/g, "-"), name, group: "Genre" })),
     };
   },
 

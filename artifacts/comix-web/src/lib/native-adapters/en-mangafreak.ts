@@ -70,8 +70,9 @@ function listItem(
   };
 }
 
-async function popular(page: number): Promise<ClientListResponse> {
-  const { document } = await fetchDocument(`/Genre/All/${page}`);
+async function popular(page: number, tagIds: string[] = []): Promise<ClientListResponse> {
+  const genre = tagIds.find(value => !value.startsWith("-")) || "All";
+  const { document } = await fetchDocument(`/Genre/${encodeURIComponent(genre)}/${page}`);
   const items: ClientListResponse["items"] = [];
   document.querySelectorAll("div.ranking_item").forEach(container => {
     const anchor = container.querySelector("a");
@@ -82,8 +83,9 @@ async function popular(page: number): Promise<ClientListResponse> {
   return { items, page, hasNextPage: Boolean(document.querySelector("a.next_p")) };
 }
 
-async function latest(page: number): Promise<ClientListResponse> {
-  const path = page === 1 ? BASE : `/Latest_Releases/${page}`;
+async function latest(page: number, tagIds: string[] = []): Promise<ClientListResponse> {
+  const genre = tagIds.find(value => !value.startsWith("-"));
+  const path = genre ? `/Genre/${encodeURIComponent(genre)}/${page}` : page === 1 ? BASE : `/Latest_Releases/${page}`;
   const { document } = await fetchDocument(path);
   const items: ClientListResponse["items"] = [];
   document.querySelectorAll("div.latest_item, div.latest_releases_item").forEach(container => {
@@ -119,6 +121,21 @@ async function search(query: string, page: number): Promise<ClientListResponse> 
     if (item) items.push(item);
   });
   return { items, page, hasNextPage: false };
+}
+
+async function mangafreakTags(): Promise<NonNullable<ClientMangaDetail["sourceTags"]>> {
+  const { document } = await fetchDocument("/Genre/All/1");
+  const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
+  const seen = new Set<string>();
+  document.querySelectorAll("a[href]").forEach(anchor => {
+    const href = anchor.getAttribute("href") || "";
+    const match = href.match(/\/Genre\/([^/?#]+)\//i);
+    const name = anchor.textContent?.replace(/\s+/g, " ").trim() || "";
+    if (!match || !name || /^all$/i.test(match[1]) || seen.has(match[1])) return;
+    seen.add(match[1]);
+    tags.push({ id: decodeURIComponent(match[1]), name, group: "Genre" });
+  });
+  return tags;
 }
 
 async function details(
@@ -162,6 +179,7 @@ async function details(
     genres,
     score: "",
     scorePosition: options?.scorePosition ?? "none",
+    sourceTags: genres.map(name => ({ id: name.toLowerCase().replace(/\s+/g, "-"), name, group: "Genre" })),
   };
 }
 
@@ -205,6 +223,7 @@ const adapter: ClientSourceAdapter = {
   popular,
   latest,
   search,
+  tags: mangafreakTags,
   details,
   chapters,
   pages,
