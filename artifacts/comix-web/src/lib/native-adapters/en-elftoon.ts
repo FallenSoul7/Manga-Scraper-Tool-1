@@ -114,7 +114,7 @@ function parseList(document: Document, page: number): ClientListResponse {
       id: encodeURIComponent(`series/comic/${slug}`),
       title,
       thumbnail: absoluteUrl(thumbnail),
-      type: "Manga",
+      type: "Manhwa",
       isNsfw: false,
     });
   }
@@ -158,7 +158,7 @@ const adapter: ClientSourceAdapter = {
       synopsis: clean(metaDescription),
       altTitles: [],
       status: "Unknown",
-      type: "Manga",
+      type: "Manhwa",
       isNsfw: false,
       rating: 0,
       thumbnail: absoluteUrl(findCover(document, slug)),
