@@ -7,6 +7,14 @@ out-tsc
 *.tsbuildinfo
 .expo
 .expo-shared
+# Release binaries are published through GitHub Releases, not Vercel.
+*.apk
+*.ipa
+*.exe
+*.deb
+*.dmg
+*.msi
+*.zip
 
 # dependencies
 node_modules

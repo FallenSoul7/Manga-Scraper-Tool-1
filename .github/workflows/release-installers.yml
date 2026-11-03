@@ -173,11 +173,8 @@ jobs:
           path: ComiHub-ios.ipa
           if-no-files-found: error
 
-  # The install page downloads from the ComiHub domain, so a successful build has
-  # to land in the repository itself. Release assets on a private repository are
-  # not downloadable by signed-out visitors, which produced 404 pages on phones.
   publish:
-    name: Publish installers to comihub.top
+    name: Publish release manifest
     needs: [android, windows, linux, ios]
     if: ${{ always() && needs.android.result == 'success' }}
     runs-on: ubuntu-24.04
@@ -206,36 +203,6 @@ jobs:
         with:
           name: android-installer
           path: staged
-      - name: Copy installers into the web app
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts/comix-web/public/installers
-          if [ -f staged/ComiHub-android.apk ]; then
-            cp staged/ComiHub-android.apk artifacts/comix-web/public/ComiHub-android.apk
-          fi
-          # GitHub rejects pushes containing files over 100 MB. Anything larger
-          # stays on the GitHub release only, and the install page reports the
-          # platform as unavailable instead of linking to a dead file.
-          for asset in ComiHub-ios.ipa ComiHub-windows-x64-setup.exe ComiHub-linux-x64.deb ComiHub-linux-x64.AppImage; do
-            if [ -f "staged/$asset" ]; then
-              size=$(stat -c %s "staged/$asset")
-              if [ "$size" -gt 95000000 ]; then
-                echo "Skipping $asset ($size bytes) because it exceeds the repository file size limit."
-                continue
-              fi
-              cp "staged/$asset" "artifacts/comix-web/public/installers/$asset"
-            fi
-          done
-          # Remove installers for platforms that did not produce a fresh build so
-          # the page never serves a stale binary from an older release.
-          find artifacts/comix-web/public/installers -type f | while read -r file; do
-            base=$(basename "$file")
-            if [ ! -f "staged/$base" ]; then
-              echo "Removing stale installer $base"
-              rm -f "$file"
-            fi
-          done
-          ls -la artifacts/comix-web/public/installers
       - name: Publish the native release manifest
         run: |
           set -euo pipefail
@@ -251,18 +218,18 @@ jobs:
           {
             "versionCode": ${version_code},
             "versionName": "${version_name}",
-            "androidUrl": "https://www.comihub.top/ComiHub-android.apk",
-            "iosUrl": "https://www.comihub.top/installers/ComiHub-ios.ipa",
+            "androidUrl": "https://github.com/FallenSoul7/Manga-Scraper-Tool-1/releases/latest/download/ComiHub-android.apk",
+            "iosUrl": "https://github.com/FallenSoul7/Manga-Scraper-Tool-1/releases/latest/download/ComiHub-ios.ipa",
             "releasedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           JSON
           cat artifacts/comix-web/public/native-updates/native-release.json
-      - name: Commit and push the refreshed installers
+      - name: Commit and push the lightweight release manifest
         run: |
           set -euo pipefail
           git config user.name "ComiHub release bot"
           git config user.email "release-bot@users.noreply.github.com"
-          git add -f artifacts/comix-web/public/ComiHub-android.apk artifacts/comix-web/public/installers artifacts/comix-web/public/native-updates
+          git add artifacts/comix-web/public/native-updates/native-release.json
           if git diff --staged --quiet; then
             echo "Installers already up to date."
             exit 0
@@ -279,6 +246,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         if: ${{ needs.android.result == 'success' }}
         with:
@@ -299,6 +267,8 @@ jobs:
         with:
           name: ios-sideload-ipa
           path: release-assets
+      - name: Package helper extension for the release
+        run: zip -j release-assets/comihub-web-helper.zip extension/manifest.json extension/background.js extension/README.md
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}

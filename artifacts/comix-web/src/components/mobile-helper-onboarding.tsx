@@ -12,7 +12,7 @@ import {
 import { detectHelper } from "@/services/fetcher";
 
 const HIDE_KEY = "hide_extension_modal";
-const EXTENSION_ARCHIVE_URL = "https://github.com/FallenSoul7/Manga-Scraper-Tool-1/raw/main/extension/comihub-web-helper.zip";
+const EXTENSION_ARCHIVE_URL = "https://github.com/FallenSoul7/Manga-Scraper-Tool-1/releases/latest/download/comihub-web-helper.zip";
 
 type MobileTarget = "ios-safari" | "android-chrome" | null;
 const MOBILE_BROWSER_RE = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;

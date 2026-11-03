@@ -2,7 +2,7 @@ import { ArrowLeft, CheckCircle2, Download, ExternalLink, ShieldCheck } from "lu
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 
-const EXTENSION_ARCHIVE_URL = "https://github.com/FallenSoul7/Manga-Scraper-Tool-1/raw/main/extension/comihub-web-helper.zip";
+const EXTENSION_ARCHIVE_URL = "https://github.com/FallenSoul7/Manga-Scraper-Tool-1/releases/latest/download/comihub-web-helper.zip";
 
 type BrowserKind = "ios-safari" | "android-chrome" | "edge" | "chrome" | "firefox" | "safari" | "other";
 

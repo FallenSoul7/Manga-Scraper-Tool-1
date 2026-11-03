@@ -213,10 +213,10 @@ export default function SettingsPage() {
             </SettingRow>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <Button asChild variant="outline" size="sm" className="text-xs">
-                <a href="https://github.com/FallenSoul7/Manga-Scraper-Tool-1/tree/main/extension" target="_blank" rel="noreferrer">Chrome / Edge</a>
+                <a href="https://github.com/FallenSoul7/Manga-Scraper-Tool-1/releases/latest/download/comihub-web-helper.zip" target="_blank" rel="noreferrer">Chrome / Edge</a>
               </Button>
               <Button asChild variant="outline" size="sm" className="text-xs">
-                <a href="https://github.com/FallenSoul7/Manga-Scraper-Tool-1/tree/main/extension" target="_blank" rel="noreferrer">Firefox</a>
+                <a href="https://github.com/FallenSoul7/Manga-Scraper-Tool-1/releases/latest/download/comihub-web-helper.zip" target="_blank" rel="noreferrer">Firefox</a>
               </Button>
               <Button asChild variant="outline" size="sm" className="text-xs">
                 <a href="https://github.com/FallenSoul7/Manga-Scraper-Tool-1/blob/main/extension/README.md#ios-safari" target="_blank" rel="noreferrer">iOS Safari Guide</a>
