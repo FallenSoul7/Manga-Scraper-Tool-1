@@ -8,22 +8,20 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 const PROXIED_MEDIA_SOURCES = new Set([
-  "all.webtoons", "all.atsu", "en.asurascans", "all.thunderscans", "en.animegg", "en.resetscans",
+  "all.webtoons", "en.asurascans", "all.thunderscans", "en.animegg",
 ]);
 const NATIVE_DIRECT_MEDIA_SOURCES = new Set([
-  "all.atsu", "all.danbooru", "all.pawchive", "all.webtoons", "all.mangadex", "en.asurascans", "all.thunderscans",
+  "all.danbooru", "all.pawchive", "all.webtoons", "all.mangadex", "en.asurascans", "all.thunderscans",
 ]);
 
 const INFERRED_MEDIA_HOSTS: Array<{ source: string; hosts: string[] }> = [
   { source: "all.pawchive", hosts: ["img.pawchive.pw", "file.pawchive.pw"] },
   { source: "all.webtoons", hosts: ["webtoon-phinf.pstatic.net", "swebtoon-phinf.pstatic.net"] },
-  { source: "all.atsu", hosts: ["cdn.atsu.moe"] },
   { source: "all.mangadex", hosts: ["uploads.mangadex.org", "mangadex.network"] },
   { source: "en.asurascans", hosts: ["asurascans.com"] },
   { source: "all.thunderscans", hosts: ["en-thunderscans.com", "thunderscans.com"] },
   { source: "en.novelfull", hosts: ["novelfull.com"] },
   { source: "en.animegg", hosts: ["vidcache.net", "animegg.org"] },
-  { source: "en.resetscans", hosts: ["resetscans.net"] },
 ];
 
 function inferApprovedMediaSource(url: string): string | undefined {

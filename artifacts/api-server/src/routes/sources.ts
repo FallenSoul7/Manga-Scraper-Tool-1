@@ -51,7 +51,7 @@ const registryExtensions = Array.from(new Map(
       versionCode: extension.versionCode,
       iconUrl: extension.icon
         ? `/public/source-icons/${extension.icon as string}`
-        : extension.id === "all.atsu" ? "https://atsu.moe/favicon.ico" : null,
+        : null,
       compatibility: EXPERIMENTAL_SOURCE_IDS.has(extension.id as string) ? "experimental" as const : "ready" as const,
       kind: "server" as const,
       runtime: CLIENT_FIRST_SOURCE_IDS.has(extension.id as string) ? "device-first" as const : "backend" as const,

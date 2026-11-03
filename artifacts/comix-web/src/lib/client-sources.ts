@@ -1,6 +1,5 @@
 import { createTier1ClientAdapter, getImportedTier1Extension } from "./imported-extensions";
 import { clientFetch } from "./client-fetch";
-import { atsuAdapter } from "./native-adapters/all-atsu";
 import danbooruAdapter from "./native-adapters/all-danbooru";
 import { pawchiveAdapter } from "./native-adapters/all-pawchive";
 import comickfanAdapter from "./native-adapters/en-comickfan";
@@ -14,11 +13,9 @@ import mangafreakAdapter from "./native-adapters/en-mangafreak";
 import novelfullAdapter from "./native-adapters/en-novelfull";
 import novelhallAdapter from "./native-adapters/en-novelhall";
 import ninehentaiAdapter from "./native-adapters/en-ninehentai";
-import resetscansAdapter from "./native-adapters/en-resetscans";
 import pandachaikaAdapter from "./native-adapters/all-pandachaika";
 import animeggAdapter from "./native-adapters/en-animegg";
 import mihentaiAdapter from "./native-adapters/all-mihentai";
-import ravenscansAdapter from "./native-adapters/en-ravenscans";
 import elftoonAdapter from "./native-adapters/en-elftoon";
 
 export interface ClientMangaSummary {
@@ -565,7 +562,6 @@ const thunderAdapter: ClientSourceAdapter = {
 };
 
 const sourceModes: Record<string, ClientSourceMode> = {
-  "all.atsu": "client",
   "all.danbooru": "client",
   "all.webtoons": "client",
   "en.asurascans": "client",
@@ -583,17 +579,14 @@ const sourceModes: Record<string, ClientSourceMode> = {
   "en.novelfull": "client",
   "en.novelhall": "client",
   "en.ninehentai": "client",
-  "en.resetscans": "client",
   "all.pandachaika": "client",
   "en.pandachaika": "client",
   "en.animegg": "client",
   "all.mihentai": "client",
-  "en.ravenscans": "client",
   "en.elftoon": "client",
   "en.allanime": "client",
 };
 const clientAdapters: Record<string, ClientSourceAdapter> = {
-  "all.atsu": atsuAdapter,
   "all.danbooru": danbooruAdapter,
   "all.webtoons": webtoonsAdapter,
   "en.asurascans": asuraAdapter,
@@ -611,12 +604,10 @@ const clientAdapters: Record<string, ClientSourceAdapter> = {
   "en.novelfull": novelfullAdapter,
   "en.novelhall": novelhallAdapter,
   "en.ninehentai": ninehentaiAdapter,
-  "en.resetscans": resetscansAdapter,
   "all.pandachaika": pandachaikaAdapter,
   "en.pandachaika": pandachaikaAdapter,
   "en.animegg": animeggAdapter,
   "all.mihentai": mihentaiAdapter,
-  "en.ravenscans": ravenscansAdapter,
   "en.elftoon": elftoonAdapter,
   "en.allanime": allmangaAdapter,
 };

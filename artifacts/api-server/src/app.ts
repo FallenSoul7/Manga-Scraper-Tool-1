@@ -309,8 +309,6 @@ type SourceMediaPolicy = {
 const SOURCE_MEDIA_HOSTS: Record<string, SourceMediaPolicy> = {
   "all.pawchive": { hosts: ["img.pawchive.pw", "file.pawchive.pw"], referer: "https://pawchive.pw/" },
   "all.webtoons": { hosts: ["webtoon-phinf.pstatic.net", "swebtoon-phinf.pstatic.net"], referer: "https://www.webtoons.com/" },
-  "all.atsu": { hosts: ["cdn.atsu.moe"], referer: "https://atsu.moe/" },
-  "en.resetscans": { hosts: ["cdn.resetscans.net", "resetscans.net", ".resetscans.net"], referer: "https://www.resetscans.net/" },
   "en.novelfull": { hosts: ["novelfull.com", ".novelfull.com"], referer: "https://novelfull.com/" },
   // MangaDex covers use uploads.mangadex.org; chapter pages are served from
   // rotating HTTPS subdomains of mangadex.network.
