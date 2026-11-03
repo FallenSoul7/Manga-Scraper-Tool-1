@@ -44,11 +44,22 @@ function novelPath(id: string): string {
 
 function imageValue(image: Element | null): string {
   if (!image) return "";
-  return image.getAttribute("data-src")
+  const raw = image.getAttribute("data-lazy-src")
     || image.getAttribute("data-original")
-    || image.getAttribute("data-lazy-src")
+    || image.getAttribute("data-src")
+    || image.getAttribute("data-srcset")
+    || image.getAttribute("srcset")
     || image.getAttribute("src")
     || "";
+  return raw.split(",").map(value => value.trim().split(/\s+/)[0]).filter(Boolean).at(-1) ?? "";
+}
+
+function isNovelHref(value: string): boolean {
+  if (!value || value === "#" || value.startsWith("javascript:") || value.includes("/chapter/")) return false;
+  try {
+    const path = new URL(value, BASE).pathname.toLowerCase();
+    return !/(?:^|\/)(?:genre|genres|category|categories|tag|tags|author|authors|search|popular|latest)(?:\/|$)/.test(path);
+  } catch { return false; }
 }
 
 function firstHref(root: Element): string {
@@ -62,7 +73,7 @@ function firstHref(root: Element): string {
   }
   for (const anchor of Array.from(root.querySelectorAll("a[href]"))) {
     const href = anchor.getAttribute("href") || "";
-    if (href && !href.startsWith("/genre/") && !href.startsWith("javascript:") && href !== "#" && !href.includes("/chapter/")) return href;
+    if (isNovelHref(href)) return href;
   }
   return "";
 }
@@ -93,9 +104,9 @@ function parseListing(document: Document, page: number): ClientListResponse {
     const title = clean(titleElement?.textContent || Array.from(root.querySelectorAll("a[href]"))
       .find(anchor => {
         const value = anchor.getAttribute("href") || "";
-        return !value.startsWith("/genre/") && !value.startsWith("javascript:") && value !== "#" && !value.includes("/chapter/");
+        return isNovelHref(value);
       })?.textContent || "");
-    if (!href || title.length < 2) return;
+    if (!href || title.length < 2 || /^(action|adventure|action adventure|fantasy|romance|genres?|categories?)$/i.test(title)) return;
     const id = sourcePath(href);
     if (!id || seen.has(id)) return;
     seen.add(id);
@@ -122,7 +133,7 @@ const adapter: ClientSourceAdapter = {
   mode: "client",
 
   popular(page) {
-    return list(`/latest-release-novel?page=${page}`, page);
+    return list(`/popular-novel?page=${page}`, page);
   },
 
   latest(page) {

@@ -32,7 +32,18 @@ function imageAttribute(image: Element | null): string {
     image.getAttribute("src"),
   ].filter(Boolean) as string[];
   const raw = values.find(value => !value.startsWith("data:") && !/transparent|blank|placeholder/i.test(value)) ?? "";
-  return raw.split(",")[0].trim().split(/\s+/)[0] ?? "";
+  const candidates = raw.split(",").map(value => value.trim().split(/\s+/)[0]).filter(Boolean);
+  return candidates.at(-1) ?? "";
+}
+
+function sourcePath(value: string): string {
+  try {
+    const url = new URL(value, BASE);
+    if (url.origin !== BASE) return "";
+    return url.pathname.replace(/^\/+|\/+$/g, "");
+  } catch {
+    return value.replace(BASE, "").replace(/^\/+|\/+$/g, "");
+  }
 }
 
 function parseStatus(text: string): string {
@@ -81,7 +92,7 @@ function listUrl(page: number, order?: string, query?: string): string {
 async function scrapeList(page: number, order?: string, query?: string): Promise<ClientListResponse> {
   const { document } = await fetchDocument(listUrl(page, order, query));
   const items: ClientListResponse["items"] = [];
-  document.querySelectorAll(".utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx").forEach(element => {
+  document.querySelectorAll(".utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx, article, .manga-item, .bsx").forEach(element => {
     const anchor = element.matches("a") ? element : element.querySelector("a");
     const href = anchor?.getAttribute("href") ?? "";
     if (!href) return;
@@ -89,11 +100,13 @@ async function scrapeList(page: number, order?: string, query?: string): Promise
       || element.querySelector(".tt")?.textContent?.trim()
       || anchor?.textContent?.trim()
       || "Untitled";
-    const id = encodeURIComponent(href.replace(BASE, "").replace(/^\/+|\/+$/g, ""));
+    const path = sourcePath(href);
+    if (!path || /^(manga|comics)\/?$/i.test(path)) return;
+    const id = encodeURIComponent(path);
     items.push({
       id,
       title: title.trim(),
-      thumbnail: absoluteUrl(imageAttribute(element.querySelector("img"))),
+    thumbnail: absoluteUrl(imageAttribute(element.querySelector("img, picture source"))),
       type: "Manga",
       isNsfw: false,
     });
@@ -106,7 +119,9 @@ async function scrapeList(page: number, order?: string, query?: string): Promise
 }
 
 async function detailDocument(id: string): Promise<{ document: Document; url: string }> {
-  return fetchDocument(`/${decodeURIComponent(id)}/`);
+  const path = sourcePath(decodeURIComponent(id));
+  if (!path) throw new Error("Raven Scans: invalid manga path");
+  return fetchDocument(`/${path}/`);
 }
 
 const adapter: ClientSourceAdapter = {
@@ -185,7 +200,9 @@ const adapter: ClientSourceAdapter = {
       const name = (element.querySelector(".chapternum")?.textContent || anchor?.textContent || "").replace(/\s+/g, " ").trim();
       if (!name) return;
       const number = Number((name.match(/chapter\s*([\d.]+)/i) || name.match(/([\d.]+)/) || [])[1]) || 0;
-      const id = encodeURIComponent(href.replace(BASE, "").replace(/^\/+|\/+$/g, ""));
+      const path = sourcePath(href);
+      if (!path) return;
+      const id = encodeURIComponent(path);
       if (seen.has(id)) return;
       seen.add(id);
       items.push({

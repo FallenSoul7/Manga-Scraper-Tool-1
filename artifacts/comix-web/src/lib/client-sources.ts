@@ -93,6 +93,7 @@ const WEBTOONS_BASE = "https://www.webtoons.com";
 const WEBTOONS_MOBILE = "https://m.webtoons.com";
 const ASURA_API = "https://api.asurascans.com/api";
 const MANGADEX_API = "https://api.mangadex.org";
+const MANGADEX_COVER_FALLBACK = "https://www.comihub.top/icon-512.png";
 const CACHE_DB = "comihub-client-cache";
 const CACHE_VERSION = 1;
 const CACHE_STORE = "responses";
@@ -266,14 +267,14 @@ async function asuraPages(chapterId: string): Promise<ClientPageResponse> {
 }
 
 async function mangaDexDetails(id: string, options?: { scorePosition?: "top" | "bottom" | "none" }): Promise<ClientMangaDetail> {
-  const data = await clientJson<any>(`mangadex:detail:${id}`, `${MANGADEX_API}/manga/${encodeURIComponent(id)}?includes[]=cover_art&includes[]=author&includes[]=artist`);
+  const data = await clientJson<any>(`mangadex:detail:${id}`, `${MANGADEX_API}/manga/${encodeURIComponent(id)}?includes[]=cover_art&includes[]=author&includes[]=artist&contentRating[]=safe&contentRating[]=suggestive`);
   const a = data.data?.attributes ?? {};
   const title = a.title?.en || Object.values(a.title ?? {})[0] || id;
   const desc = a.description?.en || Object.values(a.description ?? {})[0] || "";
   const cover = (data.data?.relationships ?? []).find((r: any) => r.type === "cover_art")?.attributes?.fileName;
   const authors = (data.data?.relationships ?? []).filter((r: any) => r.type === "author" || r.type === "artist").map((r: any) => r.attributes?.name).filter(Boolean);
   const genres = (a.tags ?? []).map((t: any) => t.attributes?.name?.en).filter(Boolean);
-  return { id, title: String(title), author: authors.join(", "), artist: authors.join(", "), synopsis: String(desc), altTitles: Object.values(a.altTitles ?? {}).flatMap((v: any) => Object.values(v ?? {})).map(String), status: a.status ? String(a.status).replace(/^./, (c: string) => c.toUpperCase()) : "Unknown", type: "manga", isNsfw: false, rating: 0, thumbnail: cover ? `https://uploads.mangadex.org/covers/${id}/${cover}.256.jpg` : "", genres, score: "", scorePosition: options?.scorePosition ?? "none", sourceTags: genres.map((g: string) => ({ id: g.toLowerCase().replace(/\s+/g, "-"), name: g, group: "Genre" })) };
+  return { id, title: String(title), author: authors.join(", "), artist: authors.join(", "), synopsis: String(desc), altTitles: Object.values(a.altTitles ?? {}).flatMap((v: any) => Object.values(v ?? {})).map(String), status: a.status ? String(a.status).replace(/^./, (c: string) => c.toUpperCase()) : "Unknown", type: "manga", isNsfw: false, rating: 0, thumbnail: cover ? `https://uploads.mangadex.org/covers/${id}/${cover}.256.jpg` : MANGADEX_COVER_FALLBACK, genres, score: "", scorePosition: options?.scorePosition ?? "none", sourceTags: genres.map((g: string) => ({ id: g.toLowerCase().replace(/\s+/g, "-"), name: g, group: "Genre" })) };
 }
 async function mangaDexChapters(id: string): Promise<ClientChapterResponse> {
   const all: any[] = [];
@@ -332,8 +333,8 @@ type AsuraList = { data: Array<{ slug: string; title: string; cover?: string; ty
 const asuraList = (sort: string, page: number, query = "") => clientJson<AsuraList>(`asura:${sort}:${query}:${page}`, `${ASURA_API}/series?offset=${(page - 1) * 20}&limit=20&sort=${sort}${query ? `&search=${encodeURIComponent(query)}` : ""}`).then(data => ({ page, hasNextPage: data.meta?.has_more === true, items: data.data.map(s => ({ id: s.slug, title: s.title, thumbnail: s.cover ?? "", type: s.type ?? "manga", isNsfw: false })) }));
 const asuraAdapter: ClientSourceAdapter = { sourceId: "en.asurascans", mode: "client", popular: p => asuraList("popular", p), latest: p => asuraList("latest", p), search: (q, p) => asuraList("latest", p, q), details: asuraDetails, chapters: asuraChapters, pages: asuraPages };
 
-function mapMangaDex(data: { data: any[]; total: number }, page: number): ClientListResponse { return { page, hasNextPage: page * 20 < data.total, items: data.data.map(m => { const title = m.attributes?.title?.en || Object.values(m.attributes?.title ?? {})[0] || m.id; const cover = m.relationships?.find((r: any) => r.type === "cover_art")?.attributes?.fileName; return { id: m.id, title: String(title), thumbnail: cover ? `https://uploads.mangadex.org/covers/${m.id}/${cover}.256.jpg` : "", type: "manga", isNsfw: false }; }) }; }
-const mangaDexList = (page: number, order: string, query = "") => { const params = new URLSearchParams({ limit: "20", offset: String((page - 1) * 20), "includes[]": "cover_art" }); if (query) { params.set("title", query); params.set("order[relevance]", "desc"); } else params.set(`order[${order}]`, "desc"); return clientJson<{ data: any[]; total: number }>(`mangadex:${order}:${query}:${page}`, `${MANGADEX_API}/manga?${params}`).then(data => mapMangaDex(data, page)); };
+function mapMangaDex(data: { data: any[]; total: number }, page: number): ClientListResponse { return { page, hasNextPage: page * 20 < data.total, items: data.data.map(m => { const title = m.attributes?.title?.en || Object.values(m.attributes?.title ?? {})[0] || m.id; const cover = m.relationships?.find((r: any) => r.type === "cover_art")?.attributes?.fileName; return { id: m.id, title: String(title), thumbnail: cover ? `https://uploads.mangadex.org/covers/${m.id}/${cover}.256.jpg` : MANGADEX_COVER_FALLBACK, type: "manga", isNsfw: false }; }) }; }
+const mangaDexList = (page: number, order: string, query = "") => { const params = new URLSearchParams({ limit: "20", offset: String((page - 1) * 20), "includes[]": "cover_art", "contentRating[]": "safe" }); params.append("contentRating[]", "suggestive"); if (query) { params.set("title", query); params.set("order[relevance]", "desc"); } else params.set(`order[${order}]`, "desc"); return clientJson<{ data: any[]; total: number }>(`mangadex:${order}:${query}:${page}`, `${MANGADEX_API}/manga?${params}`).then(data => mapMangaDex(data, page)); };
 const mangaDexAdapter: ClientSourceAdapter = { sourceId: "all.mangadex", mode: "client", popular: p => mangaDexList(p, "followedCount"), latest: p => mangaDexList(p, "latestUploadedChapter"), search: (q, p) => mangaDexList(p, "relevance", q), details: mangaDexDetails, chapters: mangaDexChapters, pages: mangaDexPages };
 
 const THUNDER_BASE = "https://en-thunderscans.com";
