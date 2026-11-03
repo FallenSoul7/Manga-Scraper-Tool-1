@@ -108,6 +108,7 @@ function parseListing(document: Document, page: number): ClientListResponse {
   const seen = new Set<string>();
   const selector = ".novel-item, .list-novel .row, .list-truyen .row, .archive .row, .row[itemtype*='Book'], .book-item, .novel-list .row, #main .section1 li, table tr, article";
   document.querySelectorAll(selector).forEach(root => {
+    if (root.classList.contains("top-item") || root.closest(".list-side")) return;
     const href = firstHref(root);
     const titleElement = root.querySelector("h3, h2, .truyen-title, .novel-title, .title, .book-title, .s-title, .book-info h2");
     const title = clean(titleElement?.textContent || Array.from(root.querySelectorAll("a[href]"))

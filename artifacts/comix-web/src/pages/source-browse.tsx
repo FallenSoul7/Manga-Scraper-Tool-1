@@ -139,7 +139,7 @@ export default function SourceBrowsePage() {
 
   // ---- State ----
   const pageStateKey = sourceId === "en.novelfull"
-    ? `source-state-v2:${sourceId}`
+    ? `source-state-v3:${sourceId}`
     : `source-state:${sourceId}`;
   const pageScrollKey = `source-scroll:${sourceId}`;
 
