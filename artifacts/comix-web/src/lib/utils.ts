@@ -53,6 +53,13 @@ export function mediaImage(url: string | undefined, source?: string): string {
   if (Capacitor.isNativePlatform() && resolvedSource && NATIVE_DIRECT_MEDIA_SOURCES.has(resolvedSource)) {
     return url;
   }
+  // MangaDex serves an anti-bot HTML challenge to cross-site <img> requests,
+  // so direct cover URLs render as broken images in fresh Chrome/Safari
+  // sessions. Use an image-only relay for covers while keeping API and reader
+  // requests on their existing native/helper paths.
+  if (resolvedSource === "all.mangadex" && /^https:\/\/uploads\.mangadex\.org\/covers\//i.test(url)) {
+    return `https://external-content.duckduckgo.com/iu/?u=${encodeURIComponent(url)}&f=1&nofb=1`;
+  }
   const sourceMediaPath = (sourceId: string) =>
     appApiUrl(`/api/source-media?source=${encodeURIComponent(sourceId)}&url=${encodeURIComponent(url)}`);
   if (
