@@ -192,7 +192,7 @@ interface QiChapterPage {
 const adapter: ClientSourceAdapter = {
   sourceId: SOURCE_ID,
   mode: "client",
-  fallbackToServer: false,
+  fallbackToServerOnNative: true,
   async popular(page, tagIds) {
     return parseList(await fetchDocument(listPath(page, "popular", tagIds)), page);
   },

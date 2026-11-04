@@ -280,7 +280,7 @@ export default function MangaDetail() {
     queryFn: () => clientAdapter?.details
       ? clientAdapter.details(id!, { scorePosition: settings.scorePosition === "hidden" ? "none" : settings.scorePosition })
           .catch(error => {
-            if (isNativeApp || clientAdapter.fallbackToServer === false) throw error;
+            if ((isNativeApp && !clientAdapter.fallbackToServerOnNative) || clientAdapter.fallbackToServer === false) throw error;
             return sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}`);
           })
       : sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}`),
@@ -291,7 +291,7 @@ export default function MangaDetail() {
     queryKey: ["client-chapters", effectiveSourceForKey, id],
     queryFn: () => clientAdapter?.chapters
       ? clientAdapter.chapters(id!).catch(error => {
-          if (isNativeApp || clientAdapter.fallbackToServer === false) throw error;
+          if ((isNativeApp && !clientAdapter.fallbackToServerOnNative) || clientAdapter.fallbackToServer === false) throw error;
           return sourceFetch<any>(`/api/manga/${encodeURIComponent(id!)}/chapters?dedupe=false`);
         })
       : Promise.reject(new Error("Client chapters unavailable")),

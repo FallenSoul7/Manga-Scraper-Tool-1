@@ -276,8 +276,10 @@ export default function Reader() {
     queryKey: ["client-pages", sourceId, chapterId],
     queryFn: () => clientAdapter?.pages
       ? clientAdapter.pages(chapterId).catch(error => {
-          if (isNativeApp || clientAdapter.fallbackToServer === false) throw error;
-          return customFetch<any>(`/api/chapter/${encodeURIComponent(chapterId)}/pages`);
+          if ((isNativeApp && !clientAdapter.fallbackToServerOnNative) || clientAdapter.fallbackToServer === false) throw error;
+          return customFetch<any>(`/api/chapter/${encodeURIComponent(chapterId)}/pages`, {
+            headers: sourceId ? { "X-Source": sourceId } : undefined,
+          });
         })
       : Promise.reject(new Error("Client pages unavailable")),
     enabled: !isOfflineMode && !!chapterId && chapterId !== "0" && !!clientAdapter?.pages && !webtoonPagesUseServer,
@@ -349,7 +351,12 @@ export default function Reader() {
   const chapterFetchParams = { dedupe: false };
   const clientChaptersQuery = useQuery({
     queryKey: ["reader-client-chapters", sourceId, mangaId],
-    queryFn: () => clientAdapter!.chapters!(mangaId!),
+    queryFn: () => clientAdapter!.chapters!(mangaId!).catch(error => {
+      if ((isNativeApp && !clientAdapter!.fallbackToServerOnNative) || clientAdapter!.fallbackToServer === false) throw error;
+      return customFetch<any>(`/api/manga/${encodeURIComponent(mangaId!)}/chapters?dedupe=false`, {
+        headers: sourceId ? { "X-Source": sourceId } : undefined,
+      });
+    }),
     enabled: isNativeApp && !!mangaId && !isOfflineMode && !!clientAdapter?.chapters,
     staleTime: 60 * 1000,
   });
@@ -362,7 +369,12 @@ export default function Reader() {
 
   const clientMangaQuery = useQuery({
     queryKey: ["reader-client-manga", sourceId, mangaId],
-    queryFn: () => clientAdapter!.details!(mangaId!),
+    queryFn: () => clientAdapter!.details!(mangaId!).catch(error => {
+      if ((isNativeApp && !clientAdapter!.fallbackToServerOnNative) || clientAdapter!.fallbackToServer === false) throw error;
+      return customFetch<any>(`/api/manga/${encodeURIComponent(mangaId!)}`, {
+        headers: sourceId ? { "X-Source": sourceId } : undefined,
+      });
+    }),
     enabled: isNativeApp && !!mangaId && !isOfflineMode && !!clientAdapter?.details,
     staleTime: 5 * 60 * 1000,
   });
@@ -541,7 +553,7 @@ export default function Reader() {
     setLoadingNextChapter(true);
     const loadPages = clientAdapter?.pages
       ? clientAdapter.pages(String(nc.id)).catch(error => {
-          if (isNativeApp || clientAdapter.fallbackToServer === false) throw error;
+          if ((isNativeApp && !clientAdapter.fallbackToServerOnNative) || clientAdapter.fallbackToServer === false) throw error;
           return customFetch<any>(`/api/chapter/${encodeURIComponent(nc.id)}/pages`, {
             headers: sourceId ? { "X-Source": sourceId } : undefined,
           });

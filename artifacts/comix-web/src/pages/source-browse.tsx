@@ -279,7 +279,7 @@ export default function SourceBrowsePage() {
   const clientOnlySource = clientAdapter?.fallbackToServer === false;
   const sourceQueriesEnabled = online && (!!clientAdapter || (!isNativeApp && backendReady)) && !!sourceId && !!source;
   const withServerFallback = <T,>(request: Promise<T>, path: string) => request.catch(error => {
-    if (isNativeApp || clientOnlySource) throw error;
+    if ((isNativeApp && !clientAdapter?.fallbackToServerOnNative) || clientOnlySource) throw error;
     return serverFetch<T>(path);
   });
 
@@ -299,7 +299,7 @@ export default function SourceBrowsePage() {
   } = useQuery<SourceTag[]>({
     queryKey: ["source-tags", sourceId],
     queryFn: () => clientAdapter?.tags
-      ? clientAdapter.tags()
+      ? withServerFallback(clientAdapter.tags(), `/api/tags`)
       : serverFetch<SourceTag[]>(`/api/tags`),
     // Tag discovery can be much slower than the first browse request for
     // sources with large tag catalogues. Never make it block the main list.
@@ -341,8 +341,13 @@ export default function SourceBrowsePage() {
             ...commonOpts,
             query: searchQuery,
             page: String(filterPage),
+            "tagIds[]": allTagIds,
           })}`)
-        : clientAdapter.latest(filterPage, allTagIds)
+        : withServerFallback(clientAdapter.latest(filterPage, allTagIds), `/api/latest${buildQuery({
+            ...commonOpts,
+            page: String(filterPage),
+            "tagIds[]": allTagIds,
+          })}`)
       : serverFetch<ListResponse>(`/api/search${buildQuery({
           ...commonOpts,
           query: searchQuery || undefined,

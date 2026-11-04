@@ -80,6 +80,8 @@ export interface ClientSourceAdapter {
   mode: ClientSourceMode;
   /** When false, failures stay on the client instead of calling an unsupported backend source. */
   fallbackToServer?: boolean;
+  /** Permit backend fallback in native/mobile builds when device-side requests fail. */
+  fallbackToServerOnNative?: boolean;
   popular(page: number, tagIds?: string[]): Promise<ClientListResponse>;
   latest(page: number, tagIds?: string[]): Promise<ClientListResponse>;
   search(query: string, page: number, tagIds?: string[]): Promise<ClientListResponse>;
