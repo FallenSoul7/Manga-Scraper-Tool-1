@@ -110,7 +110,7 @@ export default function Reader() {
 
   const [showControls, setShowControls] = useState(true);
   const [commentsOpen, setCommentsOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(currentProgress?.lastPageRead || 0);
+  const [currentPage, setCurrentPage] = useState(0);
   const [pageTranslations, setPageTranslations] = useState<Record<number, TranslationRegion[]>>({});
   const [visiblePageIndices, setVisiblePageIndices] = useState<number[]>([]);
   const [aiTranslationEnabled, setAiTranslationEnabled] = useState(() => {
@@ -241,7 +241,7 @@ export default function Reader() {
     setLoadedImgs({});
     setFailedImgs({});
     setRetryCounts({});
-    setCurrentPage(currentProgress?.lastPageRead ?? 0);
+    setCurrentPage(0);
     pageHeightsRef.current = {};
     if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
   }, [chapterId, sourceId]);
@@ -443,25 +443,12 @@ export default function Reader() {
   }, [readerSettings.keepScreenOn]);
 
   const didInitialScroll = useRef(false);
-  useEffect(() => {
-    if (!effectivePages.length || didInitialScroll.current) return;
-    const target = currentProgress?.lastPageRead;
-    if (!target || target === 0) { didInitialScroll.current = true; return; }
-    if (effectiveDirection === 'ltr' || effectiveDirection === 'rtl') {
-      if (containerRef.current) {
-        containerRef.current.scrollTo({
-          left: (effectiveDirection === 'ltr' ? target : -target) * containerRef.current.clientWidth,
-        });
-      }
-      didInitialScroll.current = true;
-      return;
-    }
-    requestAnimationFrame(() => {
-      const pageEl = document.getElementById(`page-${target}`);
-      if (pageEl) pageEl.scrollIntoView({ behavior: 'auto', block: 'start' });
-      didInitialScroll.current = true;
-    });
-  }, [pagesData, currentProgress?.lastPageRead, effectiveDirection]);
+  useLayoutEffect(() => {
+    didInitialScroll.current = true;
+    setCurrentPage(0);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    if (containerRef.current) containerRef.current.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [chapterId]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -634,18 +621,16 @@ export default function Reader() {
     novelScrollRestoredRef.current = false;
   }, [chapterId]);
 
-  // Text chapters have one logical page, so page indexes cannot preserve the
-  // reader's position. Store the document offset and restore it after the
-  // chapter HTML has been mounted.
+  // Text chapters start at the top as well; saved scroll offsets must not
+  // carry a previous chapter's bottom position into a newly opened chapter.
   useEffect(() => {
     if (!textPage?.text || novelScrollRestoredRef.current) return;
-    const offset = currentProgress?.scrollOffset;
     const restore = () => {
-      if (typeof offset === "number" && offset > 0) window.scrollTo({ top: offset, behavior: "auto" });
+      window.scrollTo({ top: 0, behavior: "auto" });
       novelScrollRestoredRef.current = true;
     };
     requestAnimationFrame(restore);
-  }, [textPage?.text, currentProgress?.scrollOffset]);
+  }, [textPage?.text]);
 
   useEffect(() => {
     if (!textPage?.text || !mangaId || !effectiveMangaData || !effectiveChapterData.length) return;
