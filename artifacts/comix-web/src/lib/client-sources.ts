@@ -338,14 +338,20 @@ const webtoonTags = async (): Promise<NonNullable<ClientMangaDetail["sourceTags"
   const document = await clientHtml("webtoons:genres", `${WEBTOONS_BASE}/en/genres`);
   const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
   const seen = new Set<string>();
-    document.querySelectorAll("a[href*='/genres/']").forEach(anchor => {
-      const href = anchor.getAttribute("href") || "";
-      const match = href.match(/\/genres\/([^/?#]+)/i);
+  document.querySelectorAll("a[href]").forEach(anchor => {
+    const href = anchor.getAttribute("href") || "";
+    let url: URL;
+    try { url = new URL(href, WEBTOONS_BASE); } catch { return; }
+    if (url.origin !== WEBTOONS_BASE) return;
+    const match = url.pathname.match(/^\/en\/genres\/([^/]+)\/?$/i);
+    const id = match?.[1] ? decodeURIComponent(match[1]) : "";
     const name = anchor.textContent?.replace(/\s+/g, " ").trim() || "";
-    if (!match || !name || seen.has(match[1])) return;
-    seen.add(match[1]);
-    tags.push({ id: decodeURIComponent(match[1]), name, group: "Genre" });
+    const key = id.toLowerCase();
+    if (!id || !name || seen.has(key)) return;
+    seen.add(key);
+    tags.push({ id, name, group: "Genre" });
   });
+  if (tags.length === 0) throw unavailableSourceError("webtoons:genres");
   return tags;
 };
 const webtoonsAdapter: ClientSourceAdapter = { sourceId: "all.webtoons", mode: "client", popular: (p, tags) => clientWebtoonsList("popular", p, "", tags), latest: (p, tags) => clientWebtoonsList("latest", p, "", tags), search: (q, p, tags) => clientWebtoonsList("search", p, q, tags), tags: webtoonTags, details: webtoonDetails, chapters: webtoonChapters, pages: webtoonPages };
@@ -448,8 +454,11 @@ function thunderPageUrl(id: string): string {
 async function themesiaList(order: string, page: number, query = "", tagIds: string[] = []): Promise<ClientListResponse> {
   const params = new URLSearchParams({ order, page: String(page) });
   if (query) params.set("title", query);
-  for (const tag of tagIds.filter(value => !value.startsWith("-"))) params.append("genre[]", tag);
-  const document = await clientHtml(`thunderscans:list:${params}`, `${THUNDER_BASE}/comics/?${params}`);
+  const tag = tagIds.find(value => !value.startsWith("-"));
+  const path = tag
+    ? `/genres/${encodeURIComponent(tag.replace(/^\/+|\/+$/g, ""))}/?${params}`
+    : `/comics/?${params}`;
+  const document = await clientHtml(`thunderscans:list:${path}`, `${THUNDER_BASE}${path}`);
   const items: ClientMangaSummary[] = [];
   document.querySelectorAll(".utao .uta .imgu, .listupd .bs .bsx, .listo .bs .bsx").forEach(root => {
     const anchor = root.matches("a") ? root : root.querySelector("a");
@@ -594,17 +603,23 @@ const thunderAdapter: ClientSourceAdapter = {
   latest: (page, tags) => withThunderError("latest series", () => themesiaList("update", page, "", tags)),
   search: (query, page, tags) => withThunderError("search results", () => themesiaList("search", page, query, tags)),
   tags: async () => {
-    const document = await clientHtml("thunderscans:tags", `${THUNDER_BASE}/genres/manga/`);
+    const document = await clientHtml("thunderscans:tags", `${THUNDER_BASE}/genres/`);
     const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
     const seen = new Set<string>();
     document.querySelectorAll("a[href]").forEach(anchor => {
       const href = anchor.getAttribute("href") || "";
-      const match = href.match(/[?&]genre(?:\[\])?=([^&]+)/i) || href.match(/\/genres?\/([^/?#]+)/i);
+      let url: URL;
+      try { url = new URL(href, THUNDER_BASE); } catch { return; }
+      if (url.origin !== THUNDER_BASE) return;
+      const match = url.pathname.match(/^\/genres\/([^/]+)\/?$/i);
       const name = themesiaText(anchor);
-      if (!match || !name || /^manga$/i.test(match[1]) || seen.has(match[1])) return;
-      seen.add(match[1]);
-      tags.push({ id: decodeURIComponent(match[1]), name, group: "Genre" });
+      const id = match?.[1] ? decodeURIComponent(match[1]) : "";
+      const key = id.toLowerCase();
+      if (!id || !name || /^manga$/i.test(id) || seen.has(key)) return;
+      seen.add(key);
+      tags.push({ id, name, group: "Genre" });
     });
+    if (tags.length === 0) throw unavailableSourceError("thunderscans:tags");
     return tags;
   },
   details: thunderDetails,

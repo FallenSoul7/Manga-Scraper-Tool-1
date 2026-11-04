@@ -74,9 +74,14 @@ function chapterNumber(text: string, href: string): number {
   return Number(match?.[1] || 0);
 }
 
-function genreQuery(tagIds: string[] = []): string {
+function genreRoute(tagIds: string[] = [], page = 1, query = ""): string | null {
   const tag = tagIds.find(value => !value.startsWith("-"));
-  return tag ? `&genre=${encodeURIComponent(tag)}` : "";
+  if (!tag) return null;
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (query) params.set("q", query);
+  const suffix = params.toString();
+  return `/genres/${encodeURIComponent(tag.replace(/^\/+|\/+$/g, ""))}${suffix ? `?${suffix}` : ""}`;
 }
 
 async function fetchDocument(path: string): Promise<{ document: Document; html: string; url: string }> {
@@ -131,33 +136,41 @@ const adapter: ClientSourceAdapter = {
   mode: "client",
 
   async popular(page, tagIds) {
-    const suffix = `${page > 1 ? `&page=${page}` : ""}${genreQuery(tagIds)}`;
-    return parseList((await fetchDocument(`/series?sort=popular${suffix}`)).document, page);
+    const route = genreRoute(tagIds, page);
+    const path = route ?? `/series?sort=popular${page > 1 ? `&page=${page}` : ""}`;
+    return parseList((await fetchDocument(path)).document, page);
   },
 
   async latest(page, tagIds) {
-    const suffix = `${page > 1 ? `&page=${page}` : ""}${genreQuery(tagIds)}`;
-    return parseList((await fetchDocument(`/series?sort=latest${suffix}`)).document, page);
+    const route = genreRoute(tagIds, page);
+    const path = route ?? `/series?sort=latest${page > 1 ? `&page=${page}` : ""}`;
+    return parseList((await fetchDocument(path)).document, page);
   },
 
   async search(query, page, tagIds) {
-    const suffix = `${page > 1 ? `&page=${page}` : ""}${genreQuery(tagIds)}`;
-    return parseList((await fetchDocument(`/search?q=${encodeURIComponent(query)}${suffix}`)).document, page);
+    const route = genreRoute(tagIds, page, query);
+    const path = route ?? `/search?q=${encodeURIComponent(query)}${page > 1 ? `&page=${page}` : ""}`;
+    return parseList((await fetchDocument(path)).document, page);
   },
 
   async tags() {
-    const { document } = await fetchDocument("/series");
+    const { document } = await fetchDocument("/genres");
     const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
     const seen = new Set<string>();
-    document.querySelectorAll("a[href*='/genre/'], a[href*='/genres/']").forEach(anchor => {
+    document.querySelectorAll("a[href]").forEach(anchor => {
       const href = anchor.getAttribute("href") || "";
-      const match = href.match(/\/(?:genres?|genre)\/([^/?#]+)/i);
+      let url: URL;
+      try { url = new URL(href, BASE); } catch { return; }
+      if (url.origin !== BASE) return;
+      const match = url.pathname.match(/^\/genres\/([^/]+)\/?$/i);
+      const id = match?.[1] ? decodeURIComponent(match[1]) : "";
       const name = clean(anchor.textContent || "");
-      if (!match || !name || seen.has(match[1])) return;
-      seen.add(match[1]);
-      tags.push({ id: decodeURIComponent(match[1]), name, group: "Genre" });
+      const key = id.toLowerCase();
+      if (!id || !name || seen.has(key)) return;
+      seen.add(key);
+      tags.push({ id, name, group: "Genre" });
     });
-    if (tags.length === 0) tags.push({ id: "manhwa", name: "Manhwa", group: "Type" });
+    if (tags.length === 0) throw new Error(`${SOURCE_NAME}: the genre directory could not be read.`);
     return tags;
   },
 

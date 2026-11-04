@@ -291,7 +291,12 @@ export default function SourceBrowsePage() {
     if (searchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
   }, [searchOpen]);
 
-  const { data: availableTags = [] } = useQuery<SourceTag[]>({
+  const {
+    data: availableTags = [],
+    isFetching: tagsLoading,
+    isError: tagsLoadError,
+    refetch: refetchTags,
+  } = useQuery<SourceTag[]>({
     queryKey: ["source-tags", sourceId],
     queryFn: () => clientAdapter?.tags
       ? clientAdapter.tags()
@@ -716,7 +721,10 @@ export default function SourceBrowsePage() {
             )}
 
             {(availableTags.length > 0 || Boolean(clientAdapter?.tags)) && (
-              <Popover open={filterPopoverOpen} onOpenChange={setFilterPopoverOpen}>
+              <Popover open={filterPopoverOpen} onOpenChange={open => {
+                setFilterPopoverOpen(open);
+                if (open) setTagsEnabled(true);
+              }}>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
@@ -738,6 +746,9 @@ export default function SourceBrowsePage() {
                 <PopoverContent align="start" className="w-[340px] sm:w-[400px] p-0" sideOffset={8}>
                   <TagPicker
                     tags={availableTags}
+                    loading={tagsLoading && availableTags.length === 0}
+                    loadError={tagsLoadError && availableTags.length === 0}
+                    onRetry={() => { void refetchTags(); }}
                     initialTagState={appliedTagState}
                     onApply={handleApplyFilter}
                     onClearAndClose={() => {
@@ -937,12 +948,15 @@ function Grid({ items, loading, fetching, hasNext, onLoadMore, sourceId }: GridP
 // ---------------------------------------------------------------------------
 interface TagPickerProps {
   tags: SourceTag[];
+  loading: boolean;
+  loadError: boolean;
+  onRetry: () => void;
   initialTagState: Record<string, TagTriState>;
   onApply: (state: Record<string, TagTriState>) => void;
   onClearAndClose: () => void;
 }
 
-function TagPicker({ tags, initialTagState, onApply, onClearAndClose }: TagPickerProps) {
+function TagPicker({ tags, loading, loadError, onRetry, initialTagState, onApply, onClearAndClose }: TagPickerProps) {
   const [pending, setPending] = useState<Record<string, TagTriState>>(() => ({ ...initialTagState }));
   const [tagSearch, setTagSearch] = useState("");
 
@@ -1008,7 +1022,19 @@ function TagPicker({ tags, initialTagState, onApply, onClearAndClose }: TagPicke
       </div>
 
       <div className="max-h-[300px] overflow-y-auto p-2">
-        {grouped.length === 0 ? (
+        {loading ? (
+          <div role="status" className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            Loading genres…
+          </div>
+        ) : loadError ? (
+          <div role="alert" className="flex flex-col items-center gap-2 py-5 text-xs text-muted-foreground">
+            <span>Could not load genres. Check your connection and try again.</span>
+            <Button type="button" variant="outline" size="sm" className="h-7" onClick={onRetry}>Retry</Button>
+          </div>
+        ) : tags.length === 0 ? (
+          <div className="text-xs text-muted-foreground text-center py-6">No genres are available for this source.</div>
+        ) : grouped.length === 0 ? (
           <div className="text-xs text-muted-foreground text-center py-6">No tags match.</div>
         ) : (
           grouped.map(([group, items]) => (
