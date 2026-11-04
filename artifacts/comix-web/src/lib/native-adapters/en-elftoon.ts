@@ -10,7 +10,27 @@ import { clientFetch } from "../client-fetch";
 const BASE = "https://elftoon.net";
 const SOURCE_ID = "en.elftoon";
 const SOURCE_NAME = "Elf Toon";
-const COVER_FALLBACK = "/public/source-icons/en.elftoon.png";
+const COVER_FALLBACK = "/source-icons/en.elftoon.png";
+const PAGE_SIZE = 60;
+
+interface ElfToonSeries {
+  slug?: string;
+  urlSlug?: string;
+  title?: string;
+  coverImage?: string;
+  type?: string;
+  isMature?: boolean;
+  nsfw?: boolean;
+}
+
+interface ElfToonSeriesResponse {
+  data?: ElfToonSeries[];
+  meta?: { hasMore?: boolean };
+}
+
+interface ElfToonFacetsResponse {
+  genres?: Array<{ slug?: string; name?: string }>;
+}
 
 function absoluteUrl(value: string, reference = BASE): string {
   if (!value) return "";
@@ -49,24 +69,16 @@ function decodeNextImage(value: string): string {
 
 function imageValue(image: Element | null): string {
   if (!image) return "";
-  const raw = image.getAttribute("src")
-    || image.getAttribute("data-src")
+  const raw = image.getAttribute("data-src")
+    || image.getAttribute("data-lazy-src")
+    || image.getAttribute("src")
     || image.getAttribute("srcset")
     || "";
   const candidates = raw.split(",")
     .map(value => value.trim().split(/\s+/)[0])
     .map(decodeNextImage)
-    .filter(value => value && !/logo|placeholder|avatar/i.test(value));
+    .filter(value => value && !value.startsWith("data:") && !/logo|placeholder|avatar/i.test(value));
   return candidates[0] || "";
-}
-
-function seriesSlug(href: string): string {
-  const match = sourcePath(href).match(/^series\/comic\/([^/]+)$/i);
-  return match?.[1] || "";
-}
-
-function isSeriesHref(href: string): boolean {
-  return Boolean(seriesSlug(href));
 }
 
 function chapterNumber(text: string, href: string): number {
@@ -74,14 +86,66 @@ function chapterNumber(text: string, href: string): number {
   return Number(match?.[1] || 0);
 }
 
-function genreRoute(tagIds: string[] = [], page = 1, query = ""): string | null {
-  const tag = tagIds.find(value => !value.startsWith("-"));
-  if (!tag) return null;
-  const params = new URLSearchParams();
-  if (page > 1) params.set("page", String(page));
-  if (query) params.set("q", query);
-  const suffix = params.toString();
-  return `/genres/${encodeURIComponent(tag.replace(/^\/+|\/+$/g, ""))}${suffix ? `?${suffix}` : ""}`;
+function typeLabel(value?: string): string {
+  const type = clean(value || "").toUpperCase();
+  const labels: Record<string, string> = {
+    MANGA: "Manga",
+    MANHWA: "Manhwa",
+    MANHUA: "Manhua",
+    WEBTOON: "Webtoon",
+  };
+  return labels[type] || clean(value || "Manga") || "Manga";
+}
+
+function appendGenreFilters(params: URLSearchParams, tagIds: string[] = []): void {
+  const included = new Set<string>();
+  const excluded = new Set<string>();
+  for (const rawId of tagIds) {
+    const isExcluded = rawId.startsWith("-");
+    const slug = rawId.replace(/^-+/, "").replace(/^\/+|\/+$/g, "").trim();
+    if (slug) (isExcluded ? excluded : included).add(slug);
+  }
+  if (included.size) params.set("genre", [...included].join(","));
+  if (excluded.size) params.set("exgenre", [...excluded].join(","));
+}
+
+async function fetchJson<T>(path: string): Promise<T> {
+  const response = await clientFetch(new URL(path, BASE).toString(), {
+    method: "GET",
+    credentials: "omit",
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`${SOURCE_NAME}: HTTP ${response.status}`);
+  return await response.json() as T;
+}
+
+async function fetchSeriesPage(
+  page: number,
+  sort?: "popular" | "latest",
+  query = "",
+  tagIds: string[] = [],
+): Promise<ClientListResponse> {
+  const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE), contentMode: "all" });
+  if (sort) params.set("sort", sort);
+  if (query.trim()) params.set("q", query.trim());
+  appendGenreFilters(params, tagIds);
+
+  const result = await fetchJson<ElfToonSeriesResponse>(`/api/series?${params.toString()}`);
+  if (!Array.isArray(result.data)) throw new Error(`${SOURCE_NAME}: invalid series response.`);
+  const items = result.data.flatMap(item => {
+    const slug = item.urlSlug || item.slug;
+    if (!slug) return [];
+    const title = clean(item.title || slug.replace(/-/g, " "));
+    return [{
+      id: encodeURIComponent(`series/comic/${slug}`),
+      title,
+      thumbnail: item.coverImage ? absoluteUrl(item.coverImage) : COVER_FALLBACK,
+      type: typeLabel(item.type),
+      isNsfw: Boolean(item.nsfw || item.isMature),
+    }];
+  });
+  return { items, page, hasNextPage: result.meta?.hasMore ?? result.data.length >= PAGE_SIZE };
 }
 
 async function fetchDocument(path: string): Promise<{ document: Document; html: string; url: string }> {
@@ -98,37 +162,16 @@ async function fetchDocument(path: string): Promise<{ document: Document; html: 
 }
 
 function findCover(document: Document, slug: string): string {
+  const metaImage = document.querySelector('meta[property="og:image"], meta[name="twitter:image"]')?.getAttribute("content") || "";
+  if (metaImage && !/logo|placeholder|avatar/i.test(metaImage)) return absoluteUrl(decodeNextImage(metaImage));
   const images = Array.from(document.querySelectorAll("img"));
   const matching = images.find(image => {
     const value = imageValue(image);
     return value.includes(`/uploads/series/${slug}/`) && /\/cover[^/]*\.(?:webp|jpg|jpeg|png)$/i.test(value);
   });
-  return imageValue(matching ?? null) || COVER_FALLBACK;
-}
-
-function parseList(document: Document, page: number): ClientListResponse {
-  const items: ClientListResponse["items"] = [];
-  const seen = new Set<string>();
-  const anchors = Array.from(document.querySelectorAll("a[href]"));
-  for (const anchor of anchors) {
-    const href = anchor.getAttribute("href") || "";
-    const slug = seriesSlug(href);
-    if (!slug || seen.has(slug)) continue;
-    const title = clean(anchor.getAttribute("title") || anchor.textContent || slug.replace(/-/g, " "));
-    if (!title || /^(home|search|popular|latest)$/i.test(title)) continue;
-    const root = anchor.closest("article, li, section, div") || anchor;
-    const nearbyImage = root.querySelector("img") || document.querySelector(`img[src*="${slug}"]`);
-    const thumbnail = imageValue(nearbyImage) || findCover(document, slug);
-    seen.add(slug);
-    items.push({
-      id: encodeURIComponent(`series/comic/${slug}`),
-      title,
-      thumbnail: absoluteUrl(thumbnail),
-      type: "Manhwa",
-      isNsfw: false,
-    });
-  }
-  return { items: items.slice(0, 50), page, hasNextPage: Boolean(document.querySelector("a[href*='page='], a[rel='next']")) };
+  const cover = imageValue(matching ?? null)
+    || images.map(imageValue).find(value => value.includes("/uploads/series/") && /cover/i.test(value));
+  return cover ? absoluteUrl(cover) : COVER_FALLBACK;
 }
 
 const adapter: ClientSourceAdapter = {
@@ -136,40 +179,29 @@ const adapter: ClientSourceAdapter = {
   mode: "client",
 
   async popular(page, tagIds) {
-    const route = genreRoute(tagIds, page);
-    const path = route ?? `/series?sort=popular${page > 1 ? `&page=${page}` : ""}`;
-    return parseList((await fetchDocument(path)).document, page);
+    return fetchSeriesPage(page, "popular", "", tagIds);
   },
 
   async latest(page, tagIds) {
-    const route = genreRoute(tagIds, page);
-    const path = route ?? `/series?sort=latest${page > 1 ? `&page=${page}` : ""}`;
-    return parseList((await fetchDocument(path)).document, page);
+    return fetchSeriesPage(page, "latest", "", tagIds);
   },
 
   async search(query, page, tagIds) {
-    const route = genreRoute(tagIds, page, query);
-    const path = route ?? `/search?q=${encodeURIComponent(query)}${page > 1 ? `&page=${page}` : ""}`;
-    return parseList((await fetchDocument(path)).document, page);
+    return fetchSeriesPage(page, undefined, query, tagIds);
   },
 
   async tags() {
-    const { document } = await fetchDocument("/genres");
+    const facets = await fetchJson<ElfToonFacetsResponse>("/api/series/facets");
     const tags: NonNullable<ClientMangaDetail["sourceTags"]> = [];
     const seen = new Set<string>();
-    document.querySelectorAll("a[href]").forEach(anchor => {
-      const href = anchor.getAttribute("href") || "";
-      let url: URL;
-      try { url = new URL(href, BASE); } catch { return; }
-      if (url.origin !== BASE) return;
-      const match = url.pathname.match(/^\/genres\/([^/]+)\/?$/i);
-      const id = match?.[1] ? decodeURIComponent(match[1]) : "";
-      const name = clean(anchor.textContent || "");
+    for (const genre of facets.genres || []) {
+      const id = genre.slug?.trim() || "";
+      const name = clean(genre.name || "");
       const key = id.toLowerCase();
-      if (!id || !name || seen.has(key)) return;
+      if (!id || !name || seen.has(key)) continue;
       seen.add(key);
       tags.push({ id, name, group: "Genre" });
-    });
+    }
     if (tags.length === 0) throw new Error(`${SOURCE_NAME}: the genre directory could not be read.`);
     return tags;
   },
@@ -192,10 +224,10 @@ const adapter: ClientSourceAdapter = {
       synopsis: clean(metaDescription),
       altTitles: [],
       status: "Unknown",
-      type: "Manhwa",
+      type: "Manhua",
       isNsfw: false,
       rating: 0,
-      thumbnail: absoluteUrl(findCover(document, slug)),
+      thumbnail: findCover(document, slug),
       genres,
       score: "",
       scorePosition: options?.scorePosition ?? "none",
@@ -229,7 +261,7 @@ const adapter: ClientSourceAdapter = {
     const chapterPath = decodeURIComponent(chapterId);
     const { document } = await fetchDocument(`/${chapterPath}`);
     const pages: ClientPageResponse["pages"] = [];
-    for (const image of Array.from(document.querySelectorAll("img[src*='/uploads/series/']"))) {
+    for (const image of Array.from(document.querySelectorAll("img[src*='/uploads/series/'], img[data-src*='/uploads/series/']"))) {
       const url = absoluteUrl(imageValue(image));
       if (!url || !/\/p\d+[-_]/i.test(url)) continue;
       pages.push({ index: pages.length, url });
