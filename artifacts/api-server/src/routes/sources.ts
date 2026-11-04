@@ -37,12 +37,16 @@ const CLIENT_FIRST_SOURCE_IDS = new Set([
   "en.animegg",
   "all.mihentai",
   "en.allanime",
+  "en.qiscans",
 ]);
+const CLIENT_ONLY_SOURCE_IDS = new Set(["en.qiscans"]);
 
 const registryExtensions = Array.from(new Map(
   catalogRaw.extensions
     .filter((extension) => !REMOVED_SOURCE_IDS.has(extension.id as string))
-    .filter((extension) => isSupported(extension.id as string) && extension.id !== "builtin.universal")
+    .filter((extension) => (
+      isSupported(extension.id as string) || CLIENT_ONLY_SOURCE_IDS.has(extension.id as string)
+    ) && extension.id !== "builtin.universal")
     .map((extension) => [extension.id, {
       id: extension.id,
       name: extension.name,
