@@ -190,8 +190,10 @@ export function ReaderCommentsSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex w-[50vw] max-w-[50vw] flex-col gap-0 bg-zinc-950 p-0 text-zinc-100 sm:w-[50vw] sm:max-w-[50vw]"
-        style={{ width: "50vw", maxWidth: "50vw" }}
+        hideCloseButton
+        overlayClassName="bg-transparent"
+        className="flex w-[58vw] max-w-[58vw] flex-col gap-0 bg-zinc-950 p-0 text-zinc-100 sm:w-[58vw] sm:max-w-[58vw]"
+        style={{ width: "58vw", maxWidth: "58vw" }}
       >
         <div className="border-b border-white/10 px-4 pb-4 pt-7 pr-10">
           <SheetHeader className="text-left">
