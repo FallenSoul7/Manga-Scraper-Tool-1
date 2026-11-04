@@ -17,9 +17,10 @@ import { getClientSourceAdapter } from "@/lib/client-sources";
 import { PageTranslationOverlay, ReaderRegionSelector, ReaderTranslationControl, type NormalizedRect, type TranslationRegion } from "@/components/reader/page-translation";
 import { TranslationLanguagePicker } from "@/components/reader/translation-language-picker";
 import VideoPlayer, { type VideoTrack } from "@/pages/video-player";
-import { Loader2, X, Settings, ChevronLeft, ChevronRight, Menu, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback } from "react";
+import { Bookmark, BookmarkCheck, Loader2, MessageCircle, X, Settings, ChevronLeft, ChevronRight, Menu, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback, type CSSProperties } from "react";
 import { useStore, storeActions, ReaderSettings } from "@/lib/storage";
+import { ReaderCommentsSheet } from "@/components/reader/reader-comments-sheet";
 import { offlineDb } from "@/lib/offline-db";
 import { getSavedTranslationTargetLanguage, saveTranslationTargetLanguage, TARGET_LANGUAGE_OPTIONS } from "@/lib/translation-languages";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -102,11 +103,13 @@ export default function Reader() {
     : readerSettings.direction;
   const progressMap = useStore(s => s.progress);
   const scanlatorPrefs = useStore(s => s.scanlatorPrefs);
+  const chapterFavorites = useStore(s => s.chapterFavorites);
   const progressKey = `${mangaId}:${chapterId}`;
   const currentProgress = progressMap[progressKey];
   const selectedScanlator = mangaId ? (scanlatorPrefs[mangaId] ?? null) : null;
 
   const [showControls, setShowControls] = useState(true);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(currentProgress?.lastPageRead || 0);
   const [pageTranslations, setPageTranslations] = useState<Record<number, TranslationRegion[]>>({});
   const [visiblePageIndices, setVisiblePageIndices] = useState<number[]>([]);
@@ -813,6 +816,40 @@ export default function Reader() {
   };
 
   const currChapterObj = effectiveChapterData.find(c => String(c.id) === chapterId);
+  const activeReaderChapter = useMemo(() => {
+    if (effectiveDirection !== "webtoon" && effectiveDirection !== "vertical") return currChapterObj;
+    let offset = effectivePages.length;
+    for (const chapter of appendedChapters) {
+      const end = offset + (chapter.pages?.length ?? 0);
+      if (currentPage < end) return chapter;
+      offset = end;
+    }
+    return currChapterObj;
+  }, [effectiveDirection, effectivePages.length, appendedChapters, currentPage, currChapterObj]);
+  const appendedPageCount = effectiveDirection === "webtoon" || effectiveDirection === "vertical"
+    ? appendedChapters.reduce((total, chapter) => total + (chapter.pages?.length ?? 0), 0)
+    : 0;
+  const readerPageCount = effectivePages.length + appendedPageCount;
+  const activeChapterId = String(activeReaderChapter?.id ?? chapterId);
+  const chapterFavoriteKey = `chapter:${sourceId ?? ""}:${mangaId ?? ""}:${activeChapterId}`;
+  const isChapterFavorite = !!chapterFavorites[chapterFavoriteKey];
+
+  const jumpToPage = (targetPage: number) => {
+    if (readerPageCount <= 0) return;
+    const page = Math.max(0, Math.min(Math.round(targetPage), readerPageCount - 1));
+    setCurrentPage(page);
+    if (effectiveDirection === "ltr" || effectiveDirection === "rtl") {
+      const container = containerRef.current;
+      if (container) {
+        container.scrollTo({
+          left: (effectiveDirection === "ltr" ? page : -page) * container.clientWidth,
+          behavior: "smooth",
+        });
+      }
+      return;
+    }
+    document.getElementById(`page-${page}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <div className={`min-h-[100dvh] ${bgClass} relative select-none`} onClick={handlePageClick}>
@@ -1211,11 +1248,71 @@ export default function Reader() {
         )}
       </div>
 
-      {readerSettings.showPageNumber && showControls && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 backdrop-blur text-white text-xs font-medium z-40 pointer-events-none animate-in fade-in duration-200">
-          {currentPage + 1} / {effectivePages.length}
+      <div
+        className={`fixed left-1/2 z-40 w-[min(94vw,720px)] -translate-x-1/2 transition-[opacity,transform] duration-300 ${showControls ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0"}`}
+        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}
+        aria-hidden={!showControls}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-zinc-800/95 px-3 py-2 text-white shadow-xl backdrop-blur sm:gap-4 sm:px-5">
+          {readerSettings.showPageNumber && (
+            <>
+              <span className="w-6 shrink-0 text-center text-sm tabular-nums text-white/90">{readerPageCount ? Math.min(currentPage + 1, readerPageCount) : 0}</span>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(0, readerPageCount - 1)}
+                value={readerPageCount ? Math.min(currentPage, readerPageCount - 1) : 0}
+                disabled={readerPageCount <= 1}
+                aria-label="Page scrubber"
+                aria-valuetext={readerPageCount ? `Page ${Math.min(currentPage + 1, readerPageCount)} of ${readerPageCount}` : "No pages loaded"}
+                className="reader-page-scrubber min-w-0 flex-1"
+                style={{ "--reader-page-step": `calc(100% / ${Math.max(readerPageCount - 1, 1)})` } as CSSProperties}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                onChange={(event) => jumpToPage(Number(event.currentTarget.value))}
+              />
+              <span className="w-6 shrink-0 text-center text-sm tabular-nums text-white/90">{readerPageCount}</span>
+            </>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={`h-9 w-9 shrink-0 text-white/75 hover:text-white ${isChapterFavorite ? "text-sky-300" : ""}`}
+            title={isChapterFavorite ? "Remove chapter bookmark" : "Bookmark this chapter"}
+            aria-label={isChapterFavorite ? "Remove chapter bookmark" : "Bookmark this chapter"}
+            aria-pressed={isChapterFavorite}
+            onClick={() => storeActions.toggleChapterFavorite(chapterFavoriteKey)}
+          >
+            {isChapterFavorite ? <BookmarkCheck className="h-5 w-5" /> : <Bookmark className="h-5 w-5" />}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 shrink-0 text-white/75 hover:text-white"
+            title="Chapter comments"
+            aria-label="Chapter comments"
+            onClick={() => setCommentsOpen(true)}
+          >
+            <MessageCircle className="h-5 w-5" />
+          </Button>
         </div>
-      )}
+      </div>
+
+      <ReaderCommentsSheet
+        open={commentsOpen}
+        onOpenChange={setCommentsOpen}
+        onSignIn={() => { setCommentsOpen(false); setLocation("/login"); }}
+        mangaTitle={String(effectiveMangaData?.title ?? "")}
+        mangaAltTitles={Array.isArray((effectiveMangaData as any)?.altTitles) ? (effectiveMangaData as any).altTitles : []}
+        chapterNumber={activeReaderChapter?.number ?? null}
+        chapterTitle={String(activeReaderChapter?.title ?? "")}
+        sourceId={sourceId}
+        chapterId={activeChapterId}
+        offline={isOfflineMode}
+      />
     </div>
   );
 }

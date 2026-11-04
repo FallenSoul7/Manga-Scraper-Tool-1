@@ -151,6 +151,7 @@ const StoreStateSchema = z.object({
   searchHistory: z.array(z.string()),
   scanlatorPrefs: z.record(z.string(), z.string().nullable()).default({}),
   chapterSortAsc: z.record(z.string(), z.boolean()).default({}),
+  chapterFavorites: z.record(z.string(), z.number()).default({}),
   installedSources: z.record(z.string(), InstalledSourceSchema).default({}),
   activeSourceId: z.string().default(""),
   // Real, tracked time spent on the reader page (in milliseconds). The reader
@@ -184,6 +185,7 @@ const DEFAULT_STATE: StoreState = {
   searchHistory: [],
   scanlatorPrefs: {},
   chapterSortAsc: {},
+  chapterFavorites: {},
   installedSources: {},
   activeSourceId: "",
   readingTimeMs: 0,
@@ -692,6 +694,14 @@ export const storeActions = {
       ...memoryState,
       chapterSortAsc: { ...memoryState.chapterSortAsc, [mangaId]: asc }
     });
+  },
+
+  toggleChapterFavorite(key: string) {
+    if (!key) return;
+    const chapterFavorites = { ...memoryState.chapterFavorites };
+    if (chapterFavorites[key]) delete chapterFavorites[key];
+    else chapterFavorites[key] = Date.now();
+    saveState({ ...memoryState, chapterFavorites });
   },
 
   pushSearch(q: string) {

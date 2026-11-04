@@ -9,6 +9,7 @@ import libraryRouter from "./library";
 import pandachaikaPageRouter from "./pandachaika-page";
 import paypalRouter from "./paypal";
 import paddleRouter from "./paddle";
+import readerCommentsRouter from "./reader-comments";
 
 const router: IRouter = Router();
 
@@ -21,6 +22,7 @@ router.use("/library", libraryRouter);
 router.use("/pandachaika-page", pandachaikaPageRouter);
 router.use("/paddle", paddleRouter);
 router.use("/paypal", paypalRouter);
+router.use("/reader-comments", readerCommentsRouter);
 router.use(mangaRouter);
 
 export default router;

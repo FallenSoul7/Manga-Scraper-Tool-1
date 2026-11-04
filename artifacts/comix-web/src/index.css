@@ -22,6 +22,50 @@
   }
 }
 
+.reader-page-scrubber {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 32px;
+  cursor: pointer;
+  background: transparent;
+}
+.reader-page-scrubber:disabled { cursor: default; }
+.reader-page-scrubber::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at left center, rgba(190, 207, 244, .9) 1.5px, transparent 2px) left center / var(--reader-page-step, 100%) 100% repeat-x,
+    radial-gradient(circle at right center, rgba(190, 207, 244, .9) 1.5px, transparent 2px) right center / var(--reader-page-step, 100%) 100% no-repeat,
+    linear-gradient(90deg, rgba(145, 174, 246, .6), rgba(145, 174, 246, .3)) center / 100% 4px no-repeat;
+}
+.reader-page-scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  border: 0;
+  border-radius: 50%;
+  background: #a7c0ff;
+  box-shadow: 0 0 0 5px rgba(167, 192, 255, .18);
+}
+.reader-page-scrubber::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at left center, rgba(190, 207, 244, .9) 1.5px, transparent 2px) left center / var(--reader-page-step, 100%) 100% repeat-x,
+    radial-gradient(circle at right center, rgba(190, 207, 244, .9) 1.5px, transparent 2px) right center / var(--reader-page-step, 100%) 100% no-repeat,
+    linear-gradient(90deg, rgba(145, 174, 246, .6), rgba(145, 174, 246, .3)) center / 100% 4px no-repeat;
+}
+.reader-page-scrubber::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: #a7c0ff;
+  box-shadow: 0 0 0 5px rgba(167, 192, 255, .18);
+}
+
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));

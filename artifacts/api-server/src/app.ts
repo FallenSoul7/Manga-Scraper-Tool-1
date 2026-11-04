@@ -111,8 +111,9 @@ function isPublicReadRequest(req: Request): boolean {
     path === "/api/search" ||
     path === "/api/tags" ||
     path === "/api/popular-sorts" ||
-    path === "/api/source-media"
-    || path === "/api/direct-fetch"
+    path === "/api/source-media" ||
+    path === "/api/reader-comments" ||
+    path === "/api/direct-fetch"
   ) return true;
 
   return /^\/api\/manga\/[^/]+(?:\/chapters)?$/.test(path) ||
