@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Heart, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { apiUrl } from "@/lib/api-url";
 import { getCachedUser, onAuthChanged, setCachedUser, clearCachedUser, type CachedUser } from "@/lib/auth-cache";
 
@@ -188,14 +188,16 @@ export function ReaderCommentsSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-[92vw] max-w-[560px] flex-col gap-0 p-0 sm:w-[50vw]">
-        <div className="border-b px-5 pb-4 pt-7 pr-12">
+      <SheetContent
+        side="right"
+        className="flex w-[50vw] max-w-[50vw] flex-col gap-0 bg-zinc-950 p-0 text-zinc-100 sm:w-[50vw] sm:max-w-[50vw]"
+        style={{ width: "50vw", maxWidth: "50vw" }}
+      >
+        <div className="border-b border-white/10 px-4 pb-4 pt-7 pr-10">
           <SheetHeader className="text-left">
-            <SheetTitle className="text-left">Chapter comments</SheetTitle>
-            <SheetDescription className="line-clamp-2 text-left">
-              {mangaTitle || "Loading title"} · {chapterDisplay}{chapterTitle ? ` — ${chapterTitle}` : ""}
-            </SheetDescription>
-            <p className="text-xs text-muted-foreground">Comments are shared across sources when their title or alternate titles match.</p>
+            <SheetTitle className="line-clamp-2 break-words text-left text-zinc-100">
+              {mangaTitle || "Comments"} · {chapterDisplay}{chapterTitle ? ` — ${chapterTitle}` : ""}
+            </SheetTitle>
           </SheetHeader>
         </div>
 
@@ -212,7 +214,7 @@ export function ReaderCommentsSheet({
           ) : comments.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">No comments yet. Start the conversation.</p>
           ) : comments.map((comment) => (
-            <article key={comment.id} className="rounded-xl border bg-card p-3">
+            <article key={comment.id} className="rounded-xl border border-white/10 bg-zinc-900 p-3">
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{comment.username}</div>
@@ -240,7 +242,7 @@ export function ReaderCommentsSheet({
           ))}
         </div>
 
-        <div className="shrink-0 border-t bg-background p-4 pb-5">
+        <div className="shrink-0 border-t border-white/10 bg-zinc-950 p-4 pb-5">
           {actionError && <p className="mb-2 text-sm text-destructive" role="alert">{actionError}</p>}
           {user ? (
             <form onSubmit={(event) => void postComment(event)} className="space-y-2">
@@ -251,7 +253,7 @@ export function ReaderCommentsSheet({
                 placeholder="Write a comment…"
                 maxLength={2000}
                 rows={3}
-                className="w-full resize-none rounded-xl border bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full resize-none rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white outline-none ring-offset-background placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="Write a comment"
               />
               <div className="flex items-center justify-between gap-3">

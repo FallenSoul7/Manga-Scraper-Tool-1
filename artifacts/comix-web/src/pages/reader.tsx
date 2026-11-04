@@ -843,12 +843,12 @@ export default function Reader() {
       if (container) {
         container.scrollTo({
           left: (effectiveDirection === "ltr" ? page : -page) * container.clientWidth,
-          behavior: "smooth",
+          behavior: "auto",
         });
       }
       return;
     }
-    document.getElementById(`page-${page}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById(`page-${page}`)?.scrollIntoView({ behavior: "auto", block: "start" });
   };
 
   return (
@@ -1262,6 +1262,7 @@ export default function Reader() {
                 type="range"
                 min={0}
                 max={Math.max(0, readerPageCount - 1)}
+                step={1}
                 value={readerPageCount ? Math.min(currentPage, readerPageCount - 1) : 0}
                 disabled={readerPageCount <= 1}
                 aria-label="Page scrubber"
