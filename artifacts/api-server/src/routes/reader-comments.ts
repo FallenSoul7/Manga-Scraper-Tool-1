@@ -65,6 +65,7 @@ async function runSql(statements: SqlStatement[]): Promise<DbResult[]> {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ requests }),
+    signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error(`Turso request failed (${response.status}).`);
   const payload = await response.json() as {

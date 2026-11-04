@@ -51,6 +51,16 @@ function errorMessage(data: unknown, fallback: string): string {
   return fallback;
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(new Error("Request timed out. Please try again.")), 15_000);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export function ReaderCommentsSheet({
   open,
   onOpenChange,
@@ -101,12 +111,13 @@ export function ReaderCommentsSheet({
     queryKey,
     enabled: open && !offline && !!mangaTitle && !!chapterId,
     staleTime: 15_000,
+    retry: 0,
     queryFn: async () => {
       const params = new URLSearchParams({ mangaTitle, chapterTitle, chapterId });
       if (chapterNumber != null) params.set("chapterNumber", String(chapterNumber));
       if (sourceId) params.set("sourceId", sourceId);
       mangaAltTitles.slice(0, 10).forEach((title) => params.append("mangaAltTitle", title));
-      const response = await fetch(apiUrl(`/api/reader-comments?${params.toString()}`), {
+      const response = await fetchWithTimeout(apiUrl(`/api/reader-comments?${params.toString()}`), {
         credentials: "include",
         headers: { "X-Reader-Voter": voterId },
       });
@@ -127,7 +138,7 @@ export function ReaderCommentsSheet({
     setPosting(true);
     setActionError("");
     try {
-      const response = await fetch(apiUrl("/api/reader-comments"), {
+      const response = await fetchWithTimeout(apiUrl("/api/reader-comments"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -163,7 +174,7 @@ export function ReaderCommentsSheet({
     setLikePending((previous) => ({ ...previous, [comment.id]: true }));
     setActionError("");
     try {
-      const response = await fetch(apiUrl(`/api/reader-comments/${comment.id}/like`), {
+      const response = await fetchWithTimeout(apiUrl(`/api/reader-comments/${comment.id}/like`), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", "X-Reader-Voter": voterId },
