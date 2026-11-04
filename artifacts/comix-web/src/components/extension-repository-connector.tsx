@@ -7,7 +7,9 @@ import { useToast } from "@/hooks/use-toast";
 import { hasAdultAccessConsent } from "@/lib/compliance-consent";
 import { cacheExtensionManifest } from "@/lib/extension-manifest-db";
 import { storeActions, useStore } from "@/lib/storage";
+import ExtensionBreadcrumbBadge from "@/components/extension-breadcrumb-badge";
 import {
+  useExtensionBreadcrumbState,
   loadOfficialSourceRegistry,
   useOfficialExtensionRegistry,
   type OfficialExtensionEntry,
@@ -38,6 +40,7 @@ export default function ExtensionRepositoryConnector() {
   const { toast } = useToast();
   const installedMap = useStore(state => state.installedSources);
   const registry = useOfficialExtensionRegistry();
+  const breadcrumb = useExtensionBreadcrumbState();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -95,6 +98,7 @@ export default function ExtensionRepositoryConnector() {
         <Button type="button" onClick={() => void browseSources()} disabled={loading}>
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {loading ? "Loading sources…" : "Browse sources"}
+          {breadcrumb.step === "browse" && <ExtensionBreadcrumbBadge count={breadcrumb.missingExtensionCount} />}
         </Button>
       </div>
       {registry && (

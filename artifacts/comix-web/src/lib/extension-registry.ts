@@ -6,11 +6,66 @@ import { cacheExtensionManifest } from "./extension-manifest-db";
 export const APPROVED_EXTENSION_REPOSITORY_URL = "https://github.com/FallenSoul7/Frwilxe-Hub";
 const OFFICIAL_REGISTRY_ENDPOINT = "/api/sources/registry";
 const REGISTRY_STORAGE_KEY = "comihub:extension-registry:v1";
+const BREADCRUMB_STORAGE_KEY = "comihub:extension-breadcrumb:v1";
 const MAX_REGISTRY_JSON_CHARS = 1024 * 1024;
 const REMOVED_SOURCE_IDS = new Set([
   "en.utoon", "local.koofr", "en.comix", "en.comickfan",
   "all.atsu", "en.ravenscans", "en.resetscans",
 ]);
+
+export type ExtensionBreadcrumbStep = "system" | "extensions" | "browse" | null;
+
+export interface ExtensionBreadcrumbState {
+  missingExtensionCount: number;
+  step: ExtensionBreadcrumbStep;
+}
+
+function readBreadcrumbState(): ExtensionBreadcrumbState {
+  if (typeof localStorage === "undefined") return { missingExtensionCount: 0, step: null };
+  try {
+    const value = JSON.parse(localStorage.getItem(BREADCRUMB_STORAGE_KEY) ?? "null") as Partial<ExtensionBreadcrumbState> | null;
+    const step = value?.step === "system" || value?.step === "extensions" || value?.step === "browse" ? value.step : null;
+    const count = Number(value?.missingExtensionCount);
+    return { missingExtensionCount: Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0, step };
+  } catch {
+    return { missingExtensionCount: 0, step: null };
+  }
+}
+
+let breadcrumbSnapshot = readBreadcrumbState();
+const breadcrumbListeners = new Set<() => void>();
+
+function publishBreadcrumbState(next: ExtensionBreadcrumbState): void {
+  if (next.missingExtensionCount === breadcrumbSnapshot.missingExtensionCount && next.step === breadcrumbSnapshot.step) return;
+  breadcrumbSnapshot = next;
+  try { localStorage.setItem(BREADCRUMB_STORAGE_KEY, JSON.stringify(next)); } catch { /* Keep the reactive in-memory state. */ }
+  for (const listener of breadcrumbListeners) listener();
+}
+
+export function useExtensionBreadcrumbState(): ExtensionBreadcrumbState {
+  return useSyncExternalStore(
+    listener => {
+      breadcrumbListeners.add(listener);
+      return () => breadcrumbListeners.delete(listener);
+    },
+    () => breadcrumbSnapshot,
+    () => breadcrumbSnapshot,
+  );
+}
+
+export function advanceExtensionBreadcrumb(from: Exclude<ExtensionBreadcrumbStep, null>, to: Exclude<ExtensionBreadcrumbStep, "system" | null>): void {
+  if (breadcrumbSnapshot.missingExtensionCount > 0 && breadcrumbSnapshot.step === from) {
+    publishBreadcrumbState({ ...breadcrumbSnapshot, step: to });
+  }
+}
+
+function setMissingExtensionCount(count: number): void {
+  const missingExtensionCount = Math.max(0, Math.floor(count));
+  publishBreadcrumbState({
+    missingExtensionCount,
+    step: missingExtensionCount === 0 ? null : breadcrumbSnapshot.step ?? "system",
+  });
+}
 
 const SafeIconUrlSchema = z.string().max(2048).nullable().refine(value => {
   if (value === null) return true;
@@ -119,9 +174,14 @@ function subscribe(listener: () => void): () => void {
 
 if (typeof window !== "undefined") {
   window.addEventListener("storage", event => {
-    if (event.key !== REGISTRY_STORAGE_KEY) return;
-    snapshot = readCachedRegistry();
-    for (const listener of listeners) listener();
+    if (event.key === REGISTRY_STORAGE_KEY) {
+      snapshot = readCachedRegistry();
+      for (const listener of listeners) listener();
+      void checkForMissingExtensionCount();
+    } else if (event.key === BREADCRUMB_STORAGE_KEY) {
+      breadcrumbSnapshot = readBreadcrumbState();
+      for (const listener of breadcrumbListeners) listener();
+    }
   });
 }
 
@@ -133,17 +193,36 @@ export function getOfficialExtensionRegistry(): OfficialExtensionRegistry | null
   return snapshot;
 }
 
+async function fetchRemoteRegistry(): Promise<LoadOfficialSourceRegistryResult> {
+  const value = await customFetch<unknown>(OFFICIAL_REGISTRY_ENDPOINT, {
+    responseType: "json",
+    credentials: "omit",
+    redirect: "error",
+    cache: "no-store",
+    referrerPolicy: "no-referrer",
+    headers: { Accept: "application/json" },
+  });
+  return validateRegistry(value);
+}
+
+export async function checkForMissingExtensionCount(): Promise<void> {
+  try {
+    const result = await fetchRemoteRegistry();
+    if (!result.ok) return;
+    const availableRemoteSources = result.registry.extensions;
+    // Local count means official source metadata already synced to this device,
+    // not the user's enabled/installed source selections.
+    const installedLocalSources = readCachedRegistry()?.extensions ?? [];
+    const missingCount = Math.max(0, availableRemoteSources.length - installedLocalSources.length);
+    setMissingExtensionCount(missingCount);
+  } catch {
+    // Preserve any cached breadcrumb state when the registry is unavailable.
+  }
+}
+
 export async function loadOfficialSourceRegistry(): Promise<LoadOfficialSourceRegistryResult> {
   try {
-    const value = await customFetch<unknown>(OFFICIAL_REGISTRY_ENDPOINT, {
-      responseType: "json",
-      credentials: "omit",
-      redirect: "error",
-      cache: "no-store",
-      referrerPolicy: "no-referrer",
-      headers: { Accept: "application/json" },
-    });
-    const result = validateRegistry(value);
+    const result = await fetchRemoteRegistry();
     if (!result.ok) return result;
     if (!publish(result.registry)) {
       return { ok: false, error: "The index loaded but could not be saved on this device." };
@@ -151,6 +230,9 @@ export async function loadOfficialSourceRegistry(): Promise<LoadOfficialSourceRe
     await Promise.all(result.registry.extensions.map(extension =>
       cacheExtensionManifest(extension.id, extension).catch(() => undefined),
     ));
+    const availableRemoteSources = result.registry.extensions;
+    const installedLocalSources = readCachedRegistry()?.extensions ?? [];
+    setMissingExtensionCount(Math.max(0, availableRemoteSources.length - installedLocalSources.length));
     return result;
   } catch {
     return { ok: false, error: "Could not load official sources. Try again when the content service is online." };

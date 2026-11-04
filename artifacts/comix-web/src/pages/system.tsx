@@ -3,6 +3,8 @@ import {
   Settings, Download, BarChart3, Info, FolderOpen, Sparkles, Puzzle, ShieldCheck,
   Trash2, AppWindow, LogIn, Lock, Crown, Smartphone,
 } from "lucide-react";
+import ExtensionBreadcrumbBadge from "@/components/extension-breadcrumb-badge";
+import { useExtensionBreadcrumbState } from "@/lib/extension-registry";
 
 interface SystemBlock {
   href?: string;
@@ -13,7 +15,7 @@ interface SystemBlock {
   highlight?: boolean;
 }
 
-function Block({ block }: { block: SystemBlock }) {
+function Block({ block, extensionBadgeCount = 0 }: { block: SystemBlock; extensionBadgeCount?: number }) {
   const Icon = block.icon;
   const inner = (
     <div
@@ -37,6 +39,7 @@ function Block({ block }: { block: SystemBlock }) {
       <div className="space-y-1 flex-1">
         <h3 className="font-serif font-bold text-base text-foreground flex items-center gap-2">
           {block.label}
+          {extensionBadgeCount > 0 && <ExtensionBreadcrumbBadge count={extensionBadgeCount} />}
           {block.highlight && (
             <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">New</span>
           )}
@@ -146,6 +149,7 @@ const blocks: SystemBlock[] = [
 ];
 
 export default function SystemPage() {
+  const breadcrumb = useExtensionBreadcrumbState();
   return (
     <main className="container mx-auto px-4 pt-4 sm:pt-6 pb-8 max-w-5xl animate-in fade-in duration-300">
       <div className="mb-6 sm:mb-8">
@@ -156,7 +160,11 @@ export default function SystemPage() {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {blocks.map((b) => (
-          <Block key={b.label} block={b} />
+          <Block
+            key={b.label}
+            block={b}
+            extensionBadgeCount={b.href === "/extension-settings" && breadcrumb.step === "extensions" ? breadcrumb.missingExtensionCount : 0}
+          />
         ))}
       </div>
       <nav aria-label="System information links" className="mt-8 flex flex-wrap justify-center gap-x-5 gap-y-2 border-t pt-6 text-sm text-muted-foreground">

@@ -10,6 +10,8 @@ import { useHistoryHeader } from "@/lib/header-history";
 import { usePwa } from "@/lib/pwa-context";
 import { useSyncStatus } from "@/lib/sync-status";
 import { getCachedUser } from "@/lib/auth-cache";
+import ExtensionBreadcrumbBadge from "./extension-breadcrumb-badge";
+import { advanceExtensionBreadcrumb, checkForMissingExtensionCount, useExtensionBreadcrumbState } from "@/lib/extension-registry";
 
 const PAGE_TITLES: Record<string, string> = {
   "/updates": "Updates",
@@ -58,6 +60,7 @@ export function Header() {
   const historyScope = useHistoryHeader();
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const { isStandalone } = usePwa();
+  const breadcrumb = useExtensionBreadcrumbState();
 
   const isHome    = location === "/";
   const isUpdates = location === "/updates";
@@ -68,6 +71,11 @@ export function Header() {
   const urlQ = isSources ? (new URLSearchParams(searchString).get("q") ?? "") : "";
   const [sourcesQuery, setSourcesQuery] = useState(urlQ);
   useEffect(() => { setSourcesQuery(urlQ); }, [urlQ]);
+  useEffect(() => { void checkForMissingExtensionCount(); }, []);
+  useEffect(() => {
+    if (location === "/system") advanceExtensionBreadcrumb("system", "extensions");
+    else if (location === "/extension-settings") advanceExtensionBreadcrumb("extensions", "browse");
+  }, [location, breadcrumb.step]);
 
   const pageTitle = PAGE_TITLES[location] ?? "";
   const showTheme = !isUpdates && !isHistory && !isSystem;
@@ -111,6 +119,7 @@ export function Header() {
           <nav className="hidden md:flex items-center gap-1 mx-2 lg:mx-4">
             {navLinks.map((link) => {
               const isActive = location === link.href;
+              const extensionBadgeCount = link.href === "/system" && breadcrumb.step === "system" ? breadcrumb.missingExtensionCount : 0;
               return (
                 <Link
                   key={link.href}
@@ -121,6 +130,7 @@ export function Header() {
                 >
                   <link.icon className="h-4 w-4" />
                   <span>{link.label}</span>
+                  <ExtensionBreadcrumbBadge count={extensionBadgeCount} />
                   {(link.badge ?? 0) > 0 && (
                     <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary" />
                   )}
@@ -284,6 +294,7 @@ export function Header() {
         <div className="grid grid-cols-5">
           {navLinks.map((link) => {
             const isActive = location === link.href;
+            const extensionBadgeCount = link.href === "/system" && breadcrumb.step === "system" ? breadcrumb.missingExtensionCount : 0;
             return (
               <Link
                 key={link.href}
@@ -295,6 +306,7 @@ export function Header() {
               >
                 <link.icon className="h-5 w-5" />
                 <span>{link.label}</span>
+                <ExtensionBreadcrumbBadge count={extensionBadgeCount} />
                 {(link.badge ?? 0) > 0 && (
                   <span className="absolute top-1 right-[28%] min-w-[16px] h-4 px-1 rounded-full bg-primary text-[10px] text-primary-foreground flex items-center justify-center leading-none">
                     {link.badge}
