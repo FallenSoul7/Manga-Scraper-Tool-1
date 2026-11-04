@@ -36,8 +36,8 @@ function getEndpoint(): string {
   if (base.startsWith("libsql://")) base = `https://${base.slice("libsql://".length)}`;
   if (base.startsWith("turso://")) base = `https://${base.slice("turso://".length)}`;
   const url = new URL(base);
-  while (url.pathname.endsWith("/")) url.pathname = url.pathname.slice(0, -1);
-  if (!url.pathname.endsWith("/v2/pipeline")) url.pathname += "/v2/pipeline";
+  const pathname = url.pathname.replace(/\/+$/, "");
+  url.pathname = pathname.endsWith("/v2/pipeline") ? pathname : `${pathname}/v2/pipeline`;
   url.search = "";
   return url.toString();
 }

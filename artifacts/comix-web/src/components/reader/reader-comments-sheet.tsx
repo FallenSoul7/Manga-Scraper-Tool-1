@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Heart, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { apiUrl } from "@/lib/api-url";
+import { appApiUrl } from "@/lib/api-url";
 import { getCachedUser, onAuthChanged, setCachedUser, clearCachedUser, type CachedUser } from "@/lib/auth-cache";
 
 interface ReaderComment {
@@ -85,7 +85,7 @@ export function ReaderCommentsSheet({
   useEffect(() => {
     if (!open) return;
     let active = true;
-    fetch(apiUrl("/api/auth/me"), { credentials: "include" })
+    fetch(appApiUrl("/api/auth/me"), { credentials: "include" })
       .then((response) => response.json())
       .then((data) => {
         if (!active) return;
@@ -117,7 +117,7 @@ export function ReaderCommentsSheet({
       if (chapterNumber != null) params.set("chapterNumber", String(chapterNumber));
       if (sourceId) params.set("sourceId", sourceId);
       mangaAltTitles.slice(0, 10).forEach((title) => params.append("mangaAltTitle", title));
-      const response = await fetchWithTimeout(apiUrl(`/api/reader-comments?${params.toString()}`), {
+      const response = await fetchWithTimeout(appApiUrl(`/api/reader-comments?${params.toString()}`), {
         credentials: "include",
         headers: { "X-Reader-Voter": voterId },
       });
@@ -138,7 +138,7 @@ export function ReaderCommentsSheet({
     setPosting(true);
     setActionError("");
     try {
-      const response = await fetchWithTimeout(apiUrl("/api/reader-comments"), {
+      const response = await fetchWithTimeout(appApiUrl("/api/reader-comments"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -174,7 +174,7 @@ export function ReaderCommentsSheet({
     setLikePending((previous) => ({ ...previous, [comment.id]: true }));
     setActionError("");
     try {
-      const response = await fetchWithTimeout(apiUrl(`/api/reader-comments/${comment.id}/like`), {
+      const response = await fetchWithTimeout(appApiUrl(`/api/reader-comments/${comment.id}/like`), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", "X-Reader-Voter": voterId },

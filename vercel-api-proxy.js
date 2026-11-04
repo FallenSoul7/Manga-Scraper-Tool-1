@@ -1,11 +1,10 @@
 const { Readable } = require("node:stream");
+const handleReaderComments = require("./vercel-reader-comments");
 
 const PRIMARY_BACKEND =
   process.env.COMIHUB_PRIMARY_BACKEND || "https://manga-scraper-tool-2.onrender.com";
 const FALLBACK_BACKEND =
   process.env.COMIHUB_FALLBACK_BACKEND || "https://comihub-backend.onrender.com";
-const COMMENTS_BACKEND =
-  process.env.COMIHUB_COMMENTS_BACKEND || FALLBACK_BACKEND;
 const BACKEND_TIMEOUT_MS = Number(process.env.COMIHUB_BACKEND_TIMEOUT_MS) || 12_000;
 
 const HOP_BY_HOP_REQUEST_HEADERS = new Set([
@@ -113,9 +112,11 @@ module.exports = async function handler(req, res) {
   res.once("close", abortOnResponseClose);
 
   try {
-    const origins = isReaderCommentsRequest(req)
-      ? [COMMENTS_BACKEND].filter(Boolean)
-      : [PRIMARY_BACKEND, FALLBACK_BACKEND].filter(Boolean);
+    if (isReaderCommentsRequest(req)) {
+      await handleReaderComments(req, res, requestController.signal);
+      return;
+    }
+    const origins = [PRIMARY_BACKEND, FALLBACK_BACKEND].filter(Boolean);
     const body = await readRequestBody(req);
     if (requestController.signal.aborted) return;
 
