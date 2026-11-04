@@ -272,9 +272,16 @@ export default function Reader() {
     setLoadedImgs(prev => (prev[idx] ? prev : { ...prev, [idx]: true }));
   };
 
-  // Webtoon pages can use the native HTTP bridge in the app. The server route
-  // remains a temporary fallback for ordinary browsers, where CORS still applies.
-  const webtoonPagesUseServer = sourceId === "all.webtoons" && !isNativeApp;
+  // Prefer the backend on the web when a source supports it. Many source sites
+  // block browser CORS, so trying each one directly first adds a timeout before
+  // Render can serve the chapter. Native builds keep their device-side adapter;
+  // client-only/imported sources explicitly set fallbackToServer=false.
+  const useServerPagesOnWeb = !isNativeApp &&
+    (sourceId === "all.webtoons" || clientAdapter?.fallbackToServer !== false);
+  const useClientPages = !isOfflineMode && !!chapterId && chapterId !== "0" &&
+    !!clientAdapter?.pages && !useServerPagesOnWeb;
+  const useServerPages = !isNativeApp && !isOfflineMode && !!chapterId && chapterId !== "0" &&
+    (!clientAdapter?.pages || useServerPagesOnWeb);
   const clientPagesQuery = useQuery({
     queryKey: ["client-pages", sourceId, chapterId],
     queryFn: () => clientAdapter?.pages
@@ -285,19 +292,49 @@ export default function Reader() {
           });
         })
       : Promise.reject(new Error("Client pages unavailable")),
-    enabled: !isOfflineMode && !!chapterId && chapterId !== "0" && !!clientAdapter?.pages && !webtoonPagesUseServer,
+    enabled: useClientPages,
     staleTime: 5 * 60 * 1000,
   });
   const serverPagesQuery = useGetChapterPages(chapterId, {
     query: {
-      // Skip API when reading offline or when this source has a client page adapter.
-      enabled: !isNativeApp && !isOfflineMode && !!chapterId && chapterId !== "0" && (!clientAdapter?.pages || webtoonPagesUseServer),
-      queryKey: getGetChapterPagesQueryKey(chapterId),
+      // On web, prefer the backend for built-in/hybrid sources; keep explicitly
+      // client-only extensions on their adapter. Include sourceId to prevent
+      // chapter IDs reused by different extensions from sharing cached results.
+      enabled: useServerPages,
+      queryKey: [...getGetChapterPagesQueryKey(chapterId), sourceId ?? "default"],
+      queryFn: async () => {
+        try {
+          const data = await customFetch<any>(`/api/chapter/${encodeURIComponent(chapterId)}/pages`, {
+            headers: sourceId ? { "X-Source": sourceId } : undefined,
+          });
+          if (Array.isArray(data?.pages) && data.pages.length > 0) return data;
+          if (useServerPagesOnWeb && clientAdapter?.pages) {
+            const clientData = await clientAdapter.pages(chapterId);
+            if (clientData.pages.length > 0) return clientData;
+          }
+          return data;
+        } catch (serverError) {
+          if (useServerPagesOnWeb && clientAdapter?.pages) {
+            try {
+              return await clientAdapter.pages(chapterId);
+            } catch (clientError) {
+              throw clientError ?? serverError;
+            }
+          }
+          throw serverError;
+        }
+      },
+      retry: 1,
+      retryDelay: 1000,
     },
   });
-  const pagesData = clientPagesQuery.data ?? serverPagesQuery.data;
-  const pagesLoading = clientPagesQuery.isLoading || ((!clientAdapter?.pages || webtoonPagesUseServer) && serverPagesQuery.isLoading);
-  const pagesError = clientPagesQuery.error ?? ((!clientAdapter?.pages || webtoonPagesUseServer) ? serverPagesQuery.error : null);
+  const pagesData = useClientPages ? clientPagesQuery.data : useServerPages ? serverPagesQuery.data : undefined;
+  const pagesLoading = useClientPages ? clientPagesQuery.isLoading : useServerPages && serverPagesQuery.isLoading;
+  const pagesError = useClientPages ? clientPagesQuery.error : useServerPages ? serverPagesQuery.error : null;
+  const retryChapterPages = () => {
+    if (useClientPages) void clientPagesQuery.refetch();
+    else if (useServerPages) void serverPagesQuery.refetch();
+  };
 
   // Unified pages array: offline IndexedDB data OR live API data
   const effectivePages: Array<ChapterPage & { videoTracks?: VideoTrack[] }> =
@@ -685,9 +722,14 @@ export default function Reader() {
         <p className="text-white/60 text-sm max-w-md">
           {effectiveError instanceof Error ? effectiveError.message : "The source returned an error while loading the chapter pages."}
         </p>
-        <Button variant="outline" className="mt-2 text-white border-white/30 hover:bg-white/10" onClick={goBack}>
-          Go Back
-        </Button>
+        <div className="flex flex-wrap justify-center gap-2 mt-2">
+          <Button variant="outline" className="text-white border-white/30 hover:bg-white/10" onClick={retryChapterPages}>
+            <RefreshCw className="mr-2 h-4 w-4" /> Retry chapter
+          </Button>
+          <Button variant="ghost" className="text-white/70 hover:text-white" onClick={goBack}>
+            Go Back
+          </Button>
+        </div>
       </div>
     );
   }
