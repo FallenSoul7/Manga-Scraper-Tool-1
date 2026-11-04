@@ -4,6 +4,9 @@ const PRIMARY_BACKEND =
   process.env.COMIHUB_PRIMARY_BACKEND || "https://manga-scraper-tool-2.onrender.com";
 const FALLBACK_BACKEND =
   process.env.COMIHUB_FALLBACK_BACKEND || "https://comihub-backend.onrender.com";
+const COMMENTS_BACKEND =
+  process.env.COMIHUB_COMMENTS_BACKEND || FALLBACK_BACKEND;
+const BACKEND_TIMEOUT_MS = Number(process.env.COMIHUB_BACKEND_TIMEOUT_MS) || 12_000;
 
 const HOP_BY_HOP_REQUEST_HEADERS = new Set([
   "connection",
@@ -37,6 +40,11 @@ function shouldTryFallback(response, method) {
     SAFE_RETRY_METHODS.has(method) &&
     (response.status === 408 || (response.status >= 500 && response.status < 600))
   );
+}
+
+function isReaderCommentsRequest(req) {
+  const path = (req.url || "").split("?", 1)[0];
+  return path === "/api/reader-comments" || path.startsWith("/api/reader-comments/");
 }
 
 function copyRequestHeaders(req) {
@@ -105,13 +113,19 @@ module.exports = async function handler(req, res) {
   res.once("close", abortOnResponseClose);
 
   try {
-    const origins = [PRIMARY_BACKEND, FALLBACK_BACKEND].filter(Boolean);
+    const origins = isReaderCommentsRequest(req)
+      ? [COMMENTS_BACKEND].filter(Boolean)
+      : [PRIMARY_BACKEND, FALLBACK_BACKEND].filter(Boolean);
     const body = await readRequestBody(req);
     if (requestController.signal.aborted) return;
 
     for (let index = 0; index < origins.length; index += 1) {
+      const attemptController = new AbortController();
+      const abortAttempt = () => attemptController.abort();
+      const timeout = setTimeout(() => attemptController.abort(), BACKEND_TIMEOUT_MS);
+      requestController.signal.addEventListener("abort", abortAttempt, { once: true });
       try {
-        const response = await fetchBackend(req, origins[index], body, requestController.signal);
+        const response = await fetchBackend(req, origins[index], body, attemptController.signal);
         if (requestController.signal.aborted) {
           await response.body?.cancel().catch(() => undefined);
           return;
@@ -124,6 +138,9 @@ module.exports = async function handler(req, res) {
         return;
       } catch (error) {
         if (requestController.signal.aborted) return;
+      } finally {
+        clearTimeout(timeout);
+        requestController.signal.removeEventListener("abort", abortAttempt);
       }
     }
 
