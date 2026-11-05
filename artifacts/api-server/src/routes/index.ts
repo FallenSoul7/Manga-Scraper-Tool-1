@@ -10,6 +10,7 @@ import pandachaikaPageRouter from "./pandachaika-page";
 import paypalRouter from "./paypal";
 import paddleRouter from "./paddle";
 import readerCommentsRouter from "./reader-comments";
+import rustScraperRouter from "./rust-scraper";
 
 const router: IRouter = Router();
 
@@ -23,6 +24,7 @@ router.use("/pandachaika-page", pandachaikaPageRouter);
 router.use("/paddle", paddleRouter);
 router.use("/paypal", paypalRouter);
 router.use("/reader-comments", readerCommentsRouter);
+router.use(rustScraperRouter);
 router.use(mangaRouter);
 
 export default router;
