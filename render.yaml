@@ -5,7 +5,7 @@ services:
     name: comihub-backend
     runtime: node
     rootDir: artifacts/api-server
-    buildCommand: pnpm install && pnpm run build
+    buildCommand: pnpm install && bash scripts/build-rust-parser.sh && pnpm run build
     startCommand: node --enable-source-maps ./dist/index.mjs
     envVars:
       - key: NODE_ENV
