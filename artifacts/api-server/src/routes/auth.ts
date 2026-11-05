@@ -392,10 +392,14 @@ router.get("/owner-recovery/users", async (req, res) => {
   if (!isOwner(req)) return res.status(403).json({ error: "Owner access required." });
   const sb = getSupabaseAdmin();
   if (!sb) return res.status(500).json({ error: "Database not configured" });
-  const owners = getOwnerEmails();
-  const { data, error } = await sb.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  if (error) return res.status(502).json({ error: "Unable to load owner accounts." });
-  return res.json({ users: data.users.filter(user => owners.has((user.email ?? "").toLowerCase())).map(user => ({ id: user.id, email: user.email })) });
+  const accounts: Array<{ id: string; email: string | null; phone: string | null }> = [];
+  for (let page = 1; ; page++) {
+    const { data, error } = await sb.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) return res.status(502).json({ error: "Unable to load accounts." });
+    accounts.push(...data.users.map(user => ({ id: user.id, email: user.email ?? null, phone: user.phone ?? null })));
+    if (data.users.length < 1000) break;
+  }
+  return res.json({ users: accounts });
 });
 
 router.post("/owner-recovery/reset", async (req, res) => {
@@ -405,9 +409,8 @@ router.post("/owner-recovery/reset", async (req, res) => {
   if (!userId || password.length < 8) return res.status(400).json({ error: "A user and a password of at least 8 characters are required." });
   const sb = getSupabaseAdmin();
   if (!sb) return res.status(500).json({ error: "Database not configured" });
-  const owners = getOwnerEmails();
   const { data: target, error: lookupError } = await sb.auth.admin.getUserById(userId);
-  if (lookupError || !target.user?.email || !owners.has(target.user.email.toLowerCase())) return res.status(404).json({ error: "Owner account not found." });
+  if (lookupError || !target.user) return res.status(404).json({ error: "Account not found." });
   const { error } = await sb.auth.admin.updateUserById(userId, { password });
   if (error) return res.status(502).json({ error: "Unable to update the password." });
   try { await sb.auth.admin.signOut(userId, "global"); } catch { /* password update already succeeded */ }
