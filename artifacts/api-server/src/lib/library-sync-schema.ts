@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const MAX_LIBRARY_ITEMS = 20_000;
+const MAX_DELETED_LIBRARY_ITEMS = 20_000;
 const MAX_PROGRESS_ITEMS = 50_000;
 const MAX_HISTORY_ITEMS = 20_000;
 const MAX_INSTALLED_SOURCES = 500;
@@ -103,12 +104,17 @@ const InstalledSourceIdsSchema = z.array(sourceId).max(MAX_INSTALLED_SOURCES)
 const LibraryRecordSchema = z.record(id, SavedMangaSchema)
   .refine((entries) => Object.entries(entries).every(([key, entry]) => key === entry.id), "Library keys must match entry IDs.")
   .refine((entries) => Object.keys(entries).length <= MAX_LIBRARY_ITEMS, "Too many library entries.");
+const DeletedLibraryItemsSchema = z.record(id, nonNegativeInt).refine(
+  (entries) => Object.keys(entries).length <= MAX_DELETED_LIBRARY_ITEMS,
+  "Too many deleted library entries.",
+);
 const ProgressRecordSchema = z.record(id, ChapterProgressSchema)
   .refine((entries) => Object.keys(entries).length <= MAX_PROGRESS_ITEMS, "Too many progress entries.");
 
 /** Canonical JSONB shape: bounded text metadata and installed source IDs only. */
 export const LibrarySyncDataSchema = z.object({
   library: LibraryRecordSchema,
+  deletedLibraryItems: DeletedLibraryItemsSchema.default({}),
   categories: z.array(CategorySchema).max(MAX_CATEGORIES),
   installedSourceIds: InstalledSourceIdsSchema,
   progress: ProgressRecordSchema,
@@ -122,6 +128,7 @@ export const LibrarySyncDataSchema = z.object({
  */
 export const LibrarySyncPayloadSchema = z.object({
   library: LibraryRecordSchema.optional(),
+  deletedLibraryItems: DeletedLibraryItemsSchema.default({}),
   categories: z.array(CategorySchema).max(MAX_CATEGORIES).optional(),
   installedSourceIds: InstalledSourceIdsSchema.optional(),
   installedSources: LegacyInstalledSourceRecordSchema.optional(),

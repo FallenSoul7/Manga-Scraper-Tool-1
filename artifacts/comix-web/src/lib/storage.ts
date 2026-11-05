@@ -143,6 +143,7 @@ export const DEFAULT_SOURCE: InstalledSource = {
 
 const StoreStateSchema = z.object({
   library: z.record(z.string(), SavedMangaSchema),
+  deletedLibraryItems: z.record(z.string(), z.number().int().nonnegative()).default({}),
   categories: z.array(CategorySchema),
   progress: z.record(z.string(), ChapterProgressSchema),
   history: z.array(z.string()),
@@ -171,6 +172,7 @@ const DEFAULT_CATEGORIES: Category[] = [
 
 const DEFAULT_STATE: StoreState = {
   library: {},
+  deletedLibraryItems: {},
   categories: DEFAULT_CATEGORIES,
   progress: {},
   history: [],
@@ -351,8 +353,13 @@ export function useStore<T>(selector: (state: StoreState) => T): T {
 
 export const storeActions = {
   addToLibrary(manga: SavedManga) {
+    const deletedAt = memoryState.deletedLibraryItems[manga.id] ?? 0;
+    if (deletedAt && manga.addedAt <= deletedAt) return;
+    const deletedLibraryItems = { ...memoryState.deletedLibraryItems };
+    delete deletedLibraryItems[manga.id];
     saveState({
       ...memoryState,
+      deletedLibraryItems,
       library: {
         ...memoryState.library,
         [manga.id]: { ...manga, updatedAt: Date.now() }
@@ -363,7 +370,11 @@ export const storeActions = {
   removeFromLibrary(mangaId: string) {
     const newLib = { ...memoryState.library };
     delete newLib[mangaId];
-    saveState({ ...memoryState, library: newLib });
+    saveState({
+      ...memoryState,
+      library: newLib,
+      deletedLibraryItems: { ...memoryState.deletedLibraryItems, [mangaId]: Date.now() },
+    });
   },
   
   isInLibrary(mangaId: string): boolean {
@@ -462,6 +473,7 @@ export const storeActions = {
   // install metadata/manifests are device-local and are never reconstructed here.
   restoreCloudSync(data: { 
     library?: Record<string, SavedManga>; 
+    deletedLibraryItems?: Record<string, number>;
     categories?: Category[]; 
     installedSourceIds?: string[];
     progress?: Record<string, ChapterProgress>;
@@ -473,9 +485,27 @@ export const storeActions = {
     const activeSourceId = installedSources[memoryState.activeSourceId]
       ? memoryState.activeSourceId
       : Object.keys(installedSources)[0] ?? "";
+    const library = { ...memoryState.library };
+    for (const [id, entry] of Object.entries(data.library ?? {})) {
+      const current = library[id];
+      if (!current || Math.max(entry.addedAt ?? 0, entry.updatedAt ?? 0) >= Math.max(current.addedAt ?? 0, current.updatedAt ?? 0)) {
+        library[id] = entry;
+      }
+    }
+    const deletedLibraryItems = { ...(data.deletedLibraryItems ?? {}) };
+    for (const [id, deletedAt] of Object.entries(memoryState.deletedLibraryItems)) {
+      deletedLibraryItems[id] = Math.max(deletedLibraryItems[id] ?? 0, deletedAt);
+    }
+    for (const [id, deletedAt] of Object.entries(deletedLibraryItems)) {
+      const entry = library[id];
+      if (!entry) continue;
+      if (deletedAt >= entry.addedAt) delete library[id];
+      else delete deletedLibraryItems[id];
+    }
     saveState({
       ...memoryState,
-      library: data.library || memoryState.library,
+      library,
+      deletedLibraryItems,
       categories: data.categories || memoryState.categories,
       installedSources,
       progress: data.progress ?? memoryState.progress,

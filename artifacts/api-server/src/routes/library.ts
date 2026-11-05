@@ -80,6 +80,7 @@ router.post("/sync", requireAuth, async (req, res) => {
     }
     const {
       library: incomingLib = {},
+      deletedLibraryItems: incomingDeleted = {},
       categories: incomingCats = [],
       installedSourceIds: incomingSourceIds = [],
       progress: incomingProgress = {},
@@ -108,6 +109,7 @@ router.post("/sync", requireAuth, async (req, res) => {
     if (strategy === "upload") {
       finalData = {
         library: incomingLib,
+        deletedLibraryItems: incomingDeleted,
         categories: incomingCats,
         installedSourceIds: incomingSourceIds.filter((id) => id !== "local.koofr" && id !== "builtin.universal"),
         progress: incomingProgress,
@@ -119,13 +121,14 @@ router.post("/sync", requireAuth, async (req, res) => {
       const storedObject = rawStored && typeof rawStored === "object" && !Array.isArray(rawStored)
         ? rawStored as Record<string, unknown>
         : {};
-      const isWrapped = ["library", "categories", "installedSourceIds", "installedSources", "progress", "history"]
+      const isWrapped = ["library", "deletedLibraryItems", "categories", "installedSourceIds", "installedSources", "progress", "history"]
         .some((key) => Object.prototype.hasOwnProperty.call(storedObject, key));
       const legacySources = storedObject.installedSources && typeof storedObject.installedSources === "object" && !Array.isArray(storedObject.installedSources)
         ? storedObject.installedSources as Record<string, unknown>
         : {};
       const storedValidation = LibrarySyncDataSchema.safeParse({
         library: isWrapped ? storedObject.library ?? {} : storedObject,
+        deletedLibraryItems: storedObject.deletedLibraryItems ?? {},
         categories: storedObject.categories ?? [],
         installedSourceIds: Array.isArray(storedObject.installedSourceIds)
           ? storedObject.installedSourceIds
@@ -135,7 +138,7 @@ router.post("/sync", requireAuth, async (req, res) => {
       });
       const stored: LibrarySyncData = storedValidation.success
         ? storedValidation.data
-        : { library: {}, categories: [], installedSourceIds: [], progress: {}, history: [] };
+        : { library: {}, deletedLibraryItems: {}, categories: [], installedSourceIds: [], progress: {}, history: [] };
       if (!storedValidation.success) logger.warn("Stored library sync data failed metadata validation; invalid fields will be discarded.");
 
       // Merge Library — use the highest of addedAt/updatedAt so that mutations
@@ -145,11 +148,21 @@ router.post("/sync", requireAuth, async (req, res) => {
         Math.max((e.addedAt ?? 0), (e.updatedAt ?? 0));
 
       const finalLibrary = { ...stored.library };
+      const finalDeleted = { ...stored.deletedLibraryItems };
+      for (const [id, deletedAt] of Object.entries(incomingDeleted)) {
+        finalDeleted[id] = Math.max(finalDeleted[id] ?? 0, deletedAt);
+      }
       for (const [id, entry] of Object.entries(incomingLib)) {
         const current = stored.library[id];
-        if (!current || effectiveTs(entry) >= effectiveTs(current)) {
+        if (entry.addedAt > (finalDeleted[id] ?? 0) && (!current || effectiveTs(entry) >= effectiveTs(current))) {
           finalLibrary[id] = entry;
+          delete finalDeleted[id];
         }
+      }
+      for (const [id, entry] of Object.entries(finalLibrary)) {
+        const deletedAt = finalDeleted[id] ?? 0;
+        if (deletedAt >= entry.addedAt) delete finalLibrary[id];
+        else if (deletedAt) delete finalDeleted[id];
       }
 
       // Merge categories, retaining the existing device-independent behavior.
@@ -173,6 +186,7 @@ router.post("/sync", requireAuth, async (req, res) => {
 
       finalData = {
         library: finalLibrary,
+        deletedLibraryItems: finalDeleted,
         categories: finalCategories,
         installedSourceIds: finalSourceIds,
         progress: finalProgress,

@@ -9,6 +9,7 @@ export type SyncState = "idle" | "uploading" | "downloading" | "done" | "error";
 
 export function useLibrarySync() {
   const library = useStore(s => s.library);
+  const deletedLibraryItems = useStore(s => s.deletedLibraryItems);
   const categories = useStore(s => s.categories);
   const installedSources = useStore(s => s.installedSources);
   const progress = useStore(s => s.progress);
@@ -57,6 +58,7 @@ export function useLibrarySync() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             library: snap.library,
+            deletedLibraryItems: snap.deletedLibraryItems,
             categories: snap.categories,
             installedSourceIds: Object.keys(snap.installedSources),
             progress: snap.progress,
@@ -105,10 +107,10 @@ export function useLibrarySync() {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ library, categories, installedSourceIds: Object.keys(installedSources), progress, history, strategy: "merge" }),
+      body: JSON.stringify({ library, deletedLibraryItems, categories, installedSourceIds: Object.keys(installedSources), progress, history, strategy: "merge" }),
     }).catch(() => {});
 
-  }, [library, categories, installedSources, progress, history, backendReady]);
+  }, [library, deletedLibraryItems, categories, installedSources, progress, history, backendReady]);
 
   const uploadLibrary = useCallback(async () => {
     setState("uploading");
@@ -118,7 +120,7 @@ export function useLibrarySync() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ library, categories, installedSourceIds: Object.keys(installedSources), progress, history, strategy: "merge" }),
+        body: JSON.stringify({ library, deletedLibraryItems, categories, installedSourceIds: Object.keys(installedSources), progress, history, strategy: "merge" }),
       });
       
       const data = await res.json().catch(() => ({}));
@@ -136,7 +138,7 @@ export function useLibrarySync() {
       setState("error");
       setMessage(err.message ?? "Upload failed");
     }
-  }, [library, categories, installedSources, progress, history]);
+  }, [library, deletedLibraryItems, categories, installedSources, progress, history]);
 
   const downloadLibrary = useCallback(async () => {
     setState("downloading");
