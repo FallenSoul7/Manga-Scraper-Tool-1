@@ -11,8 +11,11 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import dns from "node:dns/promises";
 import net from "node:net";
+import { configureMangaThemesiaParser } from "@fallensoul7/frwilxe-hub-sources";
+import { parseHtmlWithRust } from "./utils/rust-parser";
 
 const app: Express = express();
+configureMangaThemesiaParser(parseHtmlWithRust);
 app.set("trust proxy", 1);
 
 app.disable("x-powered-by");
