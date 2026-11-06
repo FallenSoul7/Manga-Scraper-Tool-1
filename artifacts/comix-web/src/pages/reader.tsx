@@ -365,8 +365,11 @@ export default function Reader() {
   // Unified pages array: offline IndexedDB data OR live API data
   const rawPages = (isOfflineMode && offlinePages) ? offlinePages : pagesData?.pages;
   const effectivePages = useMemo(() => normalizeReaderPages(rawPages), [rawPages]);
-  const effectiveLoading = isOfflineMode ? offlineLoading : pagesLoading;
   const effectiveError = isOfflineMode ? null : pagesError;
+  const pageQueryEnabled = useClientPages || useServerPages;
+  const effectiveLoading = isOfflineMode
+    ? offlineLoading
+    : pagesLoading || (pageQueryEnabled && pagesData === undefined && !effectiveError);
   const translationPages = useMemo(() => {
     const pages = effectivePages.map((page, index) => ({
       url: page.url,
