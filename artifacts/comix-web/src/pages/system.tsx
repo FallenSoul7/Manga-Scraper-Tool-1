@@ -1,10 +1,12 @@
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import {
   Settings, Download, BarChart3, Info, FolderOpen, Sparkles, Puzzle, ShieldCheck,
-  Trash2, AppWindow, LogIn, Lock, Crown, Smartphone,
+  Trash2, AppWindow, LogIn, Lock, Crown, Smartphone, UserRound,
 } from "lucide-react";
 import ExtensionBreadcrumbBadge from "@/components/extension-breadcrumb-badge";
 import { useExtensionBreadcrumbState } from "@/lib/extension-registry";
+import { getCachedUser, onAuthChanged } from "@/lib/auth-cache";
 
 interface SystemBlock {
   href?: string;
@@ -13,6 +15,8 @@ interface SystemBlock {
   icon: typeof Settings;
   comingSoon?: boolean;
   highlight?: boolean;
+  profileTone?: "signed-in" | "signed-out";
+  authStatus?: string;
 }
 
 function Block({ block, extensionBadgeCount = 0 }: { block: SystemBlock; extensionBadgeCount?: number }) {
@@ -22,7 +26,9 @@ function Block({ block, extensionBadgeCount = 0 }: { block: SystemBlock; extensi
       className={`relative h-full rounded-2xl border px-4 py-2 sm:px-5 sm:py-3 transition-all flex flex-col gap-1 ${
         block.comingSoon
           ? "bg-card/50 border-dashed text-muted-foreground"
-          : block.highlight
+          : block.profileTone === "signed-out"
+          ? "bg-emerald-500/5 border-emerald-500/40 hover:bg-emerald-500/10 hover:border-emerald-500/60 hover:shadow-md cursor-pointer"
+          : block.profileTone === "signed-in" || block.highlight
           ? "bg-primary/5 border-primary/40 hover:bg-primary/10 hover:border-primary/60 hover:shadow-md cursor-pointer"
           : "bg-card hover:bg-muted hover:border-primary/40 hover:shadow-md cursor-pointer"
       }`}
@@ -30,7 +36,9 @@ function Block({ block, extensionBadgeCount = 0 }: { block: SystemBlock; extensi
       <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${
         block.comingSoon
           ? "bg-muted"
-          : block.highlight
+          : block.profileTone === "signed-out"
+          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+          : block.profileTone === "signed-in" || block.highlight
           ? "bg-primary/20 text-primary"
           : "bg-primary/10 text-primary"
       }`}>
@@ -39,6 +47,11 @@ function Block({ block, extensionBadgeCount = 0 }: { block: SystemBlock; extensi
       <div className="space-y-1 flex-1">
         <h3 className="font-serif font-bold text-base text-foreground flex items-center gap-2">
           {block.label}
+          {block.authStatus && (
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${block.profileTone === "signed-in" ? "bg-primary/10 text-primary" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}`}>
+              {block.authStatus}
+            </span>
+          )}
           {extensionBadgeCount > 0 && <ExtensionBreadcrumbBadge count={extensionBadgeCount} />}
           {block.highlight && (
             <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">New</span>
@@ -150,6 +163,19 @@ const blocks: SystemBlock[] = [
 
 export default function SystemPage() {
   const breadcrumb = useExtensionBreadcrumbState();
+  const [user, setUser] = useState(() => getCachedUser());
+  useEffect(() => onAuthChanged(() => setUser(getCachedUser())), []);
+  const systemBlocks: SystemBlock[] = [
+    {
+      href: "/profile",
+      label: "Profile",
+      description: user ? "Manage your username and profile picture." : "Not logged in — open your profile or sign in.",
+      icon: UserRound,
+      profileTone: user ? "signed-in" : "signed-out",
+      authStatus: user ? "Logged in" : "Not logged in",
+    },
+    ...blocks,
+  ];
   return (
     <main className="container mx-auto px-4 pt-4 sm:pt-6 pb-8 max-w-5xl animate-in fade-in duration-300">
       <div className="mb-6 sm:mb-8">
@@ -159,7 +185,7 @@ export default function SystemPage() {
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-        {blocks.map((b) => (
+        {systemBlocks.map((b) => (
           <Block
             key={b.label}
             block={b}

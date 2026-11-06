@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
@@ -13,6 +13,56 @@ import { logger } from "../lib/logger";
 import { rateLimit } from "../lib/rate-limit";
 
 const router = Router();
+const AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+type AvatarSqlArg = { type: "text"; value: string } | { type: "blob"; base64: string };
+let avatarSchemaPromise: Promise<void> | null = null;
+
+function tursoPipelineUrl(): string {
+  let base = (process.env["TURSO_DATABASE_URL"] ?? "").trim();
+  if (base.startsWith("libsql://")) base = `https://${base.slice("libsql://".length)}`;
+  if (base.startsWith("turso://")) base = `https://${base.slice("turso://".length)}`;
+  const url = new URL(base);
+  const path = url.pathname.replace(/\/+$/, "");
+  url.pathname = path.endsWith("/v2/pipeline") ? path : `${path}/v2/pipeline`;
+  url.search = "";
+  return url.toString();
+}
+
+async function runAvatarSql(sql: string, args: AvatarSqlArg[] = []): Promise<any> {
+  const token = process.env["TURSO_AUTH_TOKEN"]?.trim();
+  if (!token || !process.env["TURSO_DATABASE_URL"]?.trim()) throw new Error("Turso avatar storage is not configured.");
+  const requests = [{ type: "execute", stmt: { sql, ...(args.length ? { args } : {}) } }, { type: "close" }];
+  const response = await fetch(tursoPipelineUrl(), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ requests }),
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) throw new Error("Turso avatar storage request failed.");
+  const payload = await response.json() as { results?: Array<{ type?: string; error?: { message?: string }; response?: { result?: any } }> };
+  const results = payload.results ?? [];
+  const failed = results.find((result) => result.type !== "ok");
+  if (failed) throw new Error(failed.error?.message || "Turso avatar query failed.");
+  return results[0]?.response?.result;
+}
+
+async function ensureAvatarSchema(): Promise<void> {
+  if (!avatarSchemaPromise) {
+    avatarSchemaPromise = runAvatarSql(`CREATE TABLE IF NOT EXISTS user_profile_avatars (
+      user_id TEXT PRIMARY KEY,
+      image BLOB NOT NULL CHECK(typeof(image) = 'blob' AND length(image) BETWEEN 12 AND 4194304),
+      updated_at TEXT NOT NULL
+    ) WITHOUT ROWID`).then(() => undefined).catch((error) => {
+      avatarSchemaPromise = null;
+      throw error;
+    });
+  }
+  return avatarSchemaPromise;
+}
+
+function avatarUserId(req: any): string | null {
+  return req.isAuthenticated?.() && req.user ? String(req.user.id ?? "") || null : null;
+}
 
 const configuredSessionSecret = process.env["SESSION_SECRET"]?.trim();
 if (process.env["NODE_ENV"] === "production" && (!configuredSessionSecret || configuredSessionSecret.length < 32)) {
@@ -257,6 +307,58 @@ router.get("/me", (req, res) => {
     res.json({ user: req.user });
   } else {
     res.json({ user: null });
+  }
+});
+
+router.get("/profile/avatar", async (req, res) => {
+  const userId = avatarUserId(req);
+  if (!userId) return res.status(401).json({ error: "Not signed in" });
+  try {
+    await ensureAvatarSchema();
+    const result = await runAvatarSql("SELECT image FROM user_profile_avatars WHERE user_id = ? LIMIT 1", [
+      { type: "text", value: userId },
+    ]);
+    const cell = result?.rows?.[0]?.[0] as { type?: string; base64?: string; value?: string } | undefined;
+    const encoded = cell?.base64 ?? cell?.value;
+    if (!cell || cell.type !== "blob" || typeof encoded !== "string") return res.status(404).end();
+    const image = Buffer.from(encoded, "base64");
+    if (image.length < 12 || image.length > AVATAR_MAX_BYTES || image.toString("ascii", 0, 4) !== "RIFF" || image.toString("ascii", 8, 12) !== "WEBP") {
+      return res.status(404).end();
+    }
+    res.setHeader("Content-Type", "image/webp");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    return res.status(200).send(image);
+  } catch {
+    logger.error("Profile avatar read failed");
+    return res.status(503).json({ error: "Profile picture storage is unavailable." });
+  }
+});
+
+router.put("/profile/avatar", rateLimit({ windowMs: 60 * 60 * 1000, max: 8 }), (req, res, next) => {
+  if (!avatarUserId(req)) return res.status(401).json({ error: "Not signed in" });
+  return next();
+}, express.raw({ type: "image/webp", limit: AVATAR_MAX_BYTES }), async (req, res) => {
+  const userId = avatarUserId(req);
+  if (!userId) return res.status(401).json({ error: "Not signed in" });
+  const contentType = String(req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase();
+  const image = req.body;
+  if (contentType !== "image/webp" || !Buffer.isBuffer(image)) return res.status(415).json({ error: "Upload a supported image." });
+  if (image.length < 12 || image.length > AVATAR_MAX_BYTES || image.toString("ascii", 0, 4) !== "RIFF" || image.toString("ascii", 8, 12) !== "WEBP" || image.readUInt32LE(4) + 8 !== image.length) {
+    return res.status(400).json({ error: "Invalid WebP image or file size. Maximum: 4 MiB." });
+  }
+  try {
+    await ensureAvatarSchema();
+    await runAvatarSql(`INSERT INTO user_profile_avatars (user_id, image, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET image = excluded.image, updated_at = excluded.updated_at`, [
+      { type: "text", value: userId },
+      { type: "blob", base64: image.toString("base64") },
+      { type: "text", value: new Date().toISOString() },
+    ]);
+    return res.json({ ok: true });
+  } catch {
+    logger.error("Profile avatar save failed");
+    return res.status(503).json({ error: "Profile picture could not be saved." });
   }
 });
 
