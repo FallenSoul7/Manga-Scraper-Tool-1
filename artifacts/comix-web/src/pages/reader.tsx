@@ -739,6 +739,18 @@ export default function Reader() {
     return () => window.removeEventListener("scroll", onNovelScroll);
   }, [textPage?.text, nextChapter?.id, mangaId, sourceId, setLocation]);
 
+  const currChapterObj = effectiveChapterData.find(c => String(c.id) === chapterId);
+  const activeReaderChapter = useMemo(() => {
+    if (effectiveDirection !== "webtoon" && effectiveDirection !== "vertical") return currChapterObj;
+    let offset = effectivePages.length;
+    for (const chapter of appendedChapters) {
+      const end = offset + (chapter.pages?.length ?? 0);
+      if (currentPage < end) return chapter;
+      offset = end;
+    }
+    return currChapterObj;
+  }, [effectiveDirection, effectivePages.length, appendedChapters, currentPage, currChapterObj]);
+
   if (effectiveLoading) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white/50">
@@ -879,17 +891,6 @@ export default function Reader() {
     }
   };
 
-  const currChapterObj = effectiveChapterData.find(c => String(c.id) === chapterId);
-  const activeReaderChapter = useMemo(() => {
-    if (effectiveDirection !== "webtoon" && effectiveDirection !== "vertical") return currChapterObj;
-    let offset = effectivePages.length;
-    for (const chapter of appendedChapters) {
-      const end = offset + (chapter.pages?.length ?? 0);
-      if (currentPage < end) return chapter;
-      offset = end;
-    }
-    return currChapterObj;
-  }, [effectiveDirection, effectivePages.length, appendedChapters, currentPage, currChapterObj]);
   const appendedPageCount = effectiveDirection === "webtoon" || effectiveDirection === "vertical"
     ? appendedChapters.reduce((total, chapter) => total + (chapter.pages?.length ?? 0), 0)
     : 0;
