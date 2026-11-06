@@ -109,6 +109,7 @@ function isPublicReadRequest(req: Request): boolean {
   if (
     path === "/api/healthz" ||
     path === "/api/sources/registry" ||
+    path === "/api/sources/registry/version" ||
     path === "/api/popular" ||
     path === "/api/latest" ||
     path === "/api/search" ||

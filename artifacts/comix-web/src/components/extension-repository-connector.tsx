@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import ExtensionBreadcrumbBadge from "@/components/extension-breadcrumb-badge";
 import {
   useExtensionBreadcrumbState,
   loadOfficialSourceRegistry,
+  revalidateOfficialSourceRegistryInBackground,
   useOfficialExtensionRegistry,
   type OfficialExtensionEntry,
 } from "@/lib/extension-registry";
@@ -46,6 +47,15 @@ export default function ExtensionRepositoryConnector() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [search, setSearch] = useState("");
 
+  useEffect(() => {
+    const revalidateWhenVisible = () => {
+      if (document.visibilityState === "visible") void revalidateOfficialSourceRegistryInBackground();
+    };
+    void revalidateOfficialSourceRegistryInBackground();
+    document.addEventListener("visibilitychange", revalidateWhenVisible);
+    return () => document.removeEventListener("visibilitychange", revalidateWhenVisible);
+  }, []);
+
   const visibleExtensions = useMemo(() => {
     const matureAllowed = hasAdultAccessConsent();
     const query = search.trim().toLowerCase();
@@ -57,8 +67,20 @@ export default function ExtensionRepositoryConnector() {
   }, [registry, search]);
 
   const browseSources = async () => {
-    setLoading(true);
     setError("");
+    setSearch("");
+    if (registry) {
+      setDialogOpen(true);
+      void loadOfficialSourceRegistry().then(result => {
+        if (!result.ok) {
+          toast({ title: "Showing saved source list", description: "Go online to refresh it." });
+          return;
+        }
+        toast({ title: `${result.registry.extensions.length} official sources loaded` });
+      });
+      return;
+    }
+    setLoading(true);
     const result = await loadOfficialSourceRegistry();
     setLoading(false);
     if (!result.ok) {

@@ -5,6 +5,7 @@ import { cacheExtensionManifest } from "./extension-manifest-db";
 
 export const APPROVED_EXTENSION_REPOSITORY_URL = "https://github.com/FallenSoul7/Frwilxe-Hub";
 const OFFICIAL_REGISTRY_ENDPOINT = "/api/sources/registry";
+const OFFICIAL_REGISTRY_VERSION_ENDPOINT = "/api/sources/registry/version";
 const REGISTRY_STORAGE_KEY = "comihub:extension-registry:v1";
 const BREADCRUMB_STORAGE_KEY = "comihub:extension-breadcrumb:v1";
 const MAX_REGISTRY_JSON_CHARS = 1024 * 1024;
@@ -96,6 +97,7 @@ const ExtensionRegistrySchema = z.object({
     name: z.literal("Frwilxe Hub"),
     url: z.literal(APPROVED_EXTENSION_REPOSITORY_URL),
   }).strict(),
+  metadataHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   generatedAt: z.string().max(64).refine(value => Number.isFinite(Date.parse(value))),
   extensions: z.array(RegistryEntrySchema).max(2000),
 }).strict().superRefine((registry, context) => {
@@ -110,6 +112,11 @@ const ExtensionRegistrySchema = z.object({
     ids.add(extension.id);
   }
 });
+
+const ExtensionRegistryVersionSchema = z.object({
+  metadataHash: z.string().regex(/^[a-f0-9]{64}$/),
+  extensionCount: z.number().int().min(0).max(2000),
+}).strict();
 
 export type OfficialExtensionEntry = z.infer<typeof RegistryEntrySchema>;
 export type OfficialExtensionRegistry = z.infer<typeof ExtensionRegistrySchema>;
@@ -193,6 +200,23 @@ export function getOfficialExtensionRegistry(): OfficialExtensionRegistry | null
   return snapshot;
 }
 
+async function fetchRemoteRegistryVersion(): Promise<z.infer<typeof ExtensionRegistryVersionSchema> | null> {
+  try {
+    const value = await customFetch<unknown>(OFFICIAL_REGISTRY_VERSION_ENDPOINT, {
+      responseType: "json",
+      credentials: "omit",
+      redirect: "error",
+      cache: "no-store",
+      referrerPolicy: "no-referrer",
+      headers: { Accept: "application/json" },
+    });
+    const parsed = ExtensionRegistryVersionSchema.safeParse(value);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchRemoteRegistry(): Promise<LoadOfficialSourceRegistryResult> {
   const value = await customFetch<unknown>(OFFICIAL_REGISTRY_ENDPOINT, {
     responseType: "json",
@@ -205,16 +229,57 @@ async function fetchRemoteRegistry(): Promise<LoadOfficialSourceRegistryResult> 
   return validateRegistry(value);
 }
 
+function applyFetchedRegistry(registry: OfficialExtensionRegistry): { persisted: boolean; extensionsChanged: boolean } {
+  const previous = snapshot;
+  const extensionsChanged = !previous || JSON.stringify(previous.extensions) !== JSON.stringify(registry.extensions);
+  const metadataChanged = !previous || previous.metadataHash !== registry.metadataHash || extensionsChanged;
+  if (!metadataChanged) return { persisted: true, extensionsChanged: false };
+  return { persisted: publish(registry), extensionsChanged };
+}
+
+async function cacheRegistryManifests(registry: OfficialExtensionRegistry): Promise<void> {
+  await Promise.all(registry.extensions.map(extension =>
+    cacheExtensionManifest(extension.id, extension).catch(() => undefined),
+  ));
+}
+
+function updateMissingExtensionCount(availableCount: number): void {
+  // Count locally cached metadata, not the user's enabled source selections.
+  const installedLocalSources = readCachedRegistry()?.extensions ?? [];
+  setMissingExtensionCount(Math.max(0, availableCount - installedLocalSources.length));
+}
+
+let registryRevalidationPromise: Promise<void> | null = null;
+
+export function revalidateOfficialSourceRegistryInBackground(): Promise<void> {
+  if (registryRevalidationPromise) return registryRevalidationPromise;
+  const task = (async () => {
+    try {
+      const version = await fetchRemoteRegistryVersion();
+      if (version && snapshot?.metadataHash === version.metadataHash && snapshot.extensions.length === version.extensionCount) return;
+      const result = await fetchRemoteRegistry();
+      if (!result.ok) return;
+      const applied = applyFetchedRegistry(result.registry);
+      if (!applied.persisted) return;
+      if (applied.extensionsChanged) await cacheRegistryManifests(result.registry);
+      // Keep the onboarding breadcrumb until the user opens Browse Sources.
+    } catch {
+      // Cached metadata remains immediately usable while offline or on API failure.
+    }
+  })();
+  registryRevalidationPromise = task.finally(() => { registryRevalidationPromise = null; });
+  return registryRevalidationPromise;
+}
+
 export async function checkForMissingExtensionCount(): Promise<void> {
   try {
+    const version = await fetchRemoteRegistryVersion();
+    if (version) {
+      updateMissingExtensionCount(version.extensionCount);
+      return;
+    }
     const result = await fetchRemoteRegistry();
-    if (!result.ok) return;
-    const availableRemoteSources = result.registry.extensions;
-    // Local count means official source metadata already synced to this device,
-    // not the user's enabled/installed source selections.
-    const installedLocalSources = readCachedRegistry()?.extensions ?? [];
-    const missingCount = Math.max(0, availableRemoteSources.length - installedLocalSources.length);
-    setMissingExtensionCount(missingCount);
+    if (result.ok) updateMissingExtensionCount(result.registry.extensions.length);
   } catch {
     // Preserve any cached breadcrumb state when the registry is unavailable.
   }
@@ -222,17 +287,19 @@ export async function checkForMissingExtensionCount(): Promise<void> {
 
 export async function loadOfficialSourceRegistry(): Promise<LoadOfficialSourceRegistryResult> {
   try {
+    const version = await fetchRemoteRegistryVersion();
+    if (version && snapshot?.metadataHash === version.metadataHash && snapshot.extensions.length === version.extensionCount) {
+      updateMissingExtensionCount(version.extensionCount);
+      return { ok: true, registry: snapshot };
+    }
     const result = await fetchRemoteRegistry();
     if (!result.ok) return result;
-    if (!publish(result.registry)) {
+    const applied = applyFetchedRegistry(result.registry);
+    if (!applied.persisted) {
       return { ok: false, error: "The index loaded but could not be saved on this device." };
     }
-    await Promise.all(result.registry.extensions.map(extension =>
-      cacheExtensionManifest(extension.id, extension).catch(() => undefined),
-    ));
-    const availableRemoteSources = result.registry.extensions;
-    const installedLocalSources = readCachedRegistry()?.extensions ?? [];
-    setMissingExtensionCount(Math.max(0, availableRemoteSources.length - installedLocalSources.length));
+    if (applied.extensionsChanged) await cacheRegistryManifests(result.registry);
+    updateMissingExtensionCount(result.registry.extensions.length);
     return result;
   } catch {
     return { ok: false, error: "Could not load official sources. Try again when the content service is online." };

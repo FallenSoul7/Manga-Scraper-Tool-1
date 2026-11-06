@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { createHash } from "node:crypto";
 import { getCatalog, isSupported } from "@fallensoul7/frwilxe-hub-sources";
 
 const router = Router();
@@ -58,6 +59,12 @@ const registryExtensions = Array.from(new Map(
     }]),
 ).values()).sort((a, b) => a.name.localeCompare(b.name) || a.lang.localeCompare(b.lang));
 
+const metadataHash = createHash("sha256").update(JSON.stringify({
+  schemaVersion: 1,
+  repository: { id: "frwilxe-hub", name: "Frwilxe Hub", url: "https://github.com/FallenSoul7/Frwilxe-Hub" },
+  extensions: registryExtensions,
+})).digest("hex");
+
 const officialRegistry = {
   schemaVersion: 1 as const,
   repository: {
@@ -65,15 +72,22 @@ const officialRegistry = {
     name: "Frwilxe Hub",
     url: "https://github.com/FallenSoul7/Frwilxe-Hub",
   },
+  metadataHash,
   generatedAt: new Date().toISOString(),
   extensions: registryExtensions,
 };
 
 function sendOfficialRegistry(_req: unknown, res: import("express").Response) {
-  res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=86400");
+  res.setHeader("Cache-Control", "no-store");
   res.json(officialRegistry);
 }
 
+function sendOfficialRegistryVersion(_req: unknown, res: import("express").Response) {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ metadataHash: officialRegistry.metadataHash, extensionCount: officialRegistry.extensions.length });
+}
+
+router.get("/registry/version", sendOfficialRegistryVersion);
 router.get("/registry", sendOfficialRegistry);
 
 export default router;
