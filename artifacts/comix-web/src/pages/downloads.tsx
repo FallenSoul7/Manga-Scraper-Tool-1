@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  ArrowLeft, Loader2, Pause, Play, Zap,
+  Loader2, Pause, Play, Zap,
   ArrowUp, ArrowDown, X, MoreVertical,
   BookOpen, Trash2, HardDrive, WifiOff,
   AlertCircle, CheckCircle2, FileArchive,
@@ -396,28 +396,12 @@ function OfflineLibraryTab() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DownloadsPage() {
-  const [, setLocation] = useLocation();
   const activeCount = useDownloadQueue(
     s => s.items.filter(i => ['queued', 'downloading', 'paused'].includes(i.status)).length
   );
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-
-      {/* ── Header ── */}
-      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border/50">
-        <div className="flex items-center gap-3 px-3 h-14">
-          <Button
-            variant="ghost" size="icon"
-            className="h-9 w-9 shrink-0"
-            onClick={() => setLocation("/system")}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="font-serif font-bold text-xl tracking-tight flex-1">Downloads</h1>
-        </div>
-      </div>
-
       {/* ── Tabs ── */}
       <div className="max-w-2xl mx-auto px-4 pt-4 pb-8">
         <Tabs defaultValue="downloading">

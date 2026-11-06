@@ -195,18 +195,18 @@ function StarRating({ value }: { value: string }) {
 
 export default function MangaDetail() {
   const params = useParams<{ id?: string; mangaId?: string; sourceId?: string }>();
+  const searchString = useSearch();
   const encodedId = params.id ?? params.mangaId ?? null;
   // Source IDs may contain `/`, `:` and other URL-significant characters.
   // Cards encode them for the route, while the API hooks encode them again;
   // decode the route value once here so the backend receives the real source ID.
   const id = encodedId ? decodeURIComponent(encodedId) : null;
-  const sourceContext = params.sourceId ?? null;
+  const sourceContext = params.sourceId || new URLSearchParams(searchString).get("sourceId") || null;
   // Apply the source before the first detail/chapter query. Without this,
   // the initial render can query the backend without X-Source and show a
   // false "Manga not found" state.
   if (sourceContext) setExtraHeader("X-Source", sourceContext);
   const [, setLocation] = useLocation();
-  const searchString = useSearch();
   const fromParam = new URLSearchParams(searchString).get("from");
   const catParam  = new URLSearchParams(searchString).get("cat");
 
@@ -256,9 +256,9 @@ export default function MangaDetail() {
   const sortAsc = id ? !!chapterSortAsc[id] : false;
 
   const librarySourceId = savedManga?.sourceId ?? null;
-  const effectiveSourceForKey = sourceContext ?? librarySourceId;
+  const effectiveSourceForKey = sourceContext ?? librarySourceId ?? activeSourceId;
 
-  const needsSourceInit = !!(sourceContext || librarySourceId);
+  const needsSourceInit = !!effectiveSourceForKey;
   const [sourceReady, setSourceReady] = useState(!needsSourceInit);
 
   useEffect(() => {

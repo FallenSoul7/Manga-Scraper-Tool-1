@@ -1,5 +1,4 @@
-import { Link } from "wouter";
-import { ArrowLeft, AppWindow, Share, Plus, CheckCircle2, Smartphone } from "lucide-react";
+import { AppWindow, Share, Plus, CheckCircle2, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePwa } from "@/lib/pwa-context";
 
@@ -18,12 +17,7 @@ export default function InstallPage() {
 
   return (
     <main className="container mx-auto px-4 py-12 max-w-2xl animate-in fade-in duration-500">
-      <Link href="/system" className="inline-flex items-center text-sm text-muted-foreground hover:text-primary mb-3 transition-colors">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to System
-      </Link>
-
       <div className="mb-8">
-        <h1 className="text-3xl font-serif font-bold text-foreground mb-2">Add to Home Screen</h1>
         <p className="text-muted-foreground">Add ComiHub to your home screen for quick access and offline reading.</p>
       </div>
 

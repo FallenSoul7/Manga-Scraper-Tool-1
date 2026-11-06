@@ -2,7 +2,7 @@ import { useStore } from "@/lib/storage";
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Clock, Library, Flame, Trophy, ArrowLeft } from "lucide-react";
+import { BookOpen, Clock, Library, Flame, Trophy } from "lucide-react";
 import { Link } from "wouter";
 
 function formatDuration(ms: number): { value: string; sub: string } {
@@ -109,11 +109,7 @@ export default function StatsPage() {
 
   return (
     <main className="container mx-auto px-4 py-12 max-w-4xl animate-in fade-in duration-500">
-      <Link href="/system" className="inline-flex items-center text-sm text-muted-foreground hover:text-primary mb-3 transition-colors">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to System
-      </Link>
       <div className="mb-10">
-        <h1 className="text-3xl font-serif font-bold text-foreground mb-2">Reading Statistics</h1>
         <p className="text-muted-foreground">Your journey through the pages.</p>
       </div>
 

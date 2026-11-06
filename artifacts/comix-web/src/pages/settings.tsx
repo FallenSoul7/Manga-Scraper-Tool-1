@@ -7,8 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { useStore, storeActions, THEME_OPTIONS, type Theme } from "@/lib/storage";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
-import { Download, Upload, AlertTriangle, ArrowLeft, Check } from "lucide-react";
+import { Download, Upload, AlertTriangle, Check } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
@@ -114,12 +113,7 @@ export default function SettingsPage() {
 
   return (
     <main className="container mx-auto px-4 py-8 max-w-xl animate-in fade-in duration-300">
-      <Link href="/system" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-5 transition-colors gap-1.5">
-        <ArrowLeft className="h-4 w-4" /> System
-      </Link>
-
       <div className="mb-8">
-        <h1 className="text-2xl font-serif font-bold text-foreground">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">Customize your reading experience.</p>
       </div>
 

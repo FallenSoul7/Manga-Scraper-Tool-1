@@ -1,6 +1,5 @@
 import { Link } from "wouter";
 import {
-  ArrowLeft,
   CheckCircle2,
   Download,
   Monitor,
@@ -68,12 +67,7 @@ export default function InstallComihubPage() {
 
   return (
     <main className="container mx-auto max-w-3xl px-4 py-8 sm:py-12 animate-in fade-in duration-500">
-      <Link href="/system" className="mb-4 inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-primary">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to System
-      </Link>
-
       <header className="mb-8">
-        <h1 className="mb-2 text-3xl font-serif font-bold text-foreground sm:text-4xl">Install ComiHub</h1>
         <p className="max-w-2xl text-muted-foreground">
           Choose your platform to get the ComiHub app. Mobile builds update themselves to the newest release automatically.
         </p>

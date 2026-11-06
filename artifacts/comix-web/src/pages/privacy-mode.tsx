@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2, Download, ExternalLink, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Download, ExternalLink, ShieldCheck } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 
@@ -57,16 +57,11 @@ export default function PrivacyModePage() {
 
   return (
     <main className="container mx-auto max-w-2xl px-4 py-8 animate-in fade-in duration-300">
-      <Link href="/system" className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> System
-      </Link>
-
       <div className="mb-8 flex items-start gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600">
           <ShieldCheck className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="font-serif text-3xl font-bold text-foreground">Privacy Mode</h1>
           <p className="mt-1 text-sm text-muted-foreground">Use the optional helper to make source requests directly from your device.</p>
         </div>
       </div>

@@ -287,11 +287,8 @@ async function mangaDexDetails(id: string, options?: { scorePosition?: "top" | "
   return { id, title: String(title), author: authors.join(", "), artist: authors.join(", "), synopsis: String(desc), altTitles: Object.values(a.altTitles ?? {}).flatMap((v: any) => Object.values(v ?? {})).map(String), status: a.status ? String(a.status).replace(/^./, (c: string) => c.toUpperCase()) : "Unknown", type: "manga", isNsfw: false, rating: 0, thumbnail: cover ? `https://uploads.mangadex.org/covers/${encodeURIComponent(id)}/${encodeURIComponent(String(cover))}.256.jpg` : MANGADEX_COVER_FALLBACK, genres, score: "", scorePosition: options?.scorePosition ?? "none", sourceTags: genres.map((g: string) => ({ id: g.toLowerCase().replace(/\s+/g, "-"), name: g, group: "Genre" })) };
 }
 async function mangaDexChapters(id: string): Promise<ClientChapterResponse> {
-  const all: any[] = [];
   const limit = 100;
-  let offset = 0;
-  let total = 0;
-  do {
+  const fetchPage = (offset: number) => {
     const params = new URLSearchParams({
       limit: String(limit),
       offset: String(offset),
@@ -304,16 +301,29 @@ async function mangaDexChapters(id: string): Promise<ClientChapterResponse> {
     for (const rating of ["safe", "suggestive", "erotica", "pornographic"]) {
       params.append("contentRating[]", rating);
     }
-    const data = await clientJson<any>(
+    return clientJson<any>(
       `mangadex:chapters:${id}:${offset}`,
       `${MANGADEX_API}/manga/${encodeURIComponent(id)}/feed?${params}`,
     );
-    const page = data.data ?? [];
-    all.push(...page);
-    total = Number(data.total ?? all.length);
-    offset += limit;
-    if (page.length === 0) break;
-  } while (offset < total && offset < 5000);
+  };
+  const first = await fetchPage(0);
+  const all: any[] = [...(first.data ?? [])];
+  const total = Math.min(5000, Math.max(all.length, Number(first.total) || all.length));
+  const offsets: number[] = [];
+  for (let offset = limit; offset < total; offset += limit) offsets.push(offset);
+  // Keep requests below MangaDex's rate limits while avoiding one network
+  // round-trip per page for series with thousands of translated chapters.
+  for (let index = 0; index < offsets.length; index += 4) {
+    await new Promise(resolve => setTimeout(resolve, 600));
+    const pages = await Promise.all(offsets.slice(index, index + 4).map(fetchPage));
+    let reachedEnd = false;
+    for (const page of pages) {
+      const rows = page.data ?? [];
+      if (!rows.length) { reachedEnd = true; break; }
+      all.push(...rows);
+    }
+    if (reachedEnd) break;
+  }
 
   return {
     items: all.map((ch: any) => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, Loader2, Check, AlertCircle, Pencil, UserRound, Upload } from "lucide-react";
+import { Loader2, Check, AlertCircle, Pencil, UserRound, Upload } from "lucide-react";
 import { getCachedUser, setCachedUser, clearCachedUser, onAuthChanged, type CachedUser } from "@/lib/auth-cache";
 import { apiUrl } from "@/lib/api-url";
 
@@ -173,9 +173,6 @@ export default function ProfilePage() {
   if (!user && !authChecked) {
     return (
       <main className="container mx-auto px-4 pt-4 max-w-md animate-in fade-in duration-300">
-        <button onClick={() => setLocation("/system")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6">
-          <ArrowLeft className="h-4 w-4" /> System
-        </button>
         <div className="rounded-2xl border border-border bg-card p-10 text-center">
           <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
           <p className="mt-3 text-sm text-muted-foreground">Checking sign-in…</p>
@@ -187,10 +184,6 @@ export default function ProfilePage() {
   if (!user) {
     return (
       <main className="container mx-auto px-4 pt-4 max-w-md animate-in fade-in duration-300">
-        <button onClick={() => setLocation("/system")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6">
-          <ArrowLeft className="h-4 w-4" /> System
-        </button>
-        <h1 className="text-3xl font-serif font-bold mb-6">Profile</h1>
         <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-10 text-center">
           <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full border-4 border-background bg-muted text-muted-foreground shadow-sm">
             <UserRound className="h-12 w-12" />
@@ -207,10 +200,6 @@ export default function ProfilePage() {
 
   return (
     <main className="container mx-auto px-4 pt-4 max-w-md animate-in fade-in duration-300">
-      <button onClick={() => setLocation("/system")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6">
-        <ArrowLeft className="h-4 w-4" /> System
-      </button>
-      <h1 className="text-3xl font-serif font-bold mb-6">Profile</h1>
       <div className="rounded-2xl border border-primary/30 bg-card overflow-hidden shadow-sm">
         <div className="flex flex-col items-center px-6 pt-6 pb-5">
           <p className="mb-4 text-center text-sm font-semibold text-primary">Logged in</p>

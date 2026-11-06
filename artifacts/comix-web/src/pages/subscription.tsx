@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, Check, Crown, LockKeyhole, ShieldCheck } from "lucide-react";
+import { Check, Crown, LockKeyhole, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/api-url";
 import { getCachedUser } from "@/lib/auth-cache";
@@ -81,7 +81,6 @@ export default function SubscriptionPage() {
 
   return (
     <main className="container mx-auto max-w-5xl px-4 py-6 sm:py-10 animate-in fade-in duration-300">
-      <Link href="/system" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"><ArrowLeft className="h-4 w-4" /> System</Link>
       <section className="rounded-3xl border border-primary/25 bg-primary/5 p-5 sm:p-8 mb-6"><div className="flex items-start gap-4"><div className="h-12 w-12 shrink-0 rounded-2xl bg-primary/15 text-primary flex items-center justify-center"><Crown className="h-6 w-6" /></div><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">ComiHub Premium</p><h1 className="mt-1 text-2xl sm:text-3xl font-serif font-bold">Read without limits</h1><p className="mt-2 text-sm text-muted-foreground max-w-2xl">Choose a plan from System whenever you want. ComiHub will not open a subscription offer on first launch or interrupt your reading with a purchase prompt.</p></div></div></section>
       {active.plan && <div className="mb-5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-300">Premium is active{active.expiresAt ? ` until ${new Date(active.expiresAt).toLocaleDateString()}` : ""}.</div>}
       {message && <div className="mb-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300">{message} {!getCachedUser() && <Link href="/login" className="font-semibold underline">Sign in</Link>}</div>}

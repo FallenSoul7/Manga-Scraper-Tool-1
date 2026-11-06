@@ -12,7 +12,7 @@ const API_BASE = "https://api.qimanga.com";
 const SOURCE_ID = "en.qiscans";
 const SOURCE_NAME = "Qi Scans";
 const COVER_FALLBACK = "/public/source-icons/en.qiscans.png";
-const CHAPTER_PAGE_SIZE = 30;
+const CHAPTER_PAGE_SIZE = 100;
 
 function clean(value: string): string {
   return value.replace(/\s+/g, " ").trim();

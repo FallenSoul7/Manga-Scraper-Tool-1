@@ -1,5 +1,5 @@
 import { Link, useLocation, useSearch } from "wouter";
-import { Search, Library, Clock, RefreshCw, Sun, Moon, Laptop, X, Boxes, LayoutGrid, Trash2, Cloud, CloudOff, CheckCircle2 } from "lucide-react";
+import { Search, Library, Clock, RefreshCw, Sun, Moon, Laptop, X, Boxes, LayoutGrid, Trash2, Cloud, CloudOff, CheckCircle2, ArrowLeft } from "lucide-react";
 import { Input } from "./ui/input";
 import { useEffect, useState } from "react";
 import { useUpdatesCount } from "@/hooks/use-updates-count";
@@ -21,6 +21,21 @@ const PAGE_TITLES: Record<string, string> = {
   "/search": "Search",
   "/stats": "Stats",
   "/login": "Account",
+};
+
+const SYSTEM_SUBPAGE_TITLES: Record<string, string> = {
+  "/settings": "Settings",
+  "/profile": "Profile",
+  "/extension-settings": "Extensions",
+  "/privacy-mode": "Privacy Mode",
+  "/subscription": "Subscription",
+  "/categories": "Categories",
+  "/downloads": "Downloads",
+  "/downloads/library": "Downloaded",
+  "/stats": "Stats",
+  "/cache": "Cache",
+  "/install": "Add to Home Screen",
+  "/install-comihub": "Install ComiHub",
 };
 
 function SyncIndicator() {
@@ -67,6 +82,9 @@ export function Header() {
   const isHistory = location === "/history";
   const isSources = location === "/sources";
   const isSystem  = location === "/system";
+  const subpageTitle = SYSTEM_SUBPAGE_TITLES[location];
+  const isSystemSubpage = !!subpageTitle;
+  const subpageBackTarget = location === "/downloads/library" ? "/downloads" : "/system";
 
   const urlQ = isSources ? (new URLSearchParams(searchString).get("q") ?? "") : "";
   const [sourcesQuery, setSourcesQuery] = useState(urlQ);
@@ -78,7 +96,7 @@ export function Header() {
   }, [location, breadcrumb.step]);
 
   const pageTitle = PAGE_TITLES[location] ?? "";
-  const showTheme = !isUpdates && !isHistory && !isSystem;
+  const showTheme = !isUpdates && !isHistory && !isSystem && !isSystemSubpage;
 
   const handleSourcesSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -99,10 +117,23 @@ export function Header() {
   return (
     <>
       <header className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-3 sm:px-4 h-11 sm:h-14 flex items-center gap-2 sm:gap-4">
+        <div className="container mx-auto relative px-3 sm:px-4 h-11 sm:h-14 flex items-center gap-2 sm:gap-4">
 
           {/* Logo / page title */}
-          {isHome ? (
+          {isSystemSubpage ? (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute left-3 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setLocation(subpageBackTarget)}
+                aria-label="Back"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <h1 className="absolute left-14 right-14 truncate text-center font-serif text-sm font-bold tracking-tight sm:text-lg">{subpageTitle}</h1>
+            </>
+          ) : isHome ? (
             <Link href="/" className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity shrink-0">
               <Library className="h-5 w-5 sm:h-6 sm:w-6" />
               <span className="font-serif font-bold text-base sm:text-xl tracking-tight whitespace-nowrap">
@@ -116,7 +147,7 @@ export function Header() {
           )}
 
           {/* Desktop nav links */}
-          <nav className="hidden md:flex items-center gap-1 mx-2 lg:mx-4">
+          {!isSystemSubpage && <nav className="hidden md:flex items-center gap-1 mx-2 lg:mx-4">
             {navLinks.map((link) => {
               const isActive = location === link.href;
               const extensionBadgeCount = link.href === "/system" && breadcrumb.step === "system" ? breadcrumb.missingExtensionCount : 0;
@@ -137,7 +168,7 @@ export function Header() {
                 </Link>
               );
             })}
-          </nav>
+          </nav>}
 
           {/* Desktop sources global search */}
           {isSources && (
@@ -174,9 +205,9 @@ export function Header() {
             </form>
           )}
 
-          <div className="flex-1 md:hidden" />
+          {!isSystemSubpage && <div className="flex-1 md:hidden" />}
 
-          <div className="flex items-center gap-1 shrink-0">
+          <div className={isSystemSubpage ? "hidden" : "flex items-center gap-1 shrink-0"}>
             <SyncIndicator />
 
             {/* Mobile sources search button */}

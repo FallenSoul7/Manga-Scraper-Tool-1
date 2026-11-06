@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link } from "wouter";
-import { ArrowLeft, Trash2, RefreshCw, Database, HardDrive, Image as ImageIcon } from "lucide-react";
+import { Trash2, RefreshCw, Database, HardDrive, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -135,12 +134,7 @@ export default function CachePage() {
 
   return (
     <main className="container mx-auto px-4 py-12 max-w-3xl animate-in fade-in duration-500">
-      <Link href="/system" className="inline-flex items-center text-sm text-muted-foreground hover:text-primary mb-3 transition-colors">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to System
-      </Link>
-
       <div className="mb-8">
-        <h1 className="text-3xl font-serif font-bold text-foreground mb-2">Cache</h1>
         <p className="text-muted-foreground">Persistent data stored on this device. Nothing expires automatically; delete a tier whenever you want to reclaim space.</p>
       </div>
 

@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft, BookOpen, HardDrive, Trash2, WifiOff } from "lucide-react";
+import { BookOpen, HardDrive, Trash2, WifiOff } from "lucide-react";
 import { mediaImage } from "@/lib/utils";
 import { useOfflineChapters, offlineDb, formatBytes } from "@/lib/offline-db";
 import { readerUrl } from "@/lib/utils";
@@ -32,22 +31,6 @@ export default function DownloadsLibraryPage() {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-
-      {/* ── Header ── */}
-      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border/50">
-        <div className="flex items-center gap-3 px-3 h-14">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            onClick={() => setLocation("/downloads")}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="font-serif font-bold text-xl tracking-tight">Downloaded</h1>
-        </div>
-      </div>
-
       {groups.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 py-32 text-muted-foreground px-6">
           <WifiOff className="h-10 w-10 opacity-30" />

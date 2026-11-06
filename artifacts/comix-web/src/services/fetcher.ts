@@ -176,12 +176,19 @@ export async function fetcher(input: RequestInfo | URL, init: RequestInit = {}):
   const method = (init.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
   const redirect = init.redirect ?? (input instanceof Request ? input.redirect : "follow");
   const signal = init.signal ?? (input instanceof Request ? input.signal : undefined);
+  const requestInit = { ...init, credentials: "omit" as RequestCredentials, referrerPolicy: "no-referrer" as ReferrerPolicy, headers };
+  const isMangaDexJsonRequest = url.hostname === "api.mangadex.org" && (headers.get("accept") ?? "").includes("application/json");
+  const useMangaDexProxyIfChallenged = (response: Response) =>
+    isMangaDexJsonRequest && !response.headers.get("content-type")?.toLowerCase().includes("json");
 
   if (Capacitor.isNativePlatform() && (method === "GET" || method === "HEAD") && init.body == null) {
     if (signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
     const nativeHeaders: Record<string, string> = {};
     headers.forEach((value, key) => { nativeHeaders[key] = value; });
-    return toNativeResponse(await withAbort(CapacitorHttp.request({ url: url.href, method, headers: nativeHeaders, responseType: "text", connectTimeout: 15_000, readTimeout: 15_000, disableRedirects: redirect !== "follow" }), signal));
+    const response = toNativeResponse(await withAbort(CapacitorHttp.request({ url: url.href, method, headers: nativeHeaders, responseType: "text", connectTimeout: 15_000, readTimeout: 15_000, disableRedirects: redirect !== "follow" }), signal));
+    return useMangaDexProxyIfChallenged(response)
+      ? fetchWithTimeout(renderProxyUrl(url), requestInit)
+      : response;
   }
 
   const sameOrigin = typeof location !== "undefined" && url.origin === location.origin;
@@ -190,13 +197,14 @@ export async function fetcher(input: RequestInfo | URL, init: RequestInit = {}):
       const nativeHeaders: Record<string, string> = {};
       headers.forEach((value, key) => { nativeHeaders[key] = value; });
       const response = responseFromExtension(await sendExtensionMessage({ type: "COMIHUB_DIRECT_FETCH", url: url.href, method, headers: nativeHeaders, body: requestBody(init) }));
-      return response;
+      return useMangaDexProxyIfChallenged(response)
+        ? await fetchWithTimeout(renderProxyUrl(url), requestInit)
+        : response;
     } catch {
       publishStatus("missing");
     }
   }
 
-  const requestInit = { ...init, credentials: "omit" as RequestCredentials, referrerPolicy: "no-referrer" as ReferrerPolicy, headers };
   if (sameOrigin) return fetchWithTimeout(url.href, requestInit);
 
   // Standard Web Mode keeps the original browser-first behavior. Sources that
