@@ -39,8 +39,30 @@ interface ImmersiveModePlugin {
 const ImmersiveMode = registerPlugin<ImmersiveModePlugin>("ImmersiveMode");
 
 function resolveReaderMediaUrl(url: string, sourceId?: string | null): string {
-  if (url.startsWith("/")) return apiUrl(url);
-  return mediaImage(url, sourceId ?? undefined);
+  if (!url) return "";
+  try {
+    if (url.startsWith("/")) return apiUrl(url);
+    return mediaImage(url, sourceId ?? undefined);
+  } catch {
+    return "";
+  }
+}
+
+type ReaderPage = ChapterPage & { videoTracks?: VideoTrack[] };
+
+function normalizeReaderPages(value: unknown): ReaderPage[] {
+  if (!Array.isArray(value)) return [];
+  const pages: ReaderPage[] = [];
+  value.forEach((candidate, position) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return;
+    const page = candidate as Record<string, unknown>;
+    const url = typeof page.url === "string" ? page.url : "";
+    const text = typeof page.text === "string" ? page.text : undefined;
+    if (!url && !text) return;
+    const index = Number.isInteger(page.index) && Number(page.index) >= 0 ? Number(page.index) : position;
+    pages.push({ ...page, index, url, ...(text ? { text } : {}) } as ReaderPage);
+  });
+  return pages;
 }
 
 export default function Reader() {
@@ -310,7 +332,7 @@ export default function Reader() {
           if (Array.isArray(data?.pages) && data.pages.length > 0) return data;
           if (useServerPagesOnWeb && clientAdapter?.pages) {
             const clientData = await clientAdapter.pages(chapterId);
-            if (clientData.pages.length > 0) return clientData;
+            if (Array.isArray(clientData?.pages) && clientData.pages.length > 0) return clientData;
           }
           return data;
         } catch (serverError) {
@@ -329,16 +351,20 @@ export default function Reader() {
     },
   });
   const pagesData = useClientPages ? clientPagesQuery.data : useServerPages ? serverPagesQuery.data : undefined;
-  const pagesLoading = useClientPages ? clientPagesQuery.isLoading : useServerPages && serverPagesQuery.isLoading;
+  const pagesLoading = useClientPages
+    ? clientPagesQuery.isPending || clientPagesQuery.isLoading
+    : useServerPages && (serverPagesQuery.isPending || serverPagesQuery.isLoading);
   const pagesError = useClientPages ? clientPagesQuery.error : useServerPages ? serverPagesQuery.error : null;
   const retryChapterPages = () => {
-    if (useClientPages) void clientPagesQuery.refetch();
-    else if (useServerPages) void serverPagesQuery.refetch();
+    const retry = useClientPages
+      ? clientPagesQuery.refetch()
+      : useServerPages ? serverPagesQuery.refetch() : null;
+    void retry?.catch(() => undefined);
   };
 
   // Unified pages array: offline IndexedDB data OR live API data
-  const effectivePages: Array<ChapterPage & { videoTracks?: VideoTrack[] }> =
-    (isOfflineMode && offlinePages) ? offlinePages : (pagesData?.pages ?? []);
+  const rawPages = (isOfflineMode && offlinePages) ? offlinePages : pagesData?.pages;
+  const effectivePages = useMemo(() => normalizeReaderPages(rawPages), [rawPages]);
   const effectiveLoading = isOfflineMode ? offlineLoading : pagesLoading;
   const effectiveError = isOfflineMode ? null : pagesError;
   const translationPages = useMemo(() => {
@@ -593,7 +619,12 @@ export default function Reader() {
     loadPages
       .then((data: { pages: { index: number; url: string }[] }) => {
         if (activeRouteKeyRef.current !== routeKeyAtRequest) return;
-        setAppendedChapters(prev => [...prev, { id: nc.id, number: nc.number, title: nc.title ?? '', pages: data.pages }]);
+        const pages = normalizeReaderPages(data?.pages);
+        if (pages.length === 0) {
+          appendedIdsRef.current.delete(nc.id);
+          return;
+        }
+        setAppendedChapters(prev => [...prev, { id: nc.id, number: nc.number, title: nc.title ?? '', pages }]);
       })
       .catch(() => {
         if (activeRouteKeyRef.current === routeKeyAtRequest) appendedIdsRef.current.delete(nc.id);
@@ -744,9 +775,12 @@ export default function Reader() {
             ? "This source does not have a device-side page adapter yet; the mobile app does not send scraping requests through the server."
             : "This chapter's images couldn't be loaded. The site may require JavaScript to display pages, which our reader doesn't support yet."}
         </p>
-        <Button variant="outline" className="mt-2 text-white border-white/30 hover:bg-white/10" onClick={goBack}>
-          Go Back
-        </Button>
+        <div className="mt-2 flex flex-wrap justify-center gap-2">
+          <Button variant="outline" className="text-white border-white/30 hover:bg-white/10" onClick={retryChapterPages}>
+            <RefreshCw className="mr-2 h-4 w-4" /> Retry chapter
+          </Button>
+          <Button variant="ghost" className="text-white/70 hover:text-white" onClick={goBack}>Go Back</Button>
+        </div>
       </div>
     );
   }
