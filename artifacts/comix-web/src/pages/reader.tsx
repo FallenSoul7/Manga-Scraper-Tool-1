@@ -65,6 +65,16 @@ function normalizeReaderPages(value: unknown): ReaderPage[] {
   return pages;
 }
 
+function chapterNumberLabel(chapter: { number?: unknown; title?: unknown; id?: unknown } | null | undefined, fallbackId = ""): string {
+  const number = chapter?.number;
+  if (typeof number === "number" && Number.isFinite(number)) return String(number);
+  if (typeof number === "string" && number.trim() && Number.isFinite(Number(number))) return String(Number(number));
+  const sourceText = [chapter?.title, chapter?.id, fallbackId]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+  return sourceText.match(/(?:chapter|ch)[\s._-]*(\d+(?:\.\d+)?)/i)?.[1] ?? "—";
+}
+
 export default function Reader() {
   const [, params] = useRoute("/reader/:chapterId");
   const chapterId = params?.chapterId ? decodeURIComponent(params.chapterId) : "";
@@ -809,7 +819,7 @@ export default function Reader() {
     const mangaTitle = effectiveMangaData?.title ?? "Video";
     const chObj = effectiveChapterData.find(c => String(c.id) === chapterId);
     const chapterTitle = chObj
-      ? `Ch. ${chObj.number}${chObj.title ? ` — ${chObj.title}` : ""}`
+      ? `Ch. ${chapterNumberLabel(chObj, chapterId)}${chObj.title ? ` — ${chObj.title}` : ""}`
       : undefined;
     return (
       <VideoPlayer
@@ -942,7 +952,7 @@ export default function Reader() {
               <div className="text-sm font-semibold truncate leading-none">
                 {isRule34
                   ? "Artwork"
-                  : `Ch. ${currChapterObj?.number} ${currChapterObj?.title ? `- ${currChapterObj.title}` : ""}`}
+                  : `Ch. ${chapterNumberLabel(currChapterObj, chapterId)} ${currChapterObj?.title ? `- ${currChapterObj.title}` : ""}`}
               </div>
             </div>
           </div>
@@ -1250,7 +1260,7 @@ export default function Reader() {
               <div className="flex-1 h-px bg-white/20" />
               <div className="text-center">
                 <div className="text-white/50 text-xs mb-1">Next Chapter</div>
-                <div className="text-white font-semibold text-sm">Ch. {ch.number}{ch.title ? ` — ${ch.title}` : ''}</div>
+                <div className="text-white font-semibold text-sm">Ch. {chapterNumberLabel(ch, String(ch.id))}{ch.title ? ` — ${ch.title}` : ''}</div>
               </div>
               <div className="flex-1 h-px bg-white/20" />
             </div>
