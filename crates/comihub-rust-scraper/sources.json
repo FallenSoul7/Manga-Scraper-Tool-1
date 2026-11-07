@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "en.elftoon",
+      "name": "Elf Toon",
+      "baseUrl": "https://elftoon.net",
+      "customParser": true,
+      "selectors": {
+        "title": "h1",
+        "cover": ".summary_image img, .cover img, img",
+        "status": ".status, [data-status]",
+        "description": ".description, .synopsis, [class*='description']",
+        "mangaList": ".grid > .group",
+        "itemTitle": ".mt-3 h3",
+        "itemCover": "img",
+        "chapterList": "div[class*='container/list'] a[href*='/chapter/']",
+        "chapterTitle": ".shrink-0.font-medium",
+        "chapterDate": "time",
+        "readerPages": "#readerarea img, .reading-content img, div.reader-area img",
+        "nextPage": "a[rel='next']"
+      }
+    }
+  ]
+}
